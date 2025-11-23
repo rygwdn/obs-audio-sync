@@ -284,19 +284,24 @@ if(ENABLE_QT)
   # Include directories
   target_include_directories(${CMAKE_PROJECT_NAME}-tests PRIVATE
     src
-    ${AVCODEC_INCLUDE_DIRS}
-    ${AVFORMAT_INCLUDE_DIRS}
-    ${AVUTIL_INCLUDE_DIRS}
-    ${SWSCALE_INCLUDE_DIRS}
   )
 
-  # Link FFmpeg libraries
-  target_link_libraries(${CMAKE_PROJECT_NAME}-tests PRIVATE
-    ${AVCODEC_LIBRARIES}
-    ${AVFORMAT_LIBRARIES}
-    ${AVUTIL_LIBRARIES}
-    ${SWSCALE_LIBRARIES}
-  )
+  # Link FFmpeg libraries if available
+  if(AVCODEC_FOUND AND AVFORMAT_FOUND AND AVUTIL_FOUND AND SWSCALE_FOUND)
+    target_include_directories(${CMAKE_PROJECT_NAME}-tests PRIVATE
+      ${AVCODEC_INCLUDE_DIRS}
+      ${AVFORMAT_INCLUDE_DIRS}
+      ${AVUTIL_INCLUDE_DIRS}
+      ${SWSCALE_INCLUDE_DIRS}
+    )
+
+    target_link_libraries(${CMAKE_PROJECT_NAME}-tests PRIVATE
+      ${AVCODEC_LIBRARIES}
+      ${AVFORMAT_LIBRARIES}
+      ${AVUTIL_LIBRARIES}
+      ${SWSCALE_LIBRARIES}
+    )
+  endif()
 
   # Set test properties
   set_target_properties(${CMAKE_PROJECT_NAME}-tests PROPERTIES
