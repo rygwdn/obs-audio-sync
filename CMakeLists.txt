@@ -57,7 +57,9 @@ if(NOT AVCODEC_FOUND)
   foreach(path ${CMAKE_PREFIX_PATH})
     list(APPEND FFMPEG_SEARCH_PATHS "${path}/lib" "${path}")
   endforeach()
-  list(APPEND FFMPEG_SEARCH_PATHS
+  list(
+    APPEND
+    FFMPEG_SEARCH_PATHS
     "${CMAKE_CURRENT_SOURCE_DIR}/.deps/lib"
     /usr/local/lib
     /opt/homebrew/lib
@@ -68,7 +70,9 @@ if(NOT AVCODEC_FOUND)
   foreach(path ${CMAKE_PREFIX_PATH})
     list(APPEND FFMPEG_INCLUDE_PATHS "${path}/include" "${path}")
   endforeach()
-  list(APPEND FFMPEG_INCLUDE_PATHS
+  list(
+    APPEND
+    FFMPEG_INCLUDE_PATHS
     "${CMAKE_CURRENT_SOURCE_DIR}/.deps/include"
     /usr/local/include
     /opt/homebrew/include
@@ -179,9 +183,16 @@ if(NOT AVCODEC_FOUND)
       /usr/include
   )
 
-  if(AVCODEC_LIBRARY AND AVFORMAT_LIBRARY AND AVUTIL_LIBRARY AND SWSCALE_LIBRARY
-     AND AVCODEC_INCLUDE_DIR AND AVFORMAT_INCLUDE_DIR AND AVUTIL_INCLUDE_DIR
-     AND SWSCALE_INCLUDE_DIR)
+  if(
+    AVCODEC_LIBRARY
+    AND AVFORMAT_LIBRARY
+    AND AVUTIL_LIBRARY
+    AND SWSCALE_LIBRARY
+    AND AVCODEC_INCLUDE_DIR
+    AND AVFORMAT_INCLUDE_DIR
+    AND AVUTIL_INCLUDE_DIR
+    AND SWSCALE_INCLUDE_DIR
+  )
     set(AVCODEC_FOUND TRUE)
     set(AVFORMAT_FOUND TRUE)
     set(AVUTIL_FOUND TRUE)
