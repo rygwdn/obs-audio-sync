@@ -59,6 +59,7 @@ else()
     find_package(Qt6 COMPONENTS Widgets Core)
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Core Qt6::Widgets)
   endif()
+
 endif()
 
 if(ENABLE_QT AND (Qt6_FOUND OR _LINTING_MODE OR NOT CMAKE_EXPORT_COMPILE_COMMANDS))
@@ -71,6 +72,12 @@ if(ENABLE_QT AND (Qt6_FOUND OR _LINTING_MODE OR NOT CMAKE_EXPORT_COMPILE_COMMAND
     PROPERTIES AUTOMOC ON AUTOUIC ON AUTORCC ON
   )
 endif()
+
+# Suppress deprecation warnings from OBS headers
+target_compile_options(
+  ${CMAKE_PROJECT_NAME}
+  PRIVATE -Wno-deprecated-declarations
+)
 
 # FFmpeg/libav
 # FFmpeg is required for audio/video analysis
@@ -195,10 +202,43 @@ if(AVCODEC_FOUND AND AVFORMAT_FOUND AND AVUTIL_FOUND AND SWSCALE_FOUND)
     PRIVATE ${AVCODEC_INCLUDE_DIRS} ${AVFORMAT_INCLUDE_DIRS} ${AVUTIL_INCLUDE_DIRS} ${SWSCALE_INCLUDE_DIRS}
   )
 
+  # Add library directories to linker search path
+  # Handle pkg-config case (LIBRARY_DIRS) or direct find case (LIBRARY)
+  if(AVCODEC_LIBRARY_DIRS)
+    target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE ${AVCODEC_LIBRARY_DIRS})
+  elseif(AVCODEC_LIBRARY)
+    get_filename_component(AVCODEC_LIB_DIR ${AVCODEC_LIBRARY} DIRECTORY)
+    target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE ${AVCODEC_LIB_DIR})
+  endif()
+
   target_link_libraries(
     ${CMAKE_PROJECT_NAME}
     PRIVATE ${AVCODEC_LIBRARIES} ${AVFORMAT_LIBRARIES} ${AVUTIL_LIBRARIES} ${SWSCALE_LIBRARIES}
   )
+endif()
+
+# AGL framework is deprecated and not available on newer macOS
+# Create a stub framework and add it to the search path
+if(APPLE)
+  # Create stub AGL framework if it doesn't exist
+  set(AGL_STUB_DIR "${CMAKE_CURRENT_BINARY_DIR}/AGL.framework")
+  set(AGL_STUB_LIB "${AGL_STUB_DIR}/AGL")
+  if(NOT EXISTS "${AGL_STUB_LIB}")
+    file(MAKE_DIRECTORY "${AGL_STUB_DIR}")
+    file(WRITE "${AGL_STUB_DIR}/AGL-stub.c" "// Minimal stub for deprecated AGL framework\n__attribute__((visibility(\"default\"))) void AGLStub() {}\n")
+    execute_process(
+      COMMAND ${CMAKE_C_COMPILER} -shared -arch arm64 -arch x86_64
+              -o "${AGL_STUB_LIB}" "${AGL_STUB_DIR}/AGL-stub.c"
+              -install_name @rpath/AGL.framework/AGL
+              -compatibility_version 1.0 -current_version 1.0
+      RESULT_VARIABLE AGL_STUB_RESULT
+    )
+    if(NOT AGL_STUB_RESULT EQUAL 0)
+      message(WARNING "Failed to create AGL stub framework")
+    endif()
+  endif()
+  # Add stub framework to search path
+  target_link_options(${CMAKE_PROJECT_NAME} PRIVATE "-F${CMAKE_CURRENT_BINARY_DIR}")
 endif()
 
 target_sources(
