@@ -95,27 +95,6 @@ build() {
 
   pushd ${project_root}
 
-  # Add Homebrew's Qt6 to CMAKE_PREFIX_PATH for Qt Test libraries
-  # The obs-deps-qt6 prebuilds don't include Qt Test
-  local brew_qt6_path
-  if (( ${+commands[brew]} )) {
-    local brew_prefix
-    if [[ -d /opt/homebrew ]] {
-      brew_prefix=/opt/homebrew
-    } elif [[ -d /usr/local/Homebrew ]] {
-      brew_prefix=/usr/local
-    }
-    
-    # Check for qt@6 or qt6-test (qt6-test is a separate formula)
-    if [[ -n ${brew_prefix} ]] {
-      if [[ -d ${brew_prefix}/opt/qt@6 ]] {
-        brew_qt6_path="${brew_prefix}/opt/qt@6"
-      } elif [[ -d ${brew_prefix}/opt/qt6-test ]] {
-        brew_qt6_path="${brew_prefix}/opt/qt6-test"
-      }
-    }
-  }
-
   local -a cmake_args=()
   local -a cmake_build_args=(--build)
   local -a cmake_install_args=(--install)
@@ -123,15 +102,6 @@ build() {
   if (( debug )) cmake_args+=(--debug-output)
 
   cmake_args+=(--preset 'macos-ci')
-  
-  # Add Homebrew Qt6 to CMAKE_PREFIX_PATH if found
-  if [[ -n ${brew_qt6_path} ]] {
-    if [[ -n ${CMAKE_PREFIX_PATH} ]] {
-      typeset -gx CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH};${brew_qt6_path}"
-    } else {
-      typeset -gx CMAKE_PREFIX_PATH="${brew_qt6_path}"
-    }
-  }
 
   typeset -gx NSUnbufferedIO=YES
 

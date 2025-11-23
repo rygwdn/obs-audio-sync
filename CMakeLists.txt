@@ -176,12 +176,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Generate compile_commands.json"
 enable_testing()
 
 if(ENABLE_QT)
-  find_package(Qt6 COMPONENTS Test)
-  if(NOT Qt6Test_FOUND)
-    message(WARNING "Qt6 Test not found. Tests will be disabled.")
-    set(ENABLE_QT_TESTS OFF)
-  else()
+  # Require Qt6 Test on Linux (Ubuntu), optional on macOS and Windows
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(Qt6 COMPONENTS Test REQUIRED)
     set(ENABLE_QT_TESTS ON)
+  else()
+    find_package(Qt6 COMPONENTS Test)
+    if(NOT Qt6Test_FOUND)
+      message(STATUS "Qt6 Test not found. Tests will be disabled on ${CMAKE_SYSTEM_NAME}.")
+      set(ENABLE_QT_TESTS OFF)
+    else()
+      set(ENABLE_QT_TESTS ON)
+    endif()
   endif()
 
   if(ENABLE_QT_TESTS)
