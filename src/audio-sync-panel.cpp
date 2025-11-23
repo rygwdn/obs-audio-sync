@@ -24,7 +24,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QMessageBox>
 
 AudioSyncPanel::AudioSyncPanel(QWidget *parent)
-	: QWidget(parent),
+	: QDockWidget(parent),
 	  m_timelineWidget(nullptr),
 	  m_frameLabel(nullptr),
 	  m_prevFrameButton(nullptr),
@@ -35,7 +35,13 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent)
 	  m_videoFPS(30.0),
 	  m_videoExtractor(nullptr)
 {
+	setWindowTitle("Audio Sync");
 	m_videoExtractor = new VideoExtractor();
+	
+	// Create central widget for QDockWidget
+	QWidget *centralWidget = new QWidget(this);
+	setWidget(centralWidget);
+	
 	setupUI();
 	refreshRecordings();
 }
@@ -49,12 +55,13 @@ AudioSyncPanel::~AudioSyncPanel()
 
 void AudioSyncPanel::setupUI()
 {
-	m_layout = new QVBoxLayout(this);
+	QWidget *centralWidget = widget();
+	m_layout = new QVBoxLayout(centralWidget);
 	m_layout->setContentsMargins(10, 10, 10, 10);
 	m_layout->setSpacing(10);
 
 	// Title
-	QLabel *titleLabel = new QLabel("Audio Sync", this);
+	QLabel *titleLabel = new QLabel("Audio Sync", centralWidget);
 	QFont titleFont = titleLabel->font();
 	titleFont.setPointSize(14);
 	titleFont.setBold(true);
@@ -62,30 +69,30 @@ void AudioSyncPanel::setupUI()
 	m_layout->addWidget(titleLabel);
 
 	// Recording list label
-	QLabel *listLabel = new QLabel("Recordings (< 15s):", this);
+	QLabel *listLabel = new QLabel("Recordings (< 15s):", centralWidget);
 	m_layout->addWidget(listLabel);
 
 	// Recording list
-	m_recordingList = new QListWidget(this);
+	m_recordingList = new QListWidget(centralWidget);
 	m_recordingList->setSelectionMode(QAbstractItemView::SingleSelection);
 	m_recordingList->setMaximumHeight(100);
 	m_layout->addWidget(m_recordingList);
 
 	// Refresh button
-	m_refreshButton = new QPushButton("Refresh", this);
+	m_refreshButton = new QPushButton("Refresh", centralWidget);
 	m_layout->addWidget(m_refreshButton);
 
 	// Timeline widget
-	QLabel *timelineLabel = new QLabel("Timeline:", this);
+	QLabel *timelineLabel = new QLabel("Timeline:", centralWidget);
 	m_layout->addWidget(timelineLabel);
-	m_timelineWidget = new TimelineWidget(this);
+	m_timelineWidget = new TimelineWidget(centralWidget);
 	m_timelineWidget->setVisible(false);
 	m_layout->addWidget(m_timelineWidget);
 
 	// Video frame display
-	QLabel *frameLabel = new QLabel("Video Frame:", this);
+	QLabel *frameLabel = new QLabel("Video Frame:", centralWidget);
 	m_layout->addWidget(frameLabel);
-	m_frameLabel = new QLabel(this);
+	m_frameLabel = new QLabel(centralWidget);
 	m_frameLabel->setMinimumHeight(200);
 	m_frameLabel->setAlignment(Qt::AlignCenter);
 	m_frameLabel->setStyleSheet("background-color: black; border: 1px solid gray;");
@@ -95,10 +102,10 @@ void AudioSyncPanel::setupUI()
 
 	// Frame navigation
 	QHBoxLayout *navLayout = new QHBoxLayout();
-	m_prevFrameButton = new QPushButton("< Prev", this);
+	m_prevFrameButton = new QPushButton("< Prev", centralWidget);
 	m_prevFrameButton->setEnabled(false);
 	m_prevFrameButton->setVisible(false);
-	m_nextFrameButton = new QPushButton("Next >", this);
+	m_nextFrameButton = new QPushButton("Next >", centralWidget);
 	m_nextFrameButton->setEnabled(false);
 	m_nextFrameButton->setVisible(false);
 	navLayout->addWidget(m_prevFrameButton);
@@ -107,12 +114,12 @@ void AudioSyncPanel::setupUI()
 	m_layout->addLayout(navLayout);
 
 	// Frame info
-	m_frameInfoLabel = new QLabel("", this);
+	m_frameInfoLabel = new QLabel("", centralWidget);
 	m_frameInfoLabel->setVisible(false);
 	m_layout->addWidget(m_frameInfoLabel);
 
 	// Sync offset display
-	m_syncOffsetLabel = new QLabel("", this);
+	m_syncOffsetLabel = new QLabel("", centralWidget);
 	QFont syncFont = m_syncOffsetLabel->font();
 	syncFont.setPointSize(12);
 	syncFont.setBold(true);
@@ -121,7 +128,7 @@ void AudioSyncPanel::setupUI()
 	m_layout->addWidget(m_syncOffsetLabel);
 
 	// Status label
-	m_statusLabel = new QLabel("Ready", this);
+	m_statusLabel = new QLabel("Ready", centralWidget);
 	m_statusLabel->setStyleSheet("color: gray;");
 	m_layout->addWidget(m_statusLabel);
 

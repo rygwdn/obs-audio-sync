@@ -19,6 +19,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #pragma once
 
 #include <QWidget>
+#include <QDockWidget>
 #include <QListWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -28,7 +29,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "video-extractor.h"
 #include "audio-analyzer.h"
 
-class AudioSyncPanel : public QWidget {
+class AudioSyncPanel : public QDockWidget {
 	Q_OBJECT
 
 public:
