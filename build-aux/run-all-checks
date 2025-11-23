@@ -163,9 +163,9 @@ Usage: %B${functrace[1]%:*}%b <option>
         ;;
     }
 
-    # Build tests if build directory doesn't exist or tests aren't built
+    # Configure build if build directory doesn't exist
     if [[ -z ${build_dir} ]] || [[ ! -d ${build_dir} ]]; then
-      log_info "Build directory not found. Configuring and building tests..."
+      log_info "Build directory not found. Configuring build..."
       build_dir="${project_root}/build_macos"
       case ${host_os} {
         macos)
@@ -186,19 +186,44 @@ Usage: %B${functrace[1]%:*}%b <option>
         cd ${project_root}
         num_failures=$(( num_failures + 1 ))
       else
-        log_info "Building tests..."
-        if ! cmake --build ${build_dir} --target ${project_name}-tests 2>&1; then
-          log_error "Failed to build tests"
-          cd ${project_root}
-          num_failures=$(( num_failures + 1 ))
-        else
-          cd ${project_root}
-        fi
+        cd ${project_root}
+      fi
+    fi
+    
+    # Always build the full project first
+    if [[ -d ${build_dir} ]]; then
+      log_info "Building full project..."
+      cd ${build_dir}
+      if ! cmake --build ${build_dir} 2>&1; then
+        log_error "Failed to build project"
+        cd ${project_root}
+        num_failures=$(( num_failures + 1 ))
+      else
+        log_status "Project built successfully"
+        cd ${project_root}
+      fi
+    else
+      log_error "Build directory not found after configuration attempt."
+      num_failures=$(( num_failures + 1 ))
+    fi
+    
+    # Always build tests before running them
+    if [[ -d ${build_dir} ]] && (( num_failures == 0 )); then
+      log_info "Building tests..."
+      cd ${build_dir}
+      if ! cmake --build ${build_dir} --target ${project_name}-tests 2>&1; then
+        log_error "Failed to build tests. Tests may not be enabled."
+        log_info "To enable tests, ensure Qt6 Test is available."
+        cd ${project_root}
+        num_failures=$(( num_failures + 1 ))
+      else
+        log_status "Tests built successfully"
+        cd ${project_root}
       fi
     fi
     
     # Now run tests
-    if [[ -d ${build_dir} ]]; then
+    if [[ -d ${build_dir} ]] && (( num_failures == 0 )); then
       log_info "Running tests from ${build_dir}..."
       cd ${build_dir}
       
@@ -208,58 +233,17 @@ Usage: %B${functrace[1]%:*}%b <option>
         local test_output=$(ctest -N 2>&1)
         # Check for "No tests were found" message
         if echo ${test_output} | grep -q "No tests were found"; then
-          log_info "No tests found. Attempting to build tests..."
-          if cmake --build ${build_dir} --target ${project_name}-tests 2>&1; then
-            # Check again after building
-            test_output=$(ctest -N 2>&1)
-            if echo ${test_output} | grep -q "No tests were found"; then
-              log_error "No tests found after building. Tests may not be enabled."
-              log_info "To enable tests, ensure Qt6 Test is available and rebuild the project."
-              num_failures=$(( num_failures + 1 ))
-            else
-              log_info "Tests found after building. Running tests..."
-              if ctest --output-on-failure; then
-                log_status "Tests passed"
-              else
-                log_error "Tests failed"
-                num_failures=$(( num_failures + 1 ))
-              fi
-            fi
-          else
-            log_error "Failed to build tests. Tests may not be enabled."
-            log_info "To enable tests, ensure Qt6 Test is available."
-            num_failures=$(( num_failures + 1 ))
-          fi
+          log_error "No tests found in build directory. Tests may not be enabled."
+          log_info "To enable tests, ensure Qt6 Test is available and rebuild the project."
+          num_failures=$(( num_failures + 1 ))
         else
           # Count test lines
           local test_count=$(echo ${test_output} | grep -c "Test #" 2>/dev/null)
           if (( test_count == 0 )); then
-            log_info "No tests found. Attempting to build tests..."
-            if cmake --build ${build_dir} --target ${project_name}-tests 2>&1; then
-              test_output=$(ctest -N 2>&1)
-              test_count=$(echo ${test_output} | grep -c "Test #" 2>/dev/null)
-              if (( test_count == 0 )); then
-                log_error "No tests found after building. Tests may not be enabled."
-                log_info "To enable tests, ensure Qt6 Test is available."
-                num_failures=$(( num_failures + 1 ))
-              else
-                log_info "Tests found after building. Running tests..."
-                if ctest --output-on-failure; then
-                  log_status "Tests passed"
-                else
-                  log_error "Tests failed"
-                  num_failures=$(( num_failures + 1 ))
-                fi
-              fi
-            else
-              log_error "Failed to build tests. Tests may not be enabled."
-              log_info "To enable tests, ensure Qt6 Test is available."
-              num_failures=$(( num_failures + 1 ))
-            fi
+            log_error "No tests found in build directory. Tests may not be enabled."
+            log_info "To enable tests, ensure Qt6 Test is available."
+            num_failures=$(( num_failures + 1 ))
           else
-            # Build tests if needed before running
-            log_info "Building tests if needed..."
-            cmake --build ${build_dir} --target ${project_name}-tests > /dev/null 2>&1
             if ctest --output-on-failure; then
               log_status "Tests passed"
             else
@@ -304,47 +288,12 @@ Usage: %B${functrace[1]%:*}%b <option>
             num_failures=$(( num_failures + 1 ))
           fi
         else
-          log_error "Test executable not found. Attempting to build..."
-          if cmake --build ${build_dir} --target ${project_name}-tests 2>&1; then
-            # Try to find it again after building
-            for name in ${test_names}; do
-              for config_dir in "RelWithDebInfo" "Debug" "Release" ""; do
-                local test_path="${build_dir}"
-                if [[ -n ${config_dir} ]]; then
-                  test_path="${build_dir}/${config_dir}"
-                fi
-                if [[ -f ${test_path}/${name} ]] || [[ -f ${test_path}/${name}.exe ]]; then
-                  test_executable="${test_path}/${name}"
-                  break
-                fi
-              done
-              if [[ -n ${test_executable} ]]; then
-                break
-              fi
-            done
-            if [[ -n ${test_executable} ]]; then
-              if ${test_executable}; then
-                log_status "Tests passed"
-              else
-                log_error "Tests failed"
-                num_failures=$(( num_failures + 1 ))
-              fi
-            else
-              log_error "Test executable still not found after building. Tests may not be enabled."
-              log_info "To enable tests, ensure Qt6 Test is available."
-              num_failures=$(( num_failures + 1 ))
-            fi
-          else
-            log_error "Failed to build tests. Tests may not be enabled."
-            log_info "To enable tests, ensure Qt6 Test is available."
-            num_failures=$(( num_failures + 1 ))
-          fi
+          log_error "Test executable not found after building. Tests may not be enabled."
+          log_info "To enable tests, ensure Qt6 Test is available."
+          num_failures=$(( num_failures + 1 ))
         fi
       fi
       cd ${project_root}
-    else
-      log_error "Build directory not found after configuration attempt."
-      num_failures=$(( num_failures + 1 ))
     fi
   } else {
     log_info "Skipping tests"

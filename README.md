@@ -152,11 +152,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on:
 
 ## Future Enhancements
 
-- Automatic frame detection using computer vision
-- Direct audio offset adjustment on OBS audio sources
-- Batch processing for multiple recordings
-- Advanced analysis with multiple spike detection
-- Statistical analysis of sync drift
+- [ ] Handle multiple video & audio sources and sync between them all
+- [ ] Automatic frame detection using computer vision
+- [ ] Direct audio offset adjustment on OBS audio sources
+- [ ] Advanced analysis with multiple spike detection
 
 ## License
 

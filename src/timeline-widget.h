@@ -24,14 +24,15 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QPaintEvent>
 #include <QMouseEvent>
 #include <QResizeEvent>
-#include "audio-analyzer.h"
+#include <qtmetamacros.h>
+#include <qicon.h>
 
 class TimelineWidget : public QWidget {
 	Q_OBJECT
 
 public:
 	explicit TimelineWidget(QWidget *parent = nullptr);
-	~TimelineWidget();
+	~TimelineWidget() override;
 
 	// Delete copy and move constructors/assignments
 	TimelineWidget(const TimelineWidget &) = delete;

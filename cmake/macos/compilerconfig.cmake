@@ -5,7 +5,8 @@ include_guard(GLOBAL)
 option(ENABLE_COMPILER_TRACE "Enable clang time-trace" OFF)
 mark_as_advanced(ENABLE_COMPILER_TRACE)
 
-if(NOT XCODE)
+# Allow Unix Makefiles generator in linting mode (for generating compile_commands.json)
+if(NOT XCODE AND NOT _LINTING_MODE)
   message(FATAL_ERROR "Building OBS Studio on macOS requires Xcode generator.")
 endif()
 
@@ -56,7 +57,10 @@ function(check_sdk_requirements)
   endif()
 endfunction()
 
-check_sdk_requirements()
+# Skip SDK requirements check in linting mode
+if(NOT _LINTING_MODE)
+  check_sdk_requirements()
+endif()
 
 # Enable dSYM generator for release builds
 string(APPEND CMAKE_C_FLAGS_RELEASE " -g")

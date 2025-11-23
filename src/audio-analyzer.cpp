@@ -17,9 +17,17 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
 #include "audio-analyzer.h"
+#include "libavcodec/codec.h"
+#include "libavutil/rational.h"
+#include "libavcodec/packet.h"
+#include "libavutil/frame.h"
+#include "libavutil/error.h"
 #include <QDebug>
 #include <QFileInfo>
+#include <algorithm>
 #include <cmath>
+#include <qlogging.h>
+#include <cstdint>
 
 // FFmpeg includes
 extern "C" {
@@ -55,15 +63,15 @@ void AudioAnalyzer::cleanupFFmpeg()
 double AudioAnalyzer::getFileDuration(const QString &filePath)
 {
 	AVFormatContext *formatContext = nullptr;
-	int ret = avformat_open_input(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
+	int ret = avformatOpenInput(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
 	if (ret < 0) {
 		qWarning() << "Could not open file:" << filePath;
 		return 0.0;
 	}
 
-	ret = avformat_find_stream_info(formatContext, nullptr);
+	ret = avformatFindStreamInfo(formatContext, nullptr);
 	if (ret < 0) {
-		avformat_close_input(&formatContext);
+		avformatCloseInput(&formatContext);
 		return 0.0;
 	}
 
@@ -72,159 +80,174 @@ double AudioAnalyzer::getFileDuration(const QString &filePath)
 		duration = (double)formatContext->duration / AV_TIME_BASE;
 	}
 
-	avformat_close_input(&formatContext);
+	avformatCloseInput(&formatContext);
 	return duration;
 }
 
-QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath)
+namespace {
+// Helper function to find audio stream index
+int findAudioStreamIndex(AVFormatContext *formatContext)
+{
+	for (unsigned int i = 0; i < formatContext->nbStreams; i++) {
+		if (formatContext->streams[i]->codecpar->codecType == AVMEDIA_TYPE_AUDIO) {
+			return static_cast<int>(i);
+		}
+	}
+	return -1;
+}
+
+// Helper function to setup codec context
+AVCodecContext *setupCodecContext(AVFormatContext *formatContext, int audioStreamIndex)
+{
+	AVCodecParameters const *codecParams = formatContext->streams[audioStreamIndex]->codecpar;
+	const AVCodec *codec = avcodecFindDecoder(codecParams->codecId);
+	if (codec == nullptr) {
+		qWarning() << "Codec not found";
+		return nullptr;
+	}
+
+	AVCodecContext *codecContext = avcodecAllocContext3(codec);
+	if (codecContext == nullptr) {
+		return nullptr;
+	}
+
+	int ret = avcodecParametersToContext(codecContext, codecParams);
+	if (ret < 0) {
+		avcodecFreeContext(&codecContext);
+		return nullptr;
+	}
+
+	ret = avcodecOpen2(codecContext, codec, nullptr);
+	if (ret < 0) {
+		avcodecFreeContext(&codecContext);
+		return nullptr;
+	}
+
+	return codecContext;
+}
+
+// Helper function to calculate RMS amplitude for a frame
+double calculateFrameRMS(AVFrame const *frame)
+{
+	int const CHANNELS = frame->chLayout.nbChannels;
+	int const SAMPLE_COUNT = frame->nbSamples * CHANNELS;
+	double rms = 0.0;
+
+	if (frame->format == AV_SAMPLE_FMT_FLTP) {
+		// Planar float format - each channel is separate
+		for (int ch = 0; ch < CHANNELS; ch++) {
+			auto const *channelData = reinterpret_cast<float const *>(frame->data[ch]);
+			for (int i = 0; i < frame->nbSamples; i++) {
+				rms += channelData[i] * channelData[i];
+			}
+		}
+		rms = sqrt(rms / SAMPLE_COUNT);
+	} else if (frame->format == AV_SAMPLE_FMT_FLT) {
+		// Interleaved float format
+		auto const *data = reinterpret_cast<float const *>(frame->data[0]);
+		for (int i = 0; i < SAMPLE_COUNT; i++) {
+			rms += data[i] * data[i];
+		}
+		rms = sqrt(rms / SAMPLE_COUNT);
+	} else if (frame->format == AV_SAMPLE_FMT_S16P) {
+		// Planar 16-bit integer format
+		for (int ch = 0; ch < CHANNELS; ch++) {
+			auto const *channelData = reinterpret_cast<int16_t const *>(frame->data[ch]);
+			for (int i = 0; i < frame->nbSamples; i++) {
+				double const NORMALIZED = static_cast<double>(channelData[i]) / 32768.0;
+				rms += NORMALIZED * NORMALIZED;
+			}
+		}
+		rms = sqrt(rms / SAMPLE_COUNT);
+	} else if (frame->format == AV_SAMPLE_FMT_S16) {
+		// Interleaved 16-bit integer format
+		auto const *data = reinterpret_cast<int16_t const *>(frame->data[0]);
+		for (int i = 0; i < SAMPLE_COUNT; i++) {
+			double const NORMALIZED = static_cast<double>(data[i]) / 32768.0;
+			rms += NORMALIZED * NORMALIZED;
+		}
+		rms = sqrt(rms / SAMPLE_COUNT);
+	}
+
+	return rms;
+}
+} // namespace
+
+static QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath)
 {
 	QVector<AudioSample> samples;
 
 	AVFormatContext *formatContext = nullptr;
-	int ret = avformat_open_input(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
+	int ret = avformatOpenInput(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
 	if (ret < 0) {
 		qWarning() << "Could not open file:" << filePath;
 		return samples;
 	}
 
-	ret = avformat_find_stream_info(formatContext, nullptr);
+	ret = avformatFindStreamInfo(formatContext, nullptr);
 	if (ret < 0) {
-		avformat_close_input(&formatContext);
+		avformatCloseInput(&formatContext);
 		return samples;
 	}
 
-	// Find audio stream
-	int audioStreamIndex = -1;
-	for (unsigned int i = 0; i < formatContext->nb_streams; i++) {
-		if (formatContext->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-			audioStreamIndex = i;
-			break;
-		}
-	}
-
-	if (audioStreamIndex == -1) {
+	int const AUDIO_STREAM_INDEX = findAudioStreamIndex(formatContext);
+	if (AUDIO_STREAM_INDEX == -1) {
 		qWarning() << "No audio stream found";
-		avformat_close_input(&formatContext);
+		avformatCloseInput(&formatContext);
 		return samples;
 	}
 
-	AVCodecParameters *codecParams = formatContext->streams[audioStreamIndex]->codecpar;
-	const AVCodec *codec = avcodec_find_decoder(codecParams->codec_id);
-	if (!codec) {
-		qWarning() << "Codec not found";
-		avformat_close_input(&formatContext);
-		return samples;
-	}
-
-	AVCodecContext *codecContext = avcodec_alloc_context3(codec);
-	if (!codecContext) {
-		avformat_close_input(&formatContext);
-		return samples;
-	}
-
-	ret = avcodec_parameters_to_context(codecContext, codecParams);
-	if (ret < 0) {
-		avcodec_free_context(&codecContext);
-		avformat_close_input(&formatContext);
-		return samples;
-	}
-
-	ret = avcodec_open2(codecContext, codec, nullptr);
-	if (ret < 0) {
-		avcodec_free_context(&codecContext);
-		avformat_close_input(&formatContext);
+	AVCodecContext *codecContext = setupCodecContext(formatContext, AUDIO_STREAM_INDEX);
+	if (codecContext == nullptr) {
+		avformatCloseInput(&formatContext);
 		return samples;
 	}
 
 	// Get time base for timestamp calculation
-	double timeBase = av_q2d(formatContext->streams[audioStreamIndex]->time_base);
+	double const TIME_BASE = avQ2d(formatContext->streams[AUDIO_STREAM_INDEX]->timeBase);
 
-	AVPacket *packet = av_packet_alloc();
-	AVFrame *frame = av_frame_alloc();
+	AVPacket *packet = avPacketAlloc();
+	AVFrame *frame = avFrameAlloc();
 
 	// Read packets and decode
-	while (av_read_frame(formatContext, packet) >= 0) {
-		if (packet->stream_index == audioStreamIndex) {
-			ret = avcodec_send_packet(codecContext, packet);
+	while (avReadFrame(formatContext, packet) >= 0) {
+		if (packet->streamIndex == AUDIO_STREAM_INDEX) {
+			ret = avcodecSendPacket(codecContext, packet);
 			if (ret < 0) {
-				av_packet_unref(packet);
+				avPacketUnref(packet);
 				continue;
 			}
 
 			while (ret >= 0) {
-				ret = avcodec_receive_frame(codecContext, frame);
+				ret = avcodecReceiveFrame(codecContext, frame);
 				if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
 					break;
-				} else if (ret < 0) {
+				}
+				if (ret < 0) {
 					break;
 				}
 
-				// Calculate RMS amplitude for this frame
-				double rms = 0.0;
-				// Use new API for channel count (FFmpeg 5.0+)
-				int channels = frame->ch_layout.nb_channels;
-				int sampleCount = frame->nb_samples * channels;
+				double const RMS = calculateFrameRMS(frame);
+				double const TIMESTAMP = static_cast<double>(frame->pts) * TIME_BASE;
 
-				if (frame->format == AV_SAMPLE_FMT_FLTP) {
-					// Planar float format - each channel is separate
-					for (int ch = 0; ch < channels; ch++) {
-						float *channelData = (float *)frame->data[ch];
-						for (int i = 0; i < frame->nb_samples; i++) {
-							rms += channelData[i] * channelData[i];
-						}
-					}
-					rms = sqrt(rms / sampleCount);
-				} else if (frame->format == AV_SAMPLE_FMT_FLT) {
-					// Interleaved float format
-					float *data = (float *)frame->data[0];
-					for (int i = 0; i < sampleCount; i++) {
-						rms += data[i] * data[i];
-					}
-					rms = sqrt(rms / sampleCount);
-				} else if (frame->format == AV_SAMPLE_FMT_S16P) {
-					// Planar 16-bit integer format
-					for (int ch = 0; ch < channels; ch++) {
-						int16_t *channelData = (int16_t *)frame->data[ch];
-						for (int i = 0; i < frame->nb_samples; i++) {
-							double normalized = (double)channelData[i] / 32768.0;
-							rms += normalized * normalized;
-						}
-					}
-					rms = sqrt(rms / sampleCount);
-				} else if (frame->format == AV_SAMPLE_FMT_S16) {
-					// Interleaved 16-bit integer format
-					int16_t *data = (int16_t *)frame->data[0];
-					for (int i = 0; i < sampleCount; i++) {
-						double normalized = (double)data[i] / 32768.0;
-						rms += normalized * normalized;
-					}
-					rms = sqrt(rms / sampleCount);
-				}
-
-				// Calculate timestamp
-				double timestamp = frame->pts * timeBase;
-				if (timestamp < 0) {
-					timestamp = 0; // Handle invalid timestamps
-				}
-
-				AudioSample sample;
-				sample.timestamp = timestamp;
-				sample.amplitude = rms;
+				AudioSample sample{};
+				sample.timestamp = TIMESTAMP;
+				sample.amplitude = RMS;
 				samples.append(sample);
 			}
 		}
-		av_packet_unref(packet);
+		avPacketUnref(packet);
 	}
 
-	av_frame_free(&frame);
-	av_packet_free(&packet);
-	avcodec_free_context(&codecContext);
-	avformat_close_input(&formatContext);
+	avFrameFree(&frame);
+	avPacketFree(&packet);
+	avcodecFreeContext(&codecContext);
+	avformatCloseInput(&formatContext);
 
 	return samples;
 }
 
-AudioSpike AudioAnalyzer::findLargestSpike(const QVector<AudioSample> &samples)
+static AudioSpike AudioAnalyzer::findLargestSpike(const QVector<AudioSample> &samples)
 {
 	AudioSpike spike = {0.0, 0.0, 0.0, 0.0};
 
@@ -257,8 +280,8 @@ AudioSpike AudioAnalyzer::findLargestSpike(const QVector<AudioSample> &samples)
 
 bool AudioAnalyzer::analyzeFile(const QString &filePath, AudioSpike &spike)
 {
-	QFileInfo fileInfo(filePath);
-	if (!fileInfo.exists()) {
+	QFileInfo const FILE_INFO(filePath);
+	if (!FILE_INFO.exists()) {
 		qWarning() << "File does not exist:" << filePath;
 		return false;
 	}
@@ -273,7 +296,7 @@ bool AudioAnalyzer::analyzeFile(const QString &filePath, AudioSpike &spike)
 	return true;
 }
 
-QVector<AudioSample> AudioAnalyzer::getAudioSamples(const QString &filePath, double startTime, double endTime)
+static QVector<AudioSample> AudioAnalyzer::getAudioSamples(const QString &filePath, double startTime, double endTime)
 {
 	QVector<AudioSample> allSamples = extractAudioSamples(filePath);
 	QVector<AudioSample> windowSamples;

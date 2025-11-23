@@ -157,12 +157,28 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
     tidy_args+=('--warnings-as-errors=*')
   }
 
+  # Determine number of parallel jobs (use number of CPU cores)
+  local -i num_jobs=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
+  if (( num_jobs < 1 )) num_jobs=4
+  
+  log_info "Linting ${#source_files} file(s) with ${num_jobs} parallel job(s)..."
+
   local -i num_failures=0
-  for file (${source_files}) {
-    log_info "Linting ${file}..."
-    local output=$(${clang_tidy} ${tidy_args} ${file} 2>&1)
+  local temp_dir=$(mktemp -d)
+  trap "rm -rf ${temp_dir}" EXIT
+
+  # Function to lint a single file
+  lint_file() {
+    local file=${1}
+    local file_id=${2}
+    local output_file="${temp_dir}/${file_id}.out"
+    local error_file="${temp_dir}/${file_id}.err"
+    local failed_file="${temp_dir}/${file_id}.failed"
     
-    if (( fix_mode && ! check_only )) {
+    local output=$(${clang_tidy} ${tidy_args} ${file} 2>&1)
+    echo ${output} > ${output_file}
+    
+    if (( fix_mode && ! check_only )); then
       # In fix mode, check for remaining unfixable issues
       local -a check_args=(
         -p ${project_root}
@@ -170,18 +186,52 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
         '--warnings-as-errors=*'
       )
       local check_output=$(${clang_tidy} ${check_args} ${file} 2>&1)
-      if (( ${#check_output} > 0 )) {
-        log_error "${file} has unfixable linting issues:"
-        print -u2 "${check_output}"
-        if (( fail_on_error == 2 )) return 2
-        num_failures=$(( num_failures + 1 ))
-      }
-    } elif (( ${#output} > 0 )) {
-      log_error "${file} has linting issues:"
-      print -u2 "${output}"
-      if (( fail_on_error == 2 )) return 2
-      num_failures=$(( num_failures + 1 ))
+      if (( ${#check_output} > 0 )); then
+        echo ${check_output} > ${error_file}
+        echo ${file} > ${failed_file}
+      fi
+    elif (( ${#output} > 0 )); then
+      echo ${output} > ${error_file}
+      echo ${file} > ${failed_file}
+    fi
+  }
+
+  # Process files in parallel using job control
+  local -i i=0
+  while (( i < ${#source_files} )); do
+    local -a pids=()
+    local -i j=0
+    
+    # Start up to num_jobs parallel processes
+    while (( j < num_jobs && i < ${#source_files} )); do
+      lint_file ${source_files[$(( i + 1 ))]} ${i} &
+      pids+=($!)
+      (( i += 1 ))
+      (( j += 1 ))
+    done
+    
+    # Wait for all jobs in this batch to complete
+    for pid (${pids}) {
+      wait ${pid}
     }
+  done
+
+  # Collect results
+  for failed_file (${temp_dir}/*.failed(.N)) {
+    local file=$(cat ${failed_file})
+    local file_id=${${failed_file:t}:r}
+    local error_file="${temp_dir}/${file_id}.err"
+    
+    (( num_failures += 1 ))
+    if [[ -f ${error_file} ]]; then
+      local error_output=$(cat ${error_file})
+      log_error "${file} has linting issues:"
+      print -u2 "${error_output}"
+      if (( fail_on_error == 2 )) {
+        rm -rf ${temp_dir}
+        return 2
+      }
+    fi
   }
 
   if (( num_failures && fail_on_error == 1 )) {

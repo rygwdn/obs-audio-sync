@@ -24,18 +24,19 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QDirIterator>
 #include <QDebug>
 #include <algorithm>
+#include <qcontainerfwd.h>
+#include <qlist.h>
+#include <qlogging.h>
 
-RecordingScanner::RecordingScanner() {}
-
-RecordingScanner::~RecordingScanner() {}
+RecordingScanner::RecordingScanner() = default;
 
 QString RecordingScanner::getRecordingPath()
 {
 	// Try to get recording path from OBS frontend API
 	const char *recordingPath = obs_frontend_get_current_record_output_path();
 	if (recordingPath && strlen(recordingPath) > 0) {
-		QFileInfo pathInfo(recordingPath);
-		return pathInfo.absolutePath();
+		QFileInfo const PATH_INFO(recordingPath);
+		return PATH_INFO.absolutePath();
 	}
 
 	// Fallback: try common OBS recording locations
@@ -71,33 +72,33 @@ bool RecordingScanner::isValidVideoFile(const QString &filePath)
 double RecordingScanner::getFileDuration(const QString &filePath)
 {
 	// Use AudioAnalyzer to get accurate duration via FFmpeg
-	AudioAnalyzer analyzer;
-	return analyzer.getFileDuration(filePath);
+	AudioAnalyzer const ANALYZER;
+	return AudioAnalyzer::getFileDuration(filePath);
 }
 
 QList<RecordingInfo> RecordingScanner::scanRecordings(double maxDurationSeconds)
 {
 	QList<RecordingInfo> recordings;
-	QString recordingPath = getRecordingPath();
+	QString const RECORDING_PATH = getRecordingPath();
 
-	if (recordingPath.isEmpty()) {
+	if (RECORDING_PATH.isEmpty()) {
 		qWarning() << "No recording path found";
 		return recordings;
 	}
 
-	QDir dir(recordingPath);
-	if (!dir.exists()) {
-		qWarning() << "Recording directory does not exist:" << recordingPath;
+	QDir const DIR(RECORDING_PATH);
+	if (!DIR.exists()) {
+		qWarning() << "Recording directory does not exist:" << RECORDING_PATH;
 		return recordings;
 	}
 
 	// Scan for video files
-	QDirIterator it(recordingPath, QDirIterator::Subdirectories);
+	QDirIterator it(RECORDING_PATH, QDirIterator::Subdirectories);
 	while (it.hasNext()) {
 		QString filePath = it.next();
-		QFileInfo fileInfo(filePath);
+		QFileInfo const FILE_INFO(filePath);
 
-		if (!fileInfo.isFile()) {
+		if (!FILE_INFO.isFile()) {
 			continue;
 		}
 
@@ -105,12 +106,12 @@ QList<RecordingInfo> RecordingScanner::scanRecordings(double maxDurationSeconds)
 			continue;
 		}
 
-		double duration = getFileDuration(filePath);
-		if (duration > 0.0 && duration <= maxDurationSeconds) {
+		double const DURATION = getFileDuration(filePath);
+		if (DURATION > 0.0 && DURATION <= maxDurationSeconds) {
 			RecordingInfo info;
 			info.filePath = filePath;
-			info.duration = duration;
-			info.modifiedTime = fileInfo.lastModified();
+			info.duration = DURATION;
+			info.modifiedTime = FILE_INFO.lastModified();
 			recordings.append(info);
 		}
 	}

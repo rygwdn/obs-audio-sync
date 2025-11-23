@@ -17,6 +17,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
 #include "timeline-widget.h"
+#include "audio-analyzer.h"
 #include <QPainter>
 #include <QMouseEvent>
 #include <QResizeEvent>
@@ -24,15 +25,20 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QDebug>
 #include <algorithm>
 #include <QtMath>
+#include <qwidget.h>
+#include <qpolygon.h>
+#include <qpaintdevice.h>
+#include <qnamespace.h>
+#include <qtpreprocessorsupport.h>
+#include <qtmetamacros.h>
 
-TimelineWidget::TimelineWidget(QWidget *parent)
-	: QWidget(parent)
+TimelineWidget::TimelineWidget(QWidget *parent) : QWidget(parent)
 {
 	setMinimumHeight(120);
 	setMouseTracking(true);
 }
 
-TimelineWidget::~TimelineWidget() {}
+TimelineWidget::~TimelineWidget() = default;
 
 void TimelineWidget::setAudioSamples(const QVector<AudioSample> &samples)
 {
@@ -63,8 +69,8 @@ double TimelineWidget::timestampFromX(int xPos) const
 		return m_startTime;
 	}
 
-	double ratio = (double)(xPos - 20) / width;
-	return m_startTime + ratio * (m_endTime - m_startTime);
+	double const RATIO = (double)(xPos - 20) / width;
+	return m_startTime + (RATIO * (m_endTime - m_startTime));
 }
 
 int TimelineWidget::xFromTimestamp(double timestamp) const
@@ -74,8 +80,8 @@ int TimelineWidget::xFromTimestamp(double timestamp) const
 		return 20;
 	}
 
-	double ratio = (timestamp - m_startTime) / (m_endTime - m_startTime);
-	return 20 + (int)(ratio * width);
+	double const RATIO = (timestamp - m_startTime) / (m_endTime - m_startTime);
+	return 20 + (int)(RATIO * width);
 }
 
 void TimelineWidget::drawWaveform(QPainter &painter)
@@ -84,23 +90,23 @@ void TimelineWidget::drawWaveform(QPainter &painter)
 		return;
 	}
 
-	int height = 60;
-	int startX = 20;
-	int centerY = 40;
+	int const HEIGHT = 60;
+	int const START_X = 20;
+	int const CENTER_Y = 40;
 
 	painter.setPen(QPen(QColor(100, 150, 255), 1));
 	painter.setBrush(QBrush(QColor(100, 150, 255, 100)));
 
-	QPolygonF waveform;
-	waveform << QPointF(startX, centerY);
+	QPolygonF const WAVEFORM;
+	WAVEFORM << QPointF(START_X, CENTER_Y);
 
 	// Draw waveform
-	double maxAmplitude = 0.0;
+	double const MAX_AMPLITUDE = 0.0;
 	for (const AudioSample &sample : m_samples) {
 		maxAmplitude = qMax(maxAmplitude, sample.amplitude);
 	}
 
-	if (maxAmplitude > 0.0) {
+	if (MAX_AMPLITUDE > 0.0) {
 		for (const AudioSample &sample : m_samples) {
 			int x = xFromTimestamp(sample.timestamp);
 			double normalized = sample.amplitude / maxAmplitude;
@@ -110,16 +116,16 @@ void TimelineWidget::drawWaveform(QPainter &painter)
 	}
 
 	// Mirror for bottom half
-	for (int i = m_samples.size() - 1; i >= 0; i--) {
+	for (int i = m_samples.size() - 1 = 0 = 0 = 0 = 0 = 0 = 0 = 0 = 0; i >= 0; i--) {
 		const AudioSample &sample = m_samples[i];
-		int x = xFromTimestamp(sample.timestamp);
-		double normalized = sample.amplitude / maxAmplitude;
-		int y = centerY + (int)(normalized * height / 2);
-		waveform << QPointF(x, y);
+		int const X = xFromTimestamp(sample.timestamp);
+		double const NORMALIZED = sample.amplitude / MAX_AMPLITUDE;
+		int const Y = CENTER_Y + (int)(NORMALIZED * HEIGHT / 2);
+		WAVEFORM << QPointF(X, Y);
 	}
 
-	waveform << QPointF(startX, centerY);
-	painter.drawPolygon(waveform);
+	WAVEFORM << QPointF(START_X, CENTER_Y);
+	painter.drawPolygon(WAVEFORM);
 }
 
 void TimelineWidget::drawFrameMarkers(QPainter &painter)
@@ -128,7 +134,7 @@ void TimelineWidget::drawFrameMarkers(QPainter &painter)
 		return;
 	}
 
-	double frameDuration = 1.0 / m_fps;
+	double const FRAME_DURATION = 1.0 / m_fps;
 
 	painter.setPen(QPen(QColor(150, 150, 150), 1));
 
@@ -136,17 +142,17 @@ void TimelineWidget::drawFrameMarkers(QPainter &painter)
 	int frameNumber = 0;
 
 	while (currentTime <= m_endTime) {
-		int x = xFromTimestamp(currentTime);
-		painter.drawLine(x, 100, x, 105);
+		int const X = xFromTimestamp(currentTime);
+		painter.drawLine(X, 100, X, 105);
 
 		// Draw frame number every 10 frames or at start/end
-		if (frameNumber % 10 == 0 || currentTime == m_startTime || currentTime >= m_endTime - frameDuration) {
-			QString frameText = QString::number(frameNumber);
-			QRect textRect(x - 20, 107, 40, 15);
-			painter.drawText(textRect, Qt::AlignCenter, frameText);
+		if (frameNumber % 10 == 0 || currentTime == m_startTime || currentTime >= m_endTime - FRAME_DURATION) {
+			QString const FRAME_TEXT = QString::number(frameNumber);
+			QRect const TEXT_RECT(X - 20, 107, 40, 15);
+			painter.drawText(TEXT_RECT, Qt::AlignCenter, FRAME_TEXT);
 		}
 
-		currentTime += frameDuration;
+		currentTime += FRAME_DURATION;
 		frameNumber++;
 	}
 }
@@ -157,37 +163,37 @@ void TimelineWidget::drawTimeMarkers(QPainter &painter)
 
 	// Draw time markers every 0.5 seconds
 	for (double t = m_startTime; t <= m_endTime; t += 0.5) {
-		int x = xFromTimestamp(t);
-		painter.drawLine(x, 0, x, 15);
+		int const X = xFromTimestamp(t);
+		painter.drawLine(X, 0, X, 15);
 
-		QString timeText = QString::number(t, 'f', 1) + "s";
-		QRect textRect(x - 25, 0, 50, 15);
-		painter.drawText(textRect, Qt::AlignCenter, timeText);
+		QString const TIME_TEXT = QString::number(t, 'f', 1) + "s";
+		QRect const TEXT_RECT(X - 25, 0, 50, 15);
+		painter.drawText(TEXT_RECT, Qt::AlignCenter, TIME_TEXT);
 	}
 }
 
 void TimelineWidget::drawSpikeMarker(QPainter &painter)
 {
-	int x = xFromTimestamp(m_spikePosition);
+	int const X = xFromTimestamp(m_spikePosition);
 	int height = this->height();
 
 	// Draw vertical line
 	painter.setPen(QPen(QColor(255, 0, 0), 2));
-	painter.drawLine(x, 0, x, height);
+	painter.drawLine(X, 0, X, height);
 
 	// Draw spike indicator
 	painter.setBrush(QBrush(QColor(255, 0, 0)));
-	QPolygonF triangle;
-	triangle << QPointF(x, 0) << QPointF(x - 8, 15) << QPointF(x + 8, 15);
-	painter.drawPolygon(triangle);
+	QPolygonF const TRIANGLE;
+	TRIANGLE << QPointF(X, 0) << QPointF(X - 8, 15) << QPointF(X + 8, 15);
+	painter.drawPolygon(TRIANGLE);
 
 	// Draw timestamp label
-	QString spikeText = QString::number(m_spikePosition, 'f', 3) + "s";
-	QRect textRect(x - 40, 18, 80, 15);
+	QString const SPIKE_TEXT = QString::number(m_spikePosition, 'f', 3) + "s";
+	QRect const TEXT_RECT(X - 40, 18, 80, 15);
 	painter.setPen(QPen(QColor(255, 255, 255)));
 	painter.setBrush(QBrush(QColor(255, 0, 0)));
-	painter.drawRect(textRect);
-	painter.drawText(textRect, Qt::AlignCenter, spikeText);
+	painter.drawRect(TEXT_RECT);
+	painter.drawText(TEXT_RECT, Qt::AlignCenter, SPIKE_TEXT);
 }
 
 void TimelineWidget::paintEvent(QPaintEvent *event)
@@ -209,10 +215,10 @@ void TimelineWidget::paintEvent(QPaintEvent *event)
 void TimelineWidget::mousePressEvent(QMouseEvent *event)
 {
 	if (event->button() == Qt::LeftButton) {
-		int spikeX = xFromTimestamp(m_spikePosition);
+		int const SPIKE_X = xFromTimestamp(m_spikePosition);
 		int mouseX = static_cast<int>(event->position().x());
 		// Check if clicking near spike marker (within 10 pixels)
-		if (qAbs(mouseX - spikeX) < 10) {
+		if (qAbs(mouseX - SPIKE_X) < 10) {
 			m_draggingSpike = true;
 			m_spikeDragStartX = mouseX;
 		} else {

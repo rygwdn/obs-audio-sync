@@ -19,6 +19,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <obs-module.h>
 #include <plugin-support.h>
 #include <obs-frontend-api.h>
+#include <util/base.h>
 #include "audio-sync-panel.h"
 
 OBS_DECLARE_MODULE()
@@ -28,22 +29,22 @@ static AudioSyncPanel *panel = nullptr;
 
 bool obs_module_load(void)
 {
-	obs_log(LOG_INFO, "plugin loaded successfully (version %s)", PLUGIN_VERSION);
+	obsLog(LOG_INFO, "plugin loaded successfully (version %s)", pluginVersion);
 
 	// Create and register the panel
 	panel = new AudioSyncPanel();
 	obs_frontend_add_dock_by_id("obs-audio-sync", "Audio Sync", panel);
 
-	obs_log(LOG_INFO, "Audio Sync panel registered");
+	obsLog(LOG_INFO, "Audio Sync panel registered");
 	return true;
 }
 
 void obs_module_unload(void)
 {
-	if (panel) {
+	if (panel != nullptr) {
 		obs_frontend_remove_dock("obs-audio-sync");
 		delete panel;
 		panel = nullptr;
 	}
-	obs_log(LOG_INFO, "plugin unloaded");
+	obsLog(LOG_INFO, "plugin unloaded");
 }

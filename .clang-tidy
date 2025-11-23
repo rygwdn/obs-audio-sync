@@ -27,6 +27,7 @@ Checks: >
   -cppcoreguidelines-pro-type-reinterpret-cast,
   -cppcoreguidelines-pro-type-union-access,
   -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-owning-memory,
   -misc-non-private-member-variables-in-classes,
   -modernize-avoid-c-arrays,
   -modernize-use-trailing-return-type,
@@ -36,7 +37,7 @@ Checks: >
 
 WarningsAsErrors: ''
 
-HeaderFilterRegex: '.*'
+HeaderFilterRegex: '(?!.*/(libav|ffmpeg|opt/homebrew/Cellar/ffmpeg|QtCore|QtWidgets|obs-deps)).*'
 
 CheckOptions:
   - key: readability-identifier-naming.NamespaceCase

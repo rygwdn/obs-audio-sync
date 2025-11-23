@@ -26,6 +26,8 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <qtmetamacros.h>
+#include <qobject.h>
 #include "timeline-widget.h"
 #include "video-extractor.h"
 #include "audio-analyzer.h"
@@ -35,7 +37,7 @@ class AudioSyncPanel : public QDockWidget {
 
 public:
 	explicit AudioSyncPanel(QWidget *parent = nullptr);
-	~AudioSyncPanel();
+	~AudioSyncPanel() override;
 
 	// Delete copy and move constructors/assignments
 	AudioSyncPanel(const AudioSyncPanel &) = delete;
@@ -52,7 +54,6 @@ private slots:
 	void onPrevFrameClicked();
 	void onNextFrameClicked();
 
-private:
 	void setupUI();
 	void scanRecordings();
 	void loadRecording(const QString &filePath);

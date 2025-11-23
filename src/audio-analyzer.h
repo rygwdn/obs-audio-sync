@@ -47,20 +47,20 @@ public:
 	AudioAnalyzer &operator=(AudioAnalyzer &&) = delete;
 
 	// Analyze audio file and find largest spike
-	bool analyzeFile(const QString &filePath, AudioSpike &spike);
+	static bool analyzeFile(const QString &filePath, AudioSpike &spike);
 
 	// Get audio samples for visualization (4-second window)
 	QVector<AudioSample> getAudioSamples(const QString &filePath, double startTime, double endTime);
 
 	// Get file duration in seconds
-	double getFileDuration(const QString &filePath);
+	static double getFileDuration(const QString &filePath);
 
 private:
-	bool initializeFFmpeg();
+	static bool initializeFFmpeg();
 	void cleanupFFmpeg();
 
 	// Extract audio samples from file
-	QVector<AudioSample> extractAudioSamples(const QString &filePath);
+	static QVector<AudioSample> extractAudioSamples(const QString &filePath);
 
 	// Find largest spike in audio samples
 	AudioSpike findLargestSpike(const QVector<AudioSample> &samples);

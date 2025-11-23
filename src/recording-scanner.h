@@ -26,13 +26,13 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 struct RecordingInfo {
 	QString filePath{};
 	double duration{}; // in seconds
-	QDateTime modifiedTime{};
+	QDateTime modifiedTime;
 };
 
 class RecordingScanner {
 public:
 	RecordingScanner();
-	~RecordingScanner();
+	~RecordingScanner() = default;
 
 	// Delete copy and move constructors/assignments
 	RecordingScanner(const RecordingScanner &) = delete;
@@ -40,12 +40,12 @@ public:
 	RecordingScanner(RecordingScanner &&) = delete;
 	RecordingScanner &operator=(RecordingScanner &&) = delete;
 
-	QList<RecordingInfo> scanRecordings(double maxDurationSeconds = 15.0);
-	bool isValidVideoFile(const QString &filePath); // Public for testing
+	static QList<RecordingInfo> scanRecordings(double maxDurationSeconds = 15.0);
+	static bool isValidVideoFile(const QString &filePath); // Public for testing
 
 private:
-	QString getRecordingPath();
-	double getFileDuration(const QString &filePath);
+	static QString getRecordingPath();
+	static double getFileDuration(const QString &filePath);
 };
 
 #endif // RECORDING_SCANNER_H

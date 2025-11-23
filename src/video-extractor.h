@@ -45,7 +45,7 @@ public:
 	bool openFile(const QString &filePath);
 
 	// Extract frame at specific timestamp
-	VideoFrame extractFrameAt(double timestamp);
+	[[nodiscard]] VideoFrame extractFrameAt(double timestamp) const;
 
 	// Extract all frames in time range
 	QVector<VideoFrame> extractFrames(double startTime, double endTime);
