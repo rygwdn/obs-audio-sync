@@ -90,7 +90,6 @@ void TimelineWidget::drawWaveform(QPainter &painter)
 		return;
 	}
 
-	int width = this->width() - 40;
 	int height = 60;
 	int startX = 20;
 	int centerY = 40;
@@ -136,8 +135,6 @@ void TimelineWidget::drawFrameMarkers(QPainter &painter)
 	}
 
 	double frameDuration = 1.0 / m_fps;
-	int width = this->width() - 40;
-	int startX = 20;
 
 	painter.setPen(QPen(QColor(150, 150, 150), 1));
 
@@ -162,9 +159,6 @@ void TimelineWidget::drawFrameMarkers(QPainter &painter)
 
 void TimelineWidget::drawTimeMarkers(QPainter &painter)
 {
-	int width = this->width() - 40;
-	int startX = 20;
-
 	painter.setPen(QPen(QColor(100, 100, 100), 1));
 
 	// Draw time markers every 0.5 seconds
@@ -204,6 +198,7 @@ void TimelineWidget::drawSpikeMarker(QPainter &painter)
 
 void TimelineWidget::paintEvent(QPaintEvent *event)
 {
+	Q_UNUSED(event);
 	QPainter painter(this);
 	painter.setRenderHint(QPainter::Antialiasing);
 
@@ -221,13 +216,14 @@ void TimelineWidget::mousePressEvent(QMouseEvent *event)
 {
 	if (event->button() == Qt::LeftButton) {
 		int spikeX = xFromTimestamp(m_spikePosition);
+		int mouseX = static_cast<int>(event->position().x());
 		// Check if clicking near spike marker (within 10 pixels)
-		if (qAbs(event->x() - spikeX) < 10) {
+		if (qAbs(mouseX - spikeX) < 10) {
 			m_draggingSpike = true;
-			m_spikeDragStartX = event->x();
+			m_spikeDragStartX = mouseX;
 		} else {
 			// Click to set spike position
-			double newTimestamp = timestampFromX(event->x());
+			double newTimestamp = timestampFromX(mouseX);
 			newTimestamp = qMax(m_startTime, qMin(m_endTime, newTimestamp));
 			setSpikePosition(newTimestamp);
 			emit spikePositionChanged(newTimestamp);
@@ -238,7 +234,8 @@ void TimelineWidget::mousePressEvent(QMouseEvent *event)
 void TimelineWidget::mouseMoveEvent(QMouseEvent *event)
 {
 	if (m_draggingSpike && (event->buttons() & Qt::LeftButton)) {
-		double newTimestamp = timestampFromX(event->x());
+		int mouseX = static_cast<int>(event->position().x());
+		double newTimestamp = timestampFromX(mouseX);
 		newTimestamp = qMax(m_startTime, qMin(m_endTime, newTimestamp));
 		setSpikePosition(newTimestamp);
 		emit spikePositionChanged(newTimestamp);

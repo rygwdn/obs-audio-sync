@@ -136,8 +136,7 @@ QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath)
 		return samples;
 	}
 
-	// Get sample rate for timestamp calculation
-	double sampleRate = codecContext->sample_rate;
+	// Get time base for timestamp calculation
 	double timeBase = av_q2d(formatContext->streams[audioStreamIndex]->time_base);
 
 	AVPacket *packet = av_packet_alloc();
@@ -162,11 +161,13 @@ QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath)
 
 				// Calculate RMS amplitude for this frame
 				double rms = 0.0;
-				int sampleCount = frame->nb_samples * frame->channels;
+				// Use new API for channel count (FFmpeg 5.0+)
+				int channels = frame->ch_layout.nb_channels;
+				int sampleCount = frame->nb_samples * channels;
 
 				if (frame->format == AV_SAMPLE_FMT_FLTP) {
 					// Planar float format - each channel is separate
-					for (int ch = 0; ch < frame->channels; ch++) {
+					for (int ch = 0; ch < channels; ch++) {
 						float *channelData = (float *)frame->data[ch];
 						for (int i = 0; i < frame->nb_samples; i++) {
 							rms += channelData[i] * channelData[i];
@@ -182,7 +183,7 @@ QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath)
 					rms = sqrt(rms / sampleCount);
 				} else if (frame->format == AV_SAMPLE_FMT_S16P) {
 					// Planar 16-bit integer format
-					for (int ch = 0; ch < frame->channels; ch++) {
+					for (int ch = 0; ch < channels; ch++) {
 						int16_t *channelData = (int16_t *)frame->data[ch];
 						for (int i = 0; i < frame->nb_samples; i++) {
 							double normalized = (double)channelData[i] / 32768.0;
