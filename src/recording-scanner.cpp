@@ -17,6 +17,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
 #include "recording-scanner.h"
+#include "audio-analyzer.h"
 #include <obs-frontend-api.h>
 #include <QDir>
 #include <QFileInfo>
@@ -69,24 +70,9 @@ bool RecordingScanner::isValidVideoFile(const QString &filePath)
 
 double RecordingScanner::getFileDuration(const QString &filePath)
 {
-	// For Phase 1, we'll use a simple file size-based estimate
-	// In Phase 2, we'll use FFmpeg to get accurate duration
-	QFileInfo fileInfo(filePath);
-	if (!fileInfo.exists()) {
-		return 0.0;
-	}
-
-	// Rough estimate: assume ~1MB per second for typical recording
-	// This is a placeholder - will be replaced with FFmpeg in Phase 2
-	qint64 fileSizeBytes = fileInfo.size();
-	double estimatedDuration = fileSizeBytes / (1024.0 * 1024.0); // MB
-
-	// Cap at reasonable maximum for our use case
-	if (estimatedDuration > 60.0) {
-		estimatedDuration = 60.0;
-	}
-
-	return estimatedDuration;
+	// Use AudioAnalyzer to get accurate duration via FFmpeg
+	AudioAnalyzer analyzer;
+	return analyzer.getFileDuration(filePath);
 }
 
 QList<RecordingInfo> RecordingScanner::scanRecordings(double maxDurationSeconds)

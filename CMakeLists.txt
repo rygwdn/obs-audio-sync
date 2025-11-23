@@ -34,10 +34,29 @@ if(ENABLE_QT)
   )
 endif()
 
+# FFmpeg/libav
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(AVCODEC REQUIRED libavcodec)
+pkg_check_modules(AVFORMAT REQUIRED libavformat)
+pkg_check_modules(AVUTIL REQUIRED libavutil)
+
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+  ${AVCODEC_INCLUDE_DIRS}
+  ${AVFORMAT_INCLUDE_DIRS}
+  ${AVUTIL_INCLUDE_DIRS}
+)
+
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
+  ${AVCODEC_LIBRARIES}
+  ${AVFORMAT_LIBRARIES}
+  ${AVUTIL_LIBRARIES}
+)
+
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 	src/plugin-main.cpp
 	src/audio-sync-panel.cpp
 	src/recording-scanner.cpp
+	src/audio-analyzer.cpp
 )
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})

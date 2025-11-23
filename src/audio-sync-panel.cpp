@@ -18,6 +18,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include "audio-sync-panel.h"
 #include "recording-scanner.h"
+#include "audio-analyzer.h"
 #include <QFileInfo>
 #include <QDateTime>
 #include <QMessageBox>
@@ -104,12 +105,21 @@ void AudioSyncPanel::onRecordingSelected(QListWidgetItem *item)
 	}
 
 	QString filePath = item->data(Qt::UserRole).toString();
-	m_statusLabel->setText(QString("Selected: %1").arg(QFileInfo(filePath).fileName()));
+	m_statusLabel->setText(QString("Analyzing: %1...").arg(QFileInfo(filePath).fileName()));
 
-	// TODO: Phase 2 - Load recording and analyze audio
-	QMessageBox::information(this, "Recording Selected",
-				  QString("Selected recording:\n%1\n\nAudio analysis will be implemented in Phase 2.")
-					  .arg(filePath));
+	// Analyze audio and find spike
+	AudioAnalyzer analyzer;
+	AudioSpike spike;
+	if (analyzer.analyzeFile(filePath, spike)) {
+		m_statusLabel->setText(QString("Spike found at %1s (amplitude: %2)")
+					  .arg(spike.timestamp, 0, 'f', 3)
+					  .arg(spike.amplitude, 0, 'f', 3));
+		// TODO: Phase 3 - Display timeline and video frames
+	} else {
+		m_statusLabel->setText("Failed to analyze audio");
+		QMessageBox::warning(this, "Analysis Failed",
+				      "Could not analyze audio from recording.");
+	}
 }
 
 void AudioSyncPanel::onRefreshClicked()
