@@ -49,40 +49,55 @@ include(CPack)
 find_package(libobs QUIET)
 
 if(NOT TARGET OBS::libobs)
-  find_package(LibObs REQUIRED)
-  add_library(OBS::libobs ALIAS libobs)
+  find_package(LibObs QUIET)
+  if(NOT LibObs_FOUND)
+    # If LibObs is not found and we're just generating compile_commands.json,
+    # create a dummy target to allow CMake configuration to succeed
+    if(CMAKE_EXPORT_COMPILE_COMMANDS)
+      message(STATUS "LibObs not found, but CMAKE_EXPORT_COMPILE_COMMANDS is set. Creating dummy target for linting.")
+      add_library(OBS::libobs INTERFACE IMPORTED)
+      # Create a dummy obs-frontend-api target as well for linting
+      if(ENABLE_FRONTEND_API)
+        add_library(OBS::obs-frontend-api INTERFACE IMPORTED)
+      endif()
+    else()
+      message(FATAL_ERROR "LibObs is required but not found. Please install OBS dependencies.")
+    endif()
+  else()
+    add_library(OBS::libobs ALIAS libobs)
 
-  if(ENABLE_FRONTEND_API)
-    find_path(
-      obs-frontend-api_INCLUDE_DIR
-      NAMES obs-frontend-api.h
-      PATHS /usr/include /usr/local/include
-      PATH_SUFFIXES obs
-    )
+    if(ENABLE_FRONTEND_API)
+      find_path(
+        obs-frontend-api_INCLUDE_DIR
+        NAMES obs-frontend-api.h
+        PATHS /usr/include /usr/local/include
+        PATH_SUFFIXES obs
+      )
 
-    find_library(obs-frontend-api_LIBRARY NAMES obs-frontend-api PATHS /usr/lib /usr/local/lib)
+      find_library(obs-frontend-api_LIBRARY NAMES obs-frontend-api PATHS /usr/lib /usr/local/lib)
 
-    if(obs-frontend-api_LIBRARY)
-      if(NOT TARGET OBS::obs-frontend-api)
-        if(IS_ABSOLUTE "${obs-frontend-api_LIBRARY}")
-          add_library(OBS::obs-frontend-api UNKNOWN IMPORTED)
-          set_property(TARGET OBS::obs-frontend-api PROPERTY IMPORTED_LOCATION "${obs-frontend-api_LIBRARY}")
-        else()
-          add_library(OBS::obs-frontend-api INTERFACE IMPORTED)
-          set_property(TARGET OBS::obs-frontend-api PROPERTY IMPORTED_LIBNAME "${obs-frontend-api_LIBRARY}")
+      if(obs-frontend-api_LIBRARY)
+        if(NOT TARGET OBS::obs-frontend-api)
+          if(IS_ABSOLUTE "${obs-frontend-api_LIBRARY}")
+            add_library(OBS::obs-frontend-api UNKNOWN IMPORTED)
+            set_property(TARGET OBS::obs-frontend-api PROPERTY IMPORTED_LOCATION "${obs-frontend-api_LIBRARY}")
+          else()
+            add_library(OBS::obs-frontend-api INTERFACE IMPORTED)
+            set_property(TARGET OBS::obs-frontend-api PROPERTY IMPORTED_LIBNAME "${obs-frontend-api_LIBRARY}")
+          endif()
+
+          set_target_properties(
+            OBS::obs-frontend-api
+            PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${obs-frontend-api_INCLUDE_DIR}"
+          )
         endif()
-
-        set_target_properties(
-          OBS::obs-frontend-api
-          PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${obs-frontend-api_INCLUDE_DIR}"
-        )
       endif()
     endif()
-  endif()
 
-  macro(find_package)
-    if(NOT "${ARGV0}" STREQUAL libobs AND NOT "${ARGV0}" STREQUAL obs-frontend-api)
-      _find_package(${ARGV})
-    endif()
-  endmacro()
+    macro(find_package)
+      if(NOT "${ARGV0}" STREQUAL libobs AND NOT "${ARGV0}" STREQUAL obs-frontend-api)
+        _find_package(${ARGV})
+      endif()
+    endmacro()
+  endif()
 endif()

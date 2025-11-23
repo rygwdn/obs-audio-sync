@@ -13,17 +13,42 @@ include(helpers)
 
 add_library(${CMAKE_PROJECT_NAME} MODULE)
 
-find_package(libobs REQUIRED)
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs)
+# When generating compile_commands.json for linting, make dependencies optional
+if(CMAKE_EXPORT_COMPILE_COMMANDS)
+  find_package(libobs QUIET)
+  if(libobs_FOUND OR TARGET OBS::libobs)
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs)
+  endif()
 
-if(ENABLE_FRONTEND_API)
-  find_package(obs-frontend-api REQUIRED)
-  target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::obs-frontend-api)
+  if(ENABLE_FRONTEND_API)
+    find_package(obs-frontend-api QUIET)
+    if(obs-frontend-api_FOUND OR TARGET OBS::obs-frontend-api)
+      target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::obs-frontend-api)
+    endif()
+  endif()
+
+  if(ENABLE_QT)
+    find_package(Qt6 QUIET COMPONENTS Widgets Core)
+    if(Qt6_FOUND)
+      target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Core Qt6::Widgets)
+    endif()
+  endif()
+else()
+  find_package(libobs REQUIRED)
+  target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs)
+
+  if(ENABLE_FRONTEND_API)
+    find_package(obs-frontend-api REQUIRED)
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::obs-frontend-api)
+  endif()
+
+  if(ENABLE_QT)
+    find_package(Qt6 COMPONENTS Widgets Core)
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Core Qt6::Widgets)
+  endif()
 endif()
 
-if(ENABLE_QT)
-  find_package(Qt6 COMPONENTS Widgets Core)
-  target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Core Qt6::Widgets)
+if(ENABLE_QT AND (Qt6_FOUND OR NOT CMAKE_EXPORT_COMPILE_COMMANDS))
   target_compile_options(
     ${CMAKE_PROJECT_NAME}
     PRIVATE $<$<C_COMPILER_ID:Clang,AppleClang>:-Wno-quoted-include-in-framework-header -Wno-comma>
@@ -127,34 +152,41 @@ endif()
 
 # Check if all required FFmpeg components were found
 if(NOT AVCODEC_FOUND OR NOT AVFORMAT_FOUND OR NOT AVUTIL_FOUND OR NOT SWSCALE_FOUND)
-  message(
-    FATAL_ERROR
-    "FFmpeg libraries are required but not found.\n"
-    "Searched in:\n"
-    "  - pkg-config\n"
-    "  - CMAKE_PREFIX_PATH (OBS dependencies)\n"
-    "  - System paths\n"
-    "\n"
-    "Please install FFmpeg development libraries:\n"
-    "  macOS: brew install ffmpeg\n"
-    "  Ubuntu: sudo apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev\n"
-    "  Windows: Install FFmpeg and set CMAKE_PREFIX_PATH\n"
-    "\n"
-    "Note: FFmpeg should be available through OBS dependencies (obs-deps).\n"
-    "If building in CI, ensure OBS dependencies are properly downloaded and extracted."
-  )
+  if(CMAKE_EXPORT_COMPILE_COMMANDS)
+    # When generating compile_commands.json for linting, FFmpeg is optional
+    message(STATUS "FFmpeg libraries not found, but CMAKE_EXPORT_COMPILE_COMMANDS is set. Skipping FFmpeg for linting.")
+  else()
+    message(
+      FATAL_ERROR
+      "FFmpeg libraries are required but not found.\n"
+      "Searched in:\n"
+      "  - pkg-config\n"
+      "  - CMAKE_PREFIX_PATH (OBS dependencies)\n"
+      "  - System paths\n"
+      "\n"
+      "Please install FFmpeg development libraries:\n"
+      "  macOS: brew install ffmpeg\n"
+      "  Ubuntu: sudo apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev\n"
+      "  Windows: Install FFmpeg and set CMAKE_PREFIX_PATH\n"
+      "\n"
+      "Note: FFmpeg should be available through OBS dependencies (obs-deps).\n"
+      "If building in CI, ensure OBS dependencies are properly downloaded and extracted."
+    )
+  endif()
 endif()
 
-message(STATUS "Found FFmpeg libraries")
-target_include_directories(
-  ${CMAKE_PROJECT_NAME}
-  PRIVATE ${AVCODEC_INCLUDE_DIRS} ${AVFORMAT_INCLUDE_DIRS} ${AVUTIL_INCLUDE_DIRS} ${SWSCALE_INCLUDE_DIRS}
-)
+if(AVCODEC_FOUND AND AVFORMAT_FOUND AND AVUTIL_FOUND AND SWSCALE_FOUND)
+  message(STATUS "Found FFmpeg libraries")
+  target_include_directories(
+    ${CMAKE_PROJECT_NAME}
+    PRIVATE ${AVCODEC_INCLUDE_DIRS} ${AVFORMAT_INCLUDE_DIRS} ${AVUTIL_INCLUDE_DIRS} ${SWSCALE_INCLUDE_DIRS}
+  )
 
-target_link_libraries(
-  ${CMAKE_PROJECT_NAME}
-  PRIVATE ${AVCODEC_LIBRARIES} ${AVFORMAT_LIBRARIES} ${AVUTIL_LIBRARIES} ${SWSCALE_LIBRARIES}
-)
+  target_link_libraries(
+    ${CMAKE_PROJECT_NAME}
+    PRIVATE ${AVCODEC_LIBRARIES} ${AVFORMAT_LIBRARIES} ${AVUTIL_LIBRARIES} ${SWSCALE_LIBRARIES}
+  )
+endif()
 
 target_sources(
   ${CMAKE_PROJECT_NAME}
@@ -176,18 +208,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Generate compile_commands.json"
 enable_testing()
 
 if(ENABLE_QT)
-  # Require Qt6 Test on Linux (Ubuntu), optional on macOS and Windows
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    find_package(Qt6 COMPONENTS Test REQUIRED)
-    set(ENABLE_QT_TESTS ON)
+  # Qt6 Test is optional on all platforms
+  find_package(Qt6 COMPONENTS Test)
+  if(NOT Qt6Test_FOUND)
+    message(STATUS "Qt6 Test not found. Tests will be disabled on ${CMAKE_SYSTEM_NAME}.")
+    set(ENABLE_QT_TESTS OFF)
   else()
-    find_package(Qt6 COMPONENTS Test)
-    if(NOT Qt6Test_FOUND)
-      message(STATUS "Qt6 Test not found. Tests will be disabled on ${CMAKE_SYSTEM_NAME}.")
-      set(ENABLE_QT_TESTS OFF)
-    else()
-      set(ENABLE_QT_TESTS ON)
-    endif()
+    set(ENABLE_QT_TESTS ON)
   endif()
 
   if(ENABLE_QT_TESTS)
