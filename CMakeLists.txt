@@ -176,51 +176,59 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Generate compile_commands.json"
 enable_testing()
 
 if(ENABLE_QT)
-  find_package(Qt6 COMPONENTS Test REQUIRED)
-
-  # Test executable
-  add_executable(
-    ${CMAKE_PROJECT_NAME}-tests
-    tests/test-recording-scanner-standalone.cpp
-    tests/test-timeline-widget.cpp
-    tests/test-audio-analyzer.cpp
-  )
-
-  # Link test dependencies
-  target_link_libraries(${CMAKE_PROJECT_NAME}-tests PRIVATE Qt6::Core Qt6::Widgets Qt6::Test)
-
-  # Link against plugin sources (for testing)
-  # Note: recording-scanner.cpp requires obs-frontend-api which may not be available
-  # in test environment, so we only test the public isValidVideoFile method
-  target_sources(
-    ${CMAKE_PROJECT_NAME}-tests
-    PRIVATE src/recording-scanner.cpp src/timeline-widget.cpp src/audio-analyzer.cpp
-  )
-
-  # Link OBS libraries if available (optional for tests)
-  if(ENABLE_FRONTEND_API)
-    target_link_libraries(${CMAKE_PROJECT_NAME}-tests PRIVATE OBS::obs-frontend-api)
+  find_package(Qt6 COMPONENTS Test)
+  if(NOT Qt6Test_FOUND)
+    message(WARNING "Qt6 Test not found. Tests will be disabled.")
+    set(ENABLE_QT_TESTS OFF)
+  else()
+    set(ENABLE_QT_TESTS ON)
   endif()
 
-  # Include directories
-  target_include_directories(${CMAKE_PROJECT_NAME}-tests PRIVATE src)
-
-  # Link FFmpeg libraries if available
-  if(AVCODEC_FOUND AND AVFORMAT_FOUND AND AVUTIL_FOUND AND SWSCALE_FOUND)
-    target_include_directories(
+  if(ENABLE_QT_TESTS)
+    # Test executable
+    add_executable(
       ${CMAKE_PROJECT_NAME}-tests
-      PRIVATE ${AVCODEC_INCLUDE_DIRS} ${AVFORMAT_INCLUDE_DIRS} ${AVUTIL_INCLUDE_DIRS} ${SWSCALE_INCLUDE_DIRS}
+      tests/test-recording-scanner-standalone.cpp
+      tests/test-timeline-widget.cpp
+      tests/test-audio-analyzer.cpp
     )
 
-    target_link_libraries(
+    # Link test dependencies
+    target_link_libraries(${CMAKE_PROJECT_NAME}-tests PRIVATE Qt6::Core Qt6::Widgets Qt6::Test)
+
+    # Link against plugin sources (for testing)
+    # Note: recording-scanner.cpp requires obs-frontend-api which may not be available
+    # in test environment, so we only test the public isValidVideoFile method
+    target_sources(
       ${CMAKE_PROJECT_NAME}-tests
-      PRIVATE ${AVCODEC_LIBRARIES} ${AVFORMAT_LIBRARIES} ${AVUTIL_LIBRARIES} ${SWSCALE_LIBRARIES}
+      PRIVATE src/recording-scanner.cpp src/timeline-widget.cpp src/audio-analyzer.cpp
     )
+
+    # Link OBS libraries if available (optional for tests)
+    if(ENABLE_FRONTEND_API)
+      target_link_libraries(${CMAKE_PROJECT_NAME}-tests PRIVATE OBS::obs-frontend-api)
+    endif()
+
+    # Include directories
+    target_include_directories(${CMAKE_PROJECT_NAME}-tests PRIVATE src)
+
+    # Link FFmpeg libraries if available
+    if(AVCODEC_FOUND AND AVFORMAT_FOUND AND AVUTIL_FOUND AND SWSCALE_FOUND)
+      target_include_directories(
+        ${CMAKE_PROJECT_NAME}-tests
+        PRIVATE ${AVCODEC_INCLUDE_DIRS} ${AVFORMAT_INCLUDE_DIRS} ${AVUTIL_INCLUDE_DIRS} ${SWSCALE_INCLUDE_DIRS}
+      )
+
+      target_link_libraries(
+        ${CMAKE_PROJECT_NAME}-tests
+        PRIVATE ${AVCODEC_LIBRARIES} ${AVFORMAT_LIBRARIES} ${AVUTIL_LIBRARIES} ${SWSCALE_LIBRARIES}
+      )
+    endif()
+
+    # Set test properties
+    set_target_properties(${CMAKE_PROJECT_NAME}-tests PROPERTIES AUTOMOC ON)
+
+    # Add test
+    add_test(NAME ${CMAKE_PROJECT_NAME}-tests COMMAND ${CMAKE_PROJECT_NAME}-tests)
   endif()
-
-  # Set test properties
-  set_target_properties(${CMAKE_PROJECT_NAME}-tests PROPERTIES AUTOMOC ON)
-
-  # Add test
-  add_test(NAME ${CMAKE_PROJECT_NAME}-tests COMMAND ${CMAKE_PROJECT_NAME}-tests)
 endif()
