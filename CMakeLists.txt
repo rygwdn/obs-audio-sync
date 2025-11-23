@@ -2,6 +2,19 @@ cmake_minimum_required(VERSION 3.28...3.30)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/common/bootstrap.cmake" NO_POLICY_SCOPE)
 
+# Check if we're generating compile_commands.json for linting
+# When passed via -DCMAKE_EXPORT_COMPILE_COMMANDS=ON, it's available as a cache variable
+# Use get_property for compatibility with CMake 3.28+
+get_property(_export_compile_commands_set CACHE CMAKE_EXPORT_COMPILE_COMMANDS PROPERTY VALUE SET)
+if(_export_compile_commands_set)
+  get_property(_export_compile_commands CACHE CMAKE_EXPORT_COMPILE_COMMANDS PROPERTY VALUE)
+  if(_export_compile_commands)
+    set(_LINTING_MODE ON)
+  endif()
+elseif(DEFINED CMAKE_EXPORT_COMPILE_COMMANDS AND CMAKE_EXPORT_COMPILE_COMMANDS)
+  set(_LINTING_MODE ON)
+endif()
+
 project(${_name} VERSION ${_version})
 
 option(ENABLE_FRONTEND_API "Use obs-frontend-api for UI functionality" ON)
@@ -14,7 +27,7 @@ include(helpers)
 add_library(${CMAKE_PROJECT_NAME} MODULE)
 
 # When generating compile_commands.json for linting, make dependencies optional
-if(CMAKE_EXPORT_COMPILE_COMMANDS)
+if(_LINTING_MODE OR CMAKE_EXPORT_COMPILE_COMMANDS)
   find_package(libobs QUIET)
   if(libobs_FOUND OR TARGET OBS::libobs)
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs)
@@ -48,7 +61,7 @@ else()
   endif()
 endif()
 
-if(ENABLE_QT AND (Qt6_FOUND OR NOT CMAKE_EXPORT_COMPILE_COMMANDS))
+if(ENABLE_QT AND (Qt6_FOUND OR _LINTING_MODE OR NOT CMAKE_EXPORT_COMPILE_COMMANDS))
   target_compile_options(
     ${CMAKE_PROJECT_NAME}
     PRIVATE $<$<C_COMPILER_ID:Clang,AppleClang>:-Wno-quoted-include-in-framework-header -Wno-comma>
@@ -152,7 +165,7 @@ endif()
 
 # Check if all required FFmpeg components were found
 if(NOT AVCODEC_FOUND OR NOT AVFORMAT_FOUND OR NOT AVUTIL_FOUND OR NOT SWSCALE_FOUND)
-  if(CMAKE_EXPORT_COMPILE_COMMANDS)
+  if(_LINTING_MODE OR CMAKE_EXPORT_COMPILE_COMMANDS)
     # When generating compile_commands.json for linting, FFmpeg is optional
     message(STATUS "FFmpeg libraries not found, but CMAKE_EXPORT_COMPILE_COMMANDS is set. Skipping FFmpeg for linting.")
   else()
