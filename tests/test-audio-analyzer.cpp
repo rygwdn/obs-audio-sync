@@ -45,7 +45,7 @@ void TestAudioAnalyzer::testAudioSampleStructure()
 	spike.amplitude = 1.0;
 	spike.windowStart = 0.0;
 	spike.windowEnd = 4.0;
-	
+
 	QVERIFY(spike.timestamp == 2.0);
 	QVERIFY(spike.amplitude == 1.0);
 	QVERIFY(spike.windowStart == 0.0);

@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
 			result = 1;
 		}
 	}
-	
+
 	// Run TestTimelineWidget
 	{
 		TestTimelineWidget test;
@@ -39,7 +39,7 @@ int main(int argc, char *argv[])
 			result = 1;
 		}
 	}
-	
+
 	// Run TestAudioAnalyzer
 	{
 		TestAudioAnalyzer test;
@@ -47,6 +47,6 @@ int main(int argc, char *argv[])
 			result = 1;
 		}
 	}
-	
+
 	return result;
 }
