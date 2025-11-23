@@ -26,13 +26,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QtMath>
 
 TimelineWidget::TimelineWidget(QWidget *parent)
-	: QWidget(parent),
-	  m_spikePosition(0.0),
-	  m_startTime(0.0),
-	  m_endTime(4.0),
-	  m_fps(30.0),
-	  m_spikeDragStartX(0),
-	  m_draggingSpike(false)
+	: QWidget(parent)
 {
 	setMinimumHeight(120);
 	setMouseTracking(true);
@@ -62,14 +56,14 @@ void TimelineWidget::setFPS(double fps)
 	update();
 }
 
-double TimelineWidget::timestampFromX(int x) const
+double TimelineWidget::timestampFromX(int xPos) const
 {
 	int width = this->width() - 40; // Leave margins
 	if (width <= 0) {
 		return m_startTime;
 	}
 
-	double ratio = (double)(x - 20) / width;
+	double ratio = (double)(xPos - 20) / width;
 	return m_startTime + ratio * (m_endTime - m_startTime);
 }
 

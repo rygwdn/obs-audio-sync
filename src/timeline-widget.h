@@ -16,7 +16,8 @@ You should have received a copy of the GNU General Public License along
 with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
-#pragma once
+#ifndef TIMELINE_WIDGET_H
+#define TIMELINE_WIDGET_H
 
 #include <QWidget>
 #include <QVector>
@@ -32,6 +33,12 @@ public:
 	explicit TimelineWidget(QWidget *parent = nullptr);
 	~TimelineWidget();
 
+	// Delete copy and move constructors/assignments
+	TimelineWidget(const TimelineWidget &) = delete;
+	TimelineWidget &operator=(const TimelineWidget &) = delete;
+	TimelineWidget(TimelineWidget &&) = delete;
+	TimelineWidget &operator=(TimelineWidget &&) = delete;
+
 	void setAudioSamples(const QVector<AudioSample> &samples);
 	void setSpikePosition(double timestamp);
 	void setFPS(double fps);
@@ -46,18 +53,20 @@ protected:
 	void resizeEvent(QResizeEvent *event) override;
 
 private:
-	double timestampFromX(int x) const;
-	int xFromTimestamp(double timestamp) const;
+	[[nodiscard]] double timestampFromX(int xPos) const;
+	[[nodiscard]] int xFromTimestamp(double timestamp) const;
 	void drawWaveform(QPainter &painter);
 	void drawFrameMarkers(QPainter &painter);
 	void drawTimeMarkers(QPainter &painter);
 	void drawSpikeMarker(QPainter &painter);
 
-	QVector<AudioSample> m_samples;
-	double m_spikePosition;
-	double m_startTime;
-	double m_endTime;
-	double m_fps;
-	int m_spikeDragStartX;
-	bool m_draggingSpike;
+	QVector<AudioSample> m_samples{};
+	double m_spikePosition{};
+	double m_startTime{};
+	double m_endTime{};
+	double m_fps{};
+	int m_spikeDragStartX{};
+	bool m_draggingSpike{};
 };
+
+#endif // TIMELINE_WIDGET_H

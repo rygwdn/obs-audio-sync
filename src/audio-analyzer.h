@@ -16,7 +16,8 @@ You should have received a copy of the GNU General Public License along
 with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
-#pragma once
+#ifndef AUDIO_ANALYZER_H
+#define AUDIO_ANALYZER_H
 
 #include <QString>
 #include <QVector>
@@ -39,6 +40,12 @@ public:
 	AudioAnalyzer();
 	~AudioAnalyzer();
 
+	// Delete copy and move constructors/assignments
+	AudioAnalyzer(const AudioAnalyzer &) = delete;
+	AudioAnalyzer &operator=(const AudioAnalyzer &) = delete;
+	AudioAnalyzer(AudioAnalyzer &&) = delete;
+	AudioAnalyzer &operator=(AudioAnalyzer &&) = delete;
+
 	// Analyze audio file and find largest spike
 	bool analyzeFile(const QString &filePath, AudioSpike &spike);
 
@@ -58,3 +65,5 @@ private:
 	// Find largest spike in audio samples
 	AudioSpike findLargestSpike(const QVector<AudioSample> &samples);
 };
+
+#endif // AUDIO_ANALYZER_H

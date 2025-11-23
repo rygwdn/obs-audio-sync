@@ -16,22 +16,29 @@ You should have received a copy of the GNU General Public License along
 with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
-#pragma once
+#ifndef RECORDING_SCANNER_H
+#define RECORDING_SCANNER_H
 
 #include <QString>
 #include <QDateTime>
 #include <QList>
 
 struct RecordingInfo {
-	QString filePath;
-	double duration; // in seconds
-	QDateTime modifiedTime;
+	QString filePath{};
+	double duration{}; // in seconds
+	QDateTime modifiedTime{};
 };
 
 class RecordingScanner {
 public:
 	RecordingScanner();
 	~RecordingScanner();
+
+	// Delete copy and move constructors/assignments
+	RecordingScanner(const RecordingScanner &) = delete;
+	RecordingScanner &operator=(const RecordingScanner &) = delete;
+	RecordingScanner(RecordingScanner &&) = delete;
+	RecordingScanner &operator=(RecordingScanner &&) = delete;
 
 	QList<RecordingInfo> scanRecordings(double maxDurationSeconds = 15.0);
 	bool isValidVideoFile(const QString &filePath); // Public for testing
@@ -40,3 +47,5 @@ private:
 	QString getRecordingPath();
 	double getFileDuration(const QString &filePath);
 };
+
+#endif // RECORDING_SCANNER_H

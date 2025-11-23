@@ -19,24 +19,32 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "audio-sync-panel.h"
 #include "recording-scanner.h"
 #include "audio-analyzer.h"
+#include "video-extractor.h"
+#include "timeline-widget.h"
 #include <QFileInfo>
 #include <QDateTime>
 #include <QMessageBox>
 
 AudioSyncPanel::AudioSyncPanel(QWidget *parent)
 	: QDockWidget(parent),
+	  m_recordingList(nullptr),
+	  m_statusLabel(nullptr),
+	  m_refreshButton(nullptr),
+	  m_layout(nullptr),
 	  m_timelineWidget(nullptr),
 	  m_frameLabel(nullptr),
 	  m_prevFrameButton(nullptr),
 	  m_nextFrameButton(nullptr),
 	  m_frameInfoLabel(nullptr),
 	  m_syncOffsetLabel(nullptr),
+	  m_currentRecording(),
+	  m_currentSpike(),
+	  m_frames(),
 	  m_currentFrameIndex(-1),
 	  m_videoFPS(30.0),
-	  m_videoExtractor(nullptr)
+	  m_videoExtractor(new VideoExtractor())
 {
 	setWindowTitle("Audio Sync");
-	m_videoExtractor = new VideoExtractor();
 
 	// Create central widget for QDockWidget
 	QWidget *centralWidget = new QWidget(this);
@@ -48,9 +56,7 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent)
 
 AudioSyncPanel::~AudioSyncPanel()
 {
-	if (m_videoExtractor) {
-		delete m_videoExtractor;
-	}
+	delete m_videoExtractor;
 }
 
 void AudioSyncPanel::setupUI()
@@ -152,7 +158,7 @@ void AudioSyncPanel::refreshRecordings()
 
 void AudioSyncPanel::scanRecordings()
 {
-	RecordingScanner scanner;
+	const RecordingScanner scanner;
 	QList<RecordingInfo> recordings = scanner.scanRecordings(15.0); // 15 second threshold
 
 	for (const RecordingInfo &recording : recordings) {
@@ -184,7 +190,7 @@ void AudioSyncPanel::loadRecording(const QString &filePath)
 	m_statusLabel->setText(QString("Analyzing: %1...").arg(QFileInfo(filePath).fileName()));
 
 	// Analyze audio and find spike
-	AudioAnalyzer analyzer;
+	const AudioAnalyzer analyzer;
 	if (!analyzer.analyzeFile(filePath, m_currentSpike)) {
 		m_statusLabel->setText("Failed to analyze audio");
 		QMessageBox::warning(this, "Analysis Failed", "Could not analyze audio from recording.");
@@ -250,14 +256,14 @@ void AudioSyncPanel::updateFrameDisplay()
 	updateSyncDisplay();
 }
 
-void AudioSyncPanel::updateSyncDisplay()
+void AudioSyncPanel::updateSyncDisplay() const
 {
 	if (m_frames.isEmpty() || m_currentFrameIndex < 0 || m_currentFrameIndex >= m_frames.size()) {
 		return;
 	}
 
 	const VideoFrame &frame = m_frames[m_currentFrameIndex];
-	double timeDiff = frame.timestamp - m_currentSpike.timestamp;
+	const double timeDiff = frame.timestamp - m_currentSpike.timestamp;
 	double frameDiff = timeDiff * m_videoFPS;
 
 	QString syncText =

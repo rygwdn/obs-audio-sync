@@ -16,7 +16,8 @@ You should have received a copy of the GNU General Public License along
 with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
-#pragma once
+#ifndef VIDEO_EXTRACTOR_H
+#define VIDEO_EXTRACTOR_H
 
 #include <QString>
 #include <QPixmap>
@@ -24,15 +25,21 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QPair>
 
 struct VideoFrame {
-	QPixmap pixmap;
-	double timestamp; // Time in seconds
-	int frameNumber;  // Frame index
+	QPixmap pixmap{};
+	double timestamp{}; // Time in seconds
+	int frameNumber{};  // Frame index
 };
 
 class VideoExtractor {
 public:
 	VideoExtractor();
 	~VideoExtractor();
+
+	// Delete copy and move constructors/assignments
+	VideoExtractor(const VideoExtractor &) = delete;
+	VideoExtractor &operator=(const VideoExtractor &) = delete;
+	VideoExtractor(VideoExtractor &&) = delete;
+	VideoExtractor &operator=(VideoExtractor &&) = delete;
 
 	// Open video file and prepare for extraction
 	bool openFile(const QString &filePath);
@@ -44,10 +51,10 @@ public:
 	QVector<VideoFrame> extractFrames(double startTime, double endTime);
 
 	// Get video FPS
-	double getFPS() const { return m_fps; }
+	[[nodiscard]] double getFPS() const { return m_fps; }
 
 	// Get video duration
-	double getDuration() const { return m_duration; }
+	[[nodiscard]] double getDuration() const { return m_duration; }
 
 	// Close file and cleanup
 	void close();
@@ -56,8 +63,10 @@ private:
 	bool initializeFFmpeg();
 	void cleanupFFmpeg();
 
-	QString m_filePath;
-	double m_fps;
-	double m_duration;
-	bool m_fileOpen;
+	QString m_filePath{};
+	double m_fps{};
+	double m_duration{};
+	bool m_fileOpen{};
 };
+
+#endif // VIDEO_EXTRACTOR_H

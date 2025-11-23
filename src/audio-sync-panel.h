@@ -16,7 +16,8 @@ You should have received a copy of the GNU General Public License along
 with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
-#pragma once
+#ifndef AUDIO_SYNC_PANEL_H
+#define AUDIO_SYNC_PANEL_H
 
 #include <QWidget>
 #include <QDockWidget>
@@ -36,6 +37,12 @@ public:
 	explicit AudioSyncPanel(QWidget *parent = nullptr);
 	~AudioSyncPanel();
 
+	// Delete copy and move constructors/assignments
+	AudioSyncPanel(const AudioSyncPanel &) = delete;
+	AudioSyncPanel &operator=(const AudioSyncPanel &) = delete;
+	AudioSyncPanel(AudioSyncPanel &&) = delete;
+	AudioSyncPanel &operator=(AudioSyncPanel &&) = delete;
+
 	void refreshRecordings();
 
 private slots:
@@ -50,26 +57,28 @@ private:
 	void scanRecordings();
 	void loadRecording(const QString &filePath);
 	void updateFrameDisplay();
-	void updateSyncDisplay();
+	void updateSyncDisplay() const;
 
-	QListWidget *m_recordingList;
-	QLabel *m_statusLabel;
-	QPushButton *m_refreshButton;
-	QVBoxLayout *m_layout;
+	QListWidget *m_recordingList{nullptr};
+	QLabel *m_statusLabel{nullptr};
+	QPushButton *m_refreshButton{nullptr};
+	QVBoxLayout *m_layout{nullptr};
 
 	// Analysis components
-	TimelineWidget *m_timelineWidget;
-	QLabel *m_frameLabel;
-	QPushButton *m_prevFrameButton;
-	QPushButton *m_nextFrameButton;
-	QLabel *m_frameInfoLabel;
-	QLabel *m_syncOffsetLabel;
+	TimelineWidget *m_timelineWidget{nullptr};
+	QLabel *m_frameLabel{nullptr};
+	QPushButton *m_prevFrameButton{nullptr};
+	QPushButton *m_nextFrameButton{nullptr};
+	QLabel *m_frameInfoLabel{nullptr};
+	QLabel *m_syncOffsetLabel{nullptr};
 
 	// Data
-	QString m_currentRecording;
-	AudioSpike m_currentSpike;
-	QVector<VideoFrame> m_frames;
-	int m_currentFrameIndex;
-	double m_videoFPS;
-	VideoExtractor *m_videoExtractor;
+	QString m_currentRecording{};
+	AudioSpike m_currentSpike{};
+	QVector<VideoFrame> m_frames{};
+	int m_currentFrameIndex{-1};
+	double m_videoFPS{30.0};
+	VideoExtractor *m_videoExtractor{nullptr};
 };
+
+#endif // AUDIO_SYNC_PANEL_H

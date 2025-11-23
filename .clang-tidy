@@ -52,7 +52,7 @@ CheckOptions:
   - key: readability-identifier-naming.ParameterCase
     value: camelBack
   - key: readability-identifier-naming.MemberCase
-    value: m_camelBack
+    value: camelBack
   - key: readability-identifier-naming.PrivateMemberPrefix
     value: m_
   - key: readability-identifier-naming.ProtectedMemberPrefix
