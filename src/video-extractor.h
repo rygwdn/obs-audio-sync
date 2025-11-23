@@ -25,8 +25,8 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 struct VideoFrame {
 	QPixmap pixmap;
-	double timestamp;  // Time in seconds
-	int frameNumber;   // Frame index
+	double timestamp; // Time in seconds
+	int frameNumber;  // Frame index
 };
 
 class VideoExtractor {

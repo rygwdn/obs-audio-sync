@@ -117,9 +117,7 @@ QList<RecordingInfo> RecordingScanner::scanRecordings(double maxDurationSeconds)
 
 	// Sort by modification time (newest first)
 	std::sort(recordings.begin(), recordings.end(),
-		  [](const RecordingInfo &a, const RecordingInfo &b) {
-			  return a.modifiedTime > b.modifiedTime;
-		  });
+		  [](const RecordingInfo &a, const RecordingInfo &b) { return a.modifiedTime > b.modifiedTime; });
 
 	return recordings;
 }

@@ -26,8 +26,12 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QtMath>
 
 TimelineWidget::TimelineWidget(QWidget *parent)
-	: QWidget(parent), m_spikePosition(0.0), m_startTime(0.0),
-	  m_endTime(4.0), m_fps(30.0), m_spikeDragStartX(0),
+	: QWidget(parent),
+	  m_spikePosition(0.0),
+	  m_startTime(0.0),
+	  m_endTime(4.0),
+	  m_fps(30.0),
+	  m_spikeDragStartX(0),
 	  m_draggingSpike(false)
 {
 	setMinimumHeight(120);
@@ -145,8 +149,7 @@ void TimelineWidget::drawFrameMarkers(QPainter &painter)
 		painter.drawLine(x, 100, x, 105);
 
 		// Draw frame number every 10 frames or at start/end
-		if (frameNumber % 10 == 0 || currentTime == m_startTime ||
-		    currentTime >= m_endTime - frameDuration) {
+		if (frameNumber % 10 == 0 || currentTime == m_startTime || currentTime >= m_endTime - frameDuration) {
 			QString frameText = QString::number(frameNumber);
 			QRect textRect(x - 20, 107, 40, 15);
 			painter.drawText(textRect, Qt::AlignCenter, frameText);

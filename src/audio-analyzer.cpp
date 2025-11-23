@@ -55,8 +55,7 @@ void AudioAnalyzer::cleanupFFmpeg()
 double AudioAnalyzer::getFileDuration(const QString &filePath)
 {
 	AVFormatContext *formatContext = nullptr;
-	int ret = avformat_open_input(&formatContext, filePath.toUtf8().constData(),
-				      nullptr, nullptr);
+	int ret = avformat_open_input(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
 	if (ret < 0) {
 		qWarning() << "Could not open file:" << filePath;
 		return 0.0;
@@ -82,8 +81,7 @@ QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath)
 	QVector<AudioSample> samples;
 
 	AVFormatContext *formatContext = nullptr;
-	int ret = avformat_open_input(&formatContext, filePath.toUtf8().constData(),
-				      nullptr, nullptr);
+	int ret = avformat_open_input(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
 	if (ret < 0) {
 		qWarning() << "Could not open file:" << filePath;
 		return samples;
@@ -98,8 +96,7 @@ QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath)
 	// Find audio stream
 	int audioStreamIndex = -1;
 	for (unsigned int i = 0; i < formatContext->nb_streams; i++) {
-		if (formatContext->streams[i]->codecpar->codec_type ==
-		    AVMEDIA_TYPE_AUDIO) {
+		if (formatContext->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
 			audioStreamIndex = i;
 			break;
 		}
@@ -111,8 +108,7 @@ QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath)
 		return samples;
 	}
 
-	AVCodecParameters *codecParams =
-		formatContext->streams[audioStreamIndex]->codecpar;
+	AVCodecParameters *codecParams = formatContext->streams[audioStreamIndex]->codecpar;
 	const AVCodec *codec = avcodec_find_decoder(codecParams->codec_id);
 	if (!codec) {
 		qWarning() << "Codec not found";
@@ -142,8 +138,7 @@ QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath)
 
 	// Get sample rate for timestamp calculation
 	double sampleRate = codecContext->sample_rate;
-	double timeBase =
-		av_q2d(formatContext->streams[audioStreamIndex]->time_base);
+	double timeBase = av_q2d(formatContext->streams[audioStreamIndex]->time_base);
 
 	AVPacket *packet = av_packet_alloc();
 	AVFrame *frame = av_frame_alloc();
@@ -190,8 +185,7 @@ QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath)
 					for (int ch = 0; ch < frame->channels; ch++) {
 						int16_t *channelData = (int16_t *)frame->data[ch];
 						for (int i = 0; i < frame->nb_samples; i++) {
-							double normalized =
-								(double)channelData[i] / 32768.0;
+							double normalized = (double)channelData[i] / 32768.0;
 							rms += normalized * normalized;
 						}
 					}
@@ -278,9 +272,7 @@ bool AudioAnalyzer::analyzeFile(const QString &filePath, AudioSpike &spike)
 	return true;
 }
 
-QVector<AudioSample> AudioAnalyzer::getAudioSamples(const QString &filePath,
-						     double startTime,
-						     double endTime)
+QVector<AudioSample> AudioAnalyzer::getAudioSamples(const QString &filePath, double startTime, double endTime)
 {
 	QVector<AudioSample> allSamples = extractAudioSamples(filePath);
 	QVector<AudioSample> windowSamples;

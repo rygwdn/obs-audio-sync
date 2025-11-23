@@ -24,10 +24,16 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QMessageBox>
 
 AudioSyncPanel::AudioSyncPanel(QWidget *parent)
-	: QWidget(parent), m_timelineWidget(nullptr), m_frameLabel(nullptr),
-	  m_prevFrameButton(nullptr), m_nextFrameButton(nullptr),
-	  m_frameInfoLabel(nullptr), m_syncOffsetLabel(nullptr),
-	  m_currentFrameIndex(-1), m_videoFPS(30.0), m_videoExtractor(nullptr)
+	: QWidget(parent),
+	  m_timelineWidget(nullptr),
+	  m_frameLabel(nullptr),
+	  m_prevFrameButton(nullptr),
+	  m_nextFrameButton(nullptr),
+	  m_frameInfoLabel(nullptr),
+	  m_syncOffsetLabel(nullptr),
+	  m_currentFrameIndex(-1),
+	  m_videoFPS(30.0),
+	  m_videoExtractor(nullptr)
 {
 	m_videoExtractor = new VideoExtractor();
 	setupUI();
@@ -120,16 +126,11 @@ void AudioSyncPanel::setupUI()
 	m_layout->addWidget(m_statusLabel);
 
 	// Connect signals
-	connect(m_recordingList, &QListWidget::itemDoubleClicked, this,
-		&AudioSyncPanel::onRecordingSelected);
-	connect(m_refreshButton, &QPushButton::clicked, this,
-		&AudioSyncPanel::onRefreshClicked);
-	connect(m_timelineWidget, &TimelineWidget::spikePositionChanged, this,
-		&AudioSyncPanel::onSpikePositionChanged);
-	connect(m_prevFrameButton, &QPushButton::clicked, this,
-		&AudioSyncPanel::onPrevFrameClicked);
-	connect(m_nextFrameButton, &QPushButton::clicked, this,
-		&AudioSyncPanel::onNextFrameClicked);
+	connect(m_recordingList, &QListWidget::itemDoubleClicked, this, &AudioSyncPanel::onRecordingSelected);
+	connect(m_refreshButton, &QPushButton::clicked, this, &AudioSyncPanel::onRefreshClicked);
+	connect(m_timelineWidget, &TimelineWidget::spikePositionChanged, this, &AudioSyncPanel::onSpikePositionChanged);
+	connect(m_prevFrameButton, &QPushButton::clicked, this, &AudioSyncPanel::onPrevFrameClicked);
+	connect(m_nextFrameButton, &QPushButton::clicked, this, &AudioSyncPanel::onNextFrameClicked);
 }
 
 void AudioSyncPanel::refreshRecordings()
@@ -150,9 +151,9 @@ void AudioSyncPanel::scanRecordings()
 	for (const RecordingInfo &recording : recordings) {
 		QFileInfo fileInfo(recording.filePath);
 		QString displayText = QString("%1 (%2s) - %3")
-					  .arg(fileInfo.fileName())
-					  .arg(recording.duration, 0, 'f', 2)
-					  .arg(recording.modifiedTime.toString("yyyy-MM-dd hh:mm:ss"));
+					      .arg(fileInfo.fileName())
+					      .arg(recording.duration, 0, 'f', 2)
+					      .arg(recording.modifiedTime.toString("yyyy-MM-dd hh:mm:ss"));
 
 		QListWidgetItem *item = new QListWidgetItem(displayText, m_recordingList);
 		item->setData(Qt::UserRole, recording.filePath);
@@ -179,20 +180,18 @@ void AudioSyncPanel::loadRecording(const QString &filePath)
 	AudioAnalyzer analyzer;
 	if (!analyzer.analyzeFile(filePath, m_currentSpike)) {
 		m_statusLabel->setText("Failed to analyze audio");
-		QMessageBox::warning(this, "Analysis Failed",
-				      "Could not analyze audio from recording.");
+		QMessageBox::warning(this, "Analysis Failed", "Could not analyze audio from recording.");
 		return;
 	}
 
 	// Get audio samples for timeline
-	QVector<AudioSample> samples = analyzer.getAudioSamples(
-		filePath, m_currentSpike.windowStart, m_currentSpike.windowEnd);
+	QVector<AudioSample> samples =
+		analyzer.getAudioSamples(filePath, m_currentSpike.windowStart, m_currentSpike.windowEnd);
 
 	// Open video file
 	if (!m_videoExtractor->openFile(filePath)) {
 		m_statusLabel->setText("Failed to open video");
-		QMessageBox::warning(this, "Video Error",
-				      "Could not open video from recording.");
+		QMessageBox::warning(this, "Video Error", "Could not open video from recording.");
 		return;
 	}
 
@@ -204,8 +203,7 @@ void AudioSyncPanel::loadRecording(const QString &filePath)
 
 	// Extract frames
 	m_statusLabel->setText("Extracting frames...");
-	m_frames = m_videoExtractor->extractFrames(m_currentSpike.windowStart,
-						   m_currentSpike.windowEnd);
+	m_frames = m_videoExtractor->extractFrames(m_currentSpike.windowStart, m_currentSpike.windowEnd);
 	m_currentFrameIndex = 0;
 
 	// Show UI components
@@ -218,14 +216,12 @@ void AudioSyncPanel::loadRecording(const QString &filePath)
 	updateFrameDisplay();
 	updateSyncDisplay();
 
-	m_statusLabel->setText(QString("Spike found at %1s")
-				  .arg(m_currentSpike.timestamp, 0, 'f', 3));
+	m_statusLabel->setText(QString("Spike found at %1s").arg(m_currentSpike.timestamp, 0, 'f', 3));
 }
 
 void AudioSyncPanel::updateFrameDisplay()
 {
-	if (m_frames.isEmpty() || m_currentFrameIndex < 0 ||
-	    m_currentFrameIndex >= m_frames.size()) {
+	if (m_frames.isEmpty() || m_currentFrameIndex < 0 || m_currentFrameIndex >= m_frames.size()) {
 		m_frameLabel->setText("No frame available");
 		m_prevFrameButton->setEnabled(false);
 		m_nextFrameButton->setEnabled(false);
@@ -233,16 +229,13 @@ void AudioSyncPanel::updateFrameDisplay()
 	}
 
 	const VideoFrame &frame = m_frames[m_currentFrameIndex];
-	QPixmap scaledPixmap = frame.pixmap.scaled(m_frameLabel->size(),
-						    Qt::KeepAspectRatio,
-						    Qt::SmoothTransformation);
+	QPixmap scaledPixmap = frame.pixmap.scaled(m_frameLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
 	m_frameLabel->setPixmap(scaledPixmap);
 
-	m_frameInfoLabel->setText(
-		QString("Frame %1/%2 - Time: %3s")
-			.arg(m_currentFrameIndex + 1)
-			.arg(m_frames.size())
-			.arg(frame.timestamp, 0, 'f', 3));
+	m_frameInfoLabel->setText(QString("Frame %1/%2 - Time: %3s")
+					  .arg(m_currentFrameIndex + 1)
+					  .arg(m_frames.size())
+					  .arg(frame.timestamp, 0, 'f', 3));
 
 	m_prevFrameButton->setEnabled(m_currentFrameIndex > 0);
 	m_nextFrameButton->setEnabled(m_currentFrameIndex < m_frames.size() - 1);
@@ -252,8 +245,7 @@ void AudioSyncPanel::updateFrameDisplay()
 
 void AudioSyncPanel::updateSyncDisplay()
 {
-	if (m_frames.isEmpty() || m_currentFrameIndex < 0 ||
-	    m_currentFrameIndex >= m_frames.size()) {
+	if (m_frames.isEmpty() || m_currentFrameIndex < 0 || m_currentFrameIndex >= m_frames.size()) {
 		return;
 	}
 
@@ -261,9 +253,8 @@ void AudioSyncPanel::updateSyncDisplay()
 	double timeDiff = frame.timestamp - m_currentSpike.timestamp;
 	double frameDiff = timeDiff * m_videoFPS;
 
-	QString syncText = QString("Sync Offset: %1ms (%2 frames)")
-				   .arg(timeDiff * 1000.0, 0, 'f', 1)
-				   .arg(frameDiff, 0, 'f', 2);
+	QString syncText =
+		QString("Sync Offset: %1ms (%2 frames)").arg(timeDiff * 1000.0, 0, 'f', 1).arg(frameDiff, 0, 'f', 2);
 
 	// Color coding
 	QString color = "white";

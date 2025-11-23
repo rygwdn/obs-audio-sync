@@ -23,15 +23,15 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QPair>
 
 struct AudioSpike {
-	double timestamp;      // Time in seconds where spike occurs
-	double amplitude;     // Peak amplitude value
-	double windowStart;   // Start of 4-second window (2s before spike)
-	double windowEnd;     // End of 4-second window (2s after spike)
+	double timestamp;   // Time in seconds where spike occurs
+	double amplitude;   // Peak amplitude value
+	double windowStart; // Start of 4-second window (2s before spike)
+	double windowEnd;   // End of 4-second window (2s after spike)
 };
 
 struct AudioSample {
-	double timestamp;     // Time in seconds
-	double amplitude;     // RMS or peak amplitude
+	double timestamp; // Time in seconds
+	double amplitude; // RMS or peak amplitude
 };
 
 class AudioAnalyzer {
@@ -43,8 +43,7 @@ public:
 	bool analyzeFile(const QString &filePath, AudioSpike &spike);
 
 	// Get audio samples for visualization (4-second window)
-	QVector<AudioSample> getAudioSamples(const QString &filePath,
-					     double startTime, double endTime);
+	QVector<AudioSample> getAudioSamples(const QString &filePath, double startTime, double endTime);
 
 	// Get file duration in seconds
 	double getFileDuration(const QString &filePath);
