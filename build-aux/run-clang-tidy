@@ -135,7 +135,7 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
   )
 
   if (( check_only )) {
-    tidy_args+=(--warnings-as-errors=*)
+    tidy_args+=('--warnings-as-errors=*')
   }
 
   local -i num_failures=0
