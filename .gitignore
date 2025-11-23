@@ -8,6 +8,7 @@
 !/data
 !/src
 !.clang-format
+!.clang-tidy
 !.gersemirc
 !.gitignore
 !buildspec.json
@@ -15,6 +16,7 @@
 !CMakePresets.json
 !LICENSE
 !README.md
+!CONTRIBUTING.md
 
 # Exclude lock files
 *.lock.json
@@ -24,3 +26,7 @@
 
 # Exclude CMake build number cache
 /cmake/.CMakeBuildNumber
+
+# Exclude generated compile_commands.json (can be regenerated)
+compile_commands.json
+build_lint/

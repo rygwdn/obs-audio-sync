@@ -66,6 +66,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
 
+# Generate compile_commands.json for clang-tidy
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Generate compile_commands.json" FORCE)
+
 # Tests
 enable_testing()
 

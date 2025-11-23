@@ -1,0 +1,159 @@
+#!/usr/bin/env zsh
+
+builtin emulate -L zsh
+setopt EXTENDED_GLOB
+setopt PUSHD_SILENT
+setopt ERR_EXIT
+setopt ERR_RETURN
+setopt NO_UNSET
+setopt PIPE_FAIL
+setopt NO_AUTO_PUSHD
+setopt NO_PUSHD_IGNORE_DUPS
+setopt FUNCTION_ARGZERO
+
+## Enable for script debugging
+# setopt WARN_CREATE_GLOBAL
+# setopt WARN_NESTED_VAR
+# setopt XTRACE
+
+autoload -Uz is-at-least && if ! is-at-least 5.8; then
+  print -u2 -PR "%F{1}${funcstack[1]##*/}:%f Running on Zsh version %B${ZSH_VERSION}%b, but Zsh %B5.2%b is the minimum supported version. Upgrade zsh to fix this issue."
+  exit 1
+fi
+
+run_lint() {
+  if (( ! ${+SCRIPT_HOME} )) typeset -g SCRIPT_HOME=${ZSH_ARGZERO:A:h}
+  local project_root=${SCRIPT_HOME:A:h}
+
+  typeset -g host_os=${${(L)$(uname -s)}//darwin/macos}
+  local -i fail_on_error=0
+  local -i check_only=0
+  local -i verbosity=1
+  local -r _version='1.0.0'
+
+  fpath=("${SCRIPT_HOME}/.functions" ${fpath})
+  autoload -Uz log_info log_error log_output set_loglevel log_status log_warning
+
+  local -r _usage="
+Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
+
+%BOptions%b:
+
+%F{yellow} Linting options%f
+ -----------------------------------------------------------------------------
+  %B-c | --check%b                      Check only, no actual fixes
+
+%F{yellow} Output options%f
+ -----------------------------------------------------------------------------
+  %B-v | --verbose%b                    Verbose (more detailed output)
+  %B--fail-[never|error]                Fail script never/on linting issues - default: %B%F{green}never%f%b
+  %B--debug%b                           Debug (very detailed and added output)
+
+%F{yellow} General options%f
+ -----------------------------------------------------------------------------
+  %B-h | --help%b                       Print this usage help
+  %B-V | --version%b                    Print script version information"
+
+  local -a args
+  while (( # )) {
+    case ${1} {
+      -c|--check) check_only=1; shift ;;
+      -v|--verbose) (( verbosity += 1 )); shift ;;
+      -h|--help) log_output ${_usage}; exit 0 ;;
+      -V|--version) print -Pr "${_version}"; exit 0 ;;
+      --debug) verbosity=3; shift ;;
+      --fail-never)
+        fail_on_error=0
+        shift
+        ;;
+      --fail-error)
+        fail_on_error=1
+        shift
+        ;;
+      --fail-fast)
+        fail_on_error=2
+        shift
+        ;;
+      *)
+        args+=($@)
+        break
+        ;;
+    }
+  }
+
+  set -- ${(@)args}
+  set_loglevel ${verbosity}
+
+  # Find clang-tidy
+  local clang_tidy=""
+  if (( ${+commands[clang-tidy-19]} )) {
+    clang_tidy=clang-tidy-19
+  } elif (( ${+commands[clang-tidy]} )) {
+    clang_tidy=clang-tidy
+  } else {
+    log_error "No viable clang-tidy version found"
+    exit 2
+  }
+
+  # Get source files
+  local -a source_files=(${@})
+  if (( ! #source_files )) {
+    source_files=(src/**/*.(c|cpp|h|hpp)(.N))
+  }
+
+  if (( ! #source_files )) {
+    log_info "No source files found to lint"
+    exit 0
+  }
+
+  # Create compile_commands.json if it doesn't exist
+  local compile_commands="${project_root}/compile_commands.json"
+  if [[ ! -f ${compile_commands} ]] {
+    log_warning "compile_commands.json not found. Generating with CMake..."
+    local build_dir="${project_root}/build_lint"
+    mkdir -p ${build_dir}
+    cd ${build_dir}
+    cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${project_root} > /dev/null 2>&1
+    if [[ -f ${build_dir}/compile_commands.json ]] {
+      cp ${build_dir}/compile_commands.json ${compile_commands}
+      log_info "Generated compile_commands.json"
+    } else {
+      log_error "Failed to generate compile_commands.json"
+      exit 2
+    }
+    cd ${project_root}
+  }
+
+  # Run clang-tidy
+  local -a tidy_args=(
+    -p ${project_root}
+    --config-file=${project_root}/.clang-tidy
+  )
+
+  if (( check_only )) {
+    tidy_args+=(--warnings-as-errors=*)
+  }
+
+  local -i num_failures=0
+  for file (${source_files}) {
+    log_info "Linting ${file}..."
+    local output=$(${clang_tidy} ${tidy_args} ${file} 2>&1)
+    if (( ${#output} > 0 )) {
+      log_error "${file} has linting issues:"
+      print -u2 "${output}"
+      if (( fail_on_error == 2 )) return 2
+      num_failures=$(( num_failures + 1 ))
+    }
+  }
+
+  if (( num_failures && fail_on_error == 1 )) {
+    log_error "Found ${num_failures} file(s) with linting issues"
+    return 2
+  } elseif (( num_failures )) {
+    log_warning "Found ${num_failures} file(s) with linting issues"
+  } else {
+    log_info "All files passed linting checks"
+  }
+}
+
+run_lint ${@}
