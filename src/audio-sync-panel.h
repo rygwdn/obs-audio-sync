@@ -24,7 +24,6 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
-#include <QLabel>
 #include "timeline-widget.h"
 #include "video-extractor.h"
 #include "audio-analyzer.h"
