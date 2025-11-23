@@ -32,7 +32,7 @@ bool obs_module_load(void)
 
 	// Create and register the panel
 	panel = new AudioSyncPanel();
-	obs_frontend_add_dock(panel);
+	obs_frontend_add_dock_by_id("obs-audio-sync", "Audio Sync", panel);
 
 	obs_log(LOG_INFO, "Audio Sync panel registered");
 	return true;
@@ -41,6 +41,7 @@ bool obs_module_load(void)
 void obs_module_unload(void)
 {
 	if (panel) {
+		obs_frontend_remove_dock("obs-audio-sync");
 		delete panel;
 		panel = nullptr;
 	}
