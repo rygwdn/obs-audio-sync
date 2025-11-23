@@ -47,6 +47,36 @@ function Build {
     Push-Location -Stack BuildTemp
     Ensure-Location $ProjectRoot
 
+    # Add vcpkg's Qt6 to CMAKE_PREFIX_PATH for Qt Test libraries
+    # The obs-deps-qt6 prebuilds don't include Qt Test
+    $VcpkgRoot = $env:VCPKG_ROOT
+    if ( -not $VcpkgRoot ) {
+      # Try common vcpkg locations
+      $PossiblePaths = @(
+        "$env:ProgramFiles\vcpkg",
+        "$env:ProgramFiles(x86)\vcpkg",
+        "$env:LOCALAPPDATA\vcpkg",
+        "$env:USERPROFILE\vcpkg"
+      )
+      
+      foreach ( $Path in $PossiblePaths ) {
+        if ( Test-Path "$Path\vcpkg.exe" ) {
+          $VcpkgRoot = $Path
+          break
+        }
+      }
+    }
+
+    if ( $VcpkgRoot -and (Test-Path "$VcpkgRoot\installed\x64-windows\share\qt6") ) {
+      $VcpkgQt6Path = "$VcpkgRoot\installed\x64-windows"
+      if ( $env:CMAKE_PREFIX_PATH ) {
+        $env:CMAKE_PREFIX_PATH = "$env:CMAKE_PREFIX_PATH;$VcpkgQt6Path"
+      } else {
+        $env:CMAKE_PREFIX_PATH = $VcpkgQt6Path
+      }
+      Write-Host "Added vcpkg Qt6 to CMAKE_PREFIX_PATH: $VcpkgQt6Path"
+    }
+
     $CmakeArgs = @('--preset', "windows-ci-${Target}")
     $CmakeBuildArgs = @('--build')
     $CmakeInstallArgs = @()

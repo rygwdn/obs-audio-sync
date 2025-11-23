@@ -95,6 +95,21 @@ build() {
 
   pushd ${project_root}
 
+  # Add Homebrew's Qt6 to CMAKE_PREFIX_PATH for Qt Test libraries
+  # The obs-deps-qt6 prebuilds don't include Qt Test
+  if (( ${+commands[brew]} )) {
+    local brew_prefix
+    if [[ -d /opt/homebrew ]] {
+      brew_prefix=/opt/homebrew
+    } elif [[ -d /usr/local/Homebrew ]] {
+      brew_prefix=/usr/local
+    }
+    
+    if [[ -n ${brew_prefix} ]] && [[ -d ${brew_prefix}/opt/qt@6 ]] {
+      typeset -gx CMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH:+${CMAKE_PREFIX_PATH};}${brew_prefix}/opt/qt@6"
+    }
+  }
+
   local -a cmake_args=()
   local -a cmake_build_args=(--build)
   local -a cmake_install_args=(--install)

@@ -73,6 +73,43 @@ runs:
 
         .github/scripts/build-ubuntu ${build_args}
 
+    - name: Install Qt6 Test (Windows) 🧪
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        # Install Qt6 Test via vcpkg
+        # The obs-deps-qt6 prebuilds don't include Qt Test libraries
+        if ( $Env:RUNNER_DEBUG -ne $null ) {
+          $VerbosePreference = 'Continue'
+        }
+
+        # Check if vcpkg is available
+        $VcpkgRoot = $env:VCPKG_ROOT
+        if ( -not $VcpkgRoot ) {
+          # Try common vcpkg locations
+          $PossiblePaths = @(
+            "$env:ProgramFiles\vcpkg",
+            "$env:ProgramFiles(x86)\vcpkg",
+            "$env:LOCALAPPDATA\vcpkg",
+            "$env:USERPROFILE\vcpkg"
+          )
+          
+          foreach ( $Path in $PossiblePaths ) {
+            if ( Test-Path "$Path\vcpkg.exe" ) {
+              $VcpkgRoot = $Path
+              break
+            }
+          }
+        }
+
+        if ( $VcpkgRoot -and (Test-Path "$VcpkgRoot\vcpkg.exe") ) {
+          Write-Host "Installing qt6-test via vcpkg..."
+          & "$VcpkgRoot\vcpkg.exe" install qt6-test:x64-windows --triplet x64-windows
+        } else {
+          Write-Warning "vcpkg not found. Qt6 Test may not be available. The build may fail if Qt6::Test is required."
+          Write-Warning "Consider installing vcpkg or ensuring Qt6 Test is available in CMAKE_PREFIX_PATH."
+        }
+
     - name: Run Windows Build
       if: runner.os == 'Windows'
       shell: pwsh
