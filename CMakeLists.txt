@@ -199,21 +199,22 @@ endif()
 
 # Check if all required FFmpeg components were found
 if(NOT AVCODEC_FOUND OR NOT AVFORMAT_FOUND OR NOT AVUTIL_FOUND OR NOT SWSCALE_FOUND)
-  message(FATAL_ERROR "FFmpeg libraries are required but not found.")
-  message(FATAL_ERROR "Searched in:")
-  message(FATAL_ERROR "  - pkg-config")
-  foreach(path ${CMAKE_PREFIX_PATH})
-    message(FATAL_ERROR "  - ${path}")
-  endforeach()
-  message(FATAL_ERROR "  - System paths")
-  message(FATAL_ERROR "")
-  message(FATAL_ERROR "Please install FFmpeg development libraries:")
-  message(FATAL_ERROR "  macOS: brew install ffmpeg")
-  message(FATAL_ERROR "  Ubuntu: sudo apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev")
-  message(FATAL_ERROR "  Windows: Install FFmpeg and set CMAKE_PREFIX_PATH")
-  message(FATAL_ERROR "")
-  message(FATAL_ERROR "Note: FFmpeg should be available through OBS dependencies (obs-deps).")
-  message(FATAL_ERROR "If building in CI, ensure OBS dependencies are properly downloaded and extracted.")
+  message(
+    FATAL_ERROR
+    "FFmpeg libraries are required but not found.\n"
+    "Searched in:\n"
+    "  - pkg-config\n"
+    "  - CMAKE_PREFIX_PATH (OBS dependencies)\n"
+    "  - System paths\n"
+    "\n"
+    "Please install FFmpeg development libraries:\n"
+    "  macOS: brew install ffmpeg\n"
+    "  Ubuntu: sudo apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev\n"
+    "  Windows: Install FFmpeg and set CMAKE_PREFIX_PATH\n"
+    "\n"
+    "Note: FFmpeg should be available through OBS dependencies (obs-deps).\n"
+    "If building in CI, ensure OBS dependencies are properly downloaded and extracted."
+  )
 endif()
 
 message(STATUS "Found FFmpeg libraries")
