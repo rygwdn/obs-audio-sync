@@ -37,11 +37,11 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent)
 {
 	setWindowTitle("Audio Sync");
 	m_videoExtractor = new VideoExtractor();
-	
+
 	// Create central widget for QDockWidget
 	QWidget *centralWidget = new QWidget(this);
 	setWidget(centralWidget);
-	
+
 	setupUI();
 	refreshRecordings();
 }
