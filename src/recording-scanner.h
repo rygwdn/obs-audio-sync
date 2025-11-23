@@ -34,9 +34,9 @@ public:
 	~RecordingScanner();
 
 	QList<RecordingInfo> scanRecordings(double maxDurationSeconds = 15.0);
+	bool isValidVideoFile(const QString &filePath); // Public for testing
 
 private:
 	QString getRecordingPath();
-	bool isValidVideoFile(const QString &filePath);
 	double getFileDuration(const QString &filePath);
 };
