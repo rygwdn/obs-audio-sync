@@ -57,14 +57,7 @@ if(NOT AVCODEC_FOUND)
   foreach(path ${CMAKE_PREFIX_PATH})
     list(APPEND FFMPEG_SEARCH_PATHS "${path}/lib" "${path}")
   endforeach()
-  list(
-    APPEND
-    FFMPEG_SEARCH_PATHS
-    "${CMAKE_CURRENT_SOURCE_DIR}/.deps/lib"
-    /usr/local/lib
-    /opt/homebrew/lib
-    /usr/lib
-  )
+  list(APPEND FFMPEG_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/.deps/lib" /usr/local/lib /opt/homebrew/lib /usr/lib)
 
   set(FFMPEG_INCLUDE_PATHS)
   foreach(path ${CMAKE_PREFIX_PATH})
@@ -79,109 +72,33 @@ if(NOT AVCODEC_FOUND)
     /usr/include
   )
 
-  find_library(AVCODEC_LIBRARY
-    NAMES avcodec
-    PATHS ${FFMPEG_SEARCH_PATHS}
-    NO_DEFAULT_PATH
-  )
-  find_library(AVCODEC_LIBRARY
-    NAMES avcodec
-    PATHS
-      /usr/local/lib
-      /opt/homebrew/lib
-      /usr/lib
-  )
+  find_library(AVCODEC_LIBRARY NAMES avcodec PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
+  find_library(AVCODEC_LIBRARY NAMES avcodec PATHS /usr/local/lib /opt/homebrew/lib /usr/lib)
 
-  find_library(AVFORMAT_LIBRARY
-    NAMES avformat
-    PATHS ${FFMPEG_SEARCH_PATHS}
-    NO_DEFAULT_PATH
-  )
-  find_library(AVFORMAT_LIBRARY
-    NAMES avformat
-    PATHS
-      /usr/local/lib
-      /opt/homebrew/lib
-      /usr/lib
-  )
+  find_library(AVFORMAT_LIBRARY NAMES avformat PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
+  find_library(AVFORMAT_LIBRARY NAMES avformat PATHS /usr/local/lib /opt/homebrew/lib /usr/lib)
 
-  find_library(AVUTIL_LIBRARY
-    NAMES avutil
-    PATHS ${FFMPEG_SEARCH_PATHS}
-    NO_DEFAULT_PATH
-  )
-  find_library(AVUTIL_LIBRARY
-    NAMES avutil
-    PATHS
-      /usr/local/lib
-      /opt/homebrew/lib
-      /usr/lib
-  )
+  find_library(AVUTIL_LIBRARY NAMES avutil PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
+  find_library(AVUTIL_LIBRARY NAMES avutil PATHS /usr/local/lib /opt/homebrew/lib /usr/lib)
 
-  find_library(SWSCALE_LIBRARY
-    NAMES swscale
-    PATHS ${FFMPEG_SEARCH_PATHS}
-    NO_DEFAULT_PATH
-  )
-  find_library(SWSCALE_LIBRARY
-    NAMES swscale
-    PATHS
-      /usr/local/lib
-      /opt/homebrew/lib
-      /usr/lib
-  )
+  find_library(SWSCALE_LIBRARY NAMES swscale PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
+  find_library(SWSCALE_LIBRARY NAMES swscale PATHS /usr/local/lib /opt/homebrew/lib /usr/lib)
 
-  find_path(AVCODEC_INCLUDE_DIR
-    NAMES libavcodec/avcodec.h
-    PATHS ${FFMPEG_INCLUDE_PATHS}
-    NO_DEFAULT_PATH
-  )
-  find_path(AVCODEC_INCLUDE_DIR
-    NAMES libavcodec/avcodec.h
-    PATHS
-      /usr/local/include
-      /opt/homebrew/include
-      /usr/include
-  )
+  find_path(AVCODEC_INCLUDE_DIR NAMES libavcodec/avcodec.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
+  find_path(AVCODEC_INCLUDE_DIR NAMES libavcodec/avcodec.h PATHS /usr/local/include /opt/homebrew/include /usr/include)
 
-  find_path(AVFORMAT_INCLUDE_DIR
+  find_path(AVFORMAT_INCLUDE_DIR NAMES libavformat/avformat.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
+  find_path(
+    AVFORMAT_INCLUDE_DIR
     NAMES libavformat/avformat.h
-    PATHS ${FFMPEG_INCLUDE_PATHS}
-    NO_DEFAULT_PATH
-  )
-  find_path(AVFORMAT_INCLUDE_DIR
-    NAMES libavformat/avformat.h
-    PATHS
-      /usr/local/include
-      /opt/homebrew/include
-      /usr/include
+    PATHS /usr/local/include /opt/homebrew/include /usr/include
   )
 
-  find_path(AVUTIL_INCLUDE_DIR
-    NAMES libavutil/avutil.h
-    PATHS ${FFMPEG_INCLUDE_PATHS}
-    NO_DEFAULT_PATH
-  )
-  find_path(AVUTIL_INCLUDE_DIR
-    NAMES libavutil/avutil.h
-    PATHS
-      /usr/local/include
-      /opt/homebrew/include
-      /usr/include
-  )
+  find_path(AVUTIL_INCLUDE_DIR NAMES libavutil/avutil.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
+  find_path(AVUTIL_INCLUDE_DIR NAMES libavutil/avutil.h PATHS /usr/local/include /opt/homebrew/include /usr/include)
 
-  find_path(SWSCALE_INCLUDE_DIR
-    NAMES libswscale/swscale.h
-    PATHS ${FFMPEG_INCLUDE_PATHS}
-    NO_DEFAULT_PATH
-  )
-  find_path(SWSCALE_INCLUDE_DIR
-    NAMES libswscale/swscale.h
-    PATHS
-      /usr/local/include
-      /opt/homebrew/include
-      /usr/include
-  )
+  find_path(SWSCALE_INCLUDE_DIR NAMES libswscale/swscale.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
+  find_path(SWSCALE_INCLUDE_DIR NAMES libswscale/swscale.h PATHS /usr/local/include /opt/homebrew/include /usr/include)
 
   if(
     AVCODEC_LIBRARY
@@ -229,27 +146,25 @@ if(NOT AVCODEC_FOUND OR NOT AVFORMAT_FOUND OR NOT AVUTIL_FOUND OR NOT SWSCALE_FO
 endif()
 
 message(STATUS "Found FFmpeg libraries")
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-  ${AVCODEC_INCLUDE_DIRS}
-  ${AVFORMAT_INCLUDE_DIRS}
-  ${AVUTIL_INCLUDE_DIRS}
-  ${SWSCALE_INCLUDE_DIRS}
+target_include_directories(
+  ${CMAKE_PROJECT_NAME}
+  PRIVATE ${AVCODEC_INCLUDE_DIRS} ${AVFORMAT_INCLUDE_DIRS} ${AVUTIL_INCLUDE_DIRS} ${SWSCALE_INCLUDE_DIRS}
 )
 
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
-  ${AVCODEC_LIBRARIES}
-  ${AVFORMAT_LIBRARIES}
-  ${AVUTIL_LIBRARIES}
-  ${SWSCALE_LIBRARIES}
+target_link_libraries(
+  ${CMAKE_PROJECT_NAME}
+  PRIVATE ${AVCODEC_LIBRARIES} ${AVFORMAT_LIBRARIES} ${AVUTIL_LIBRARIES} ${SWSCALE_LIBRARIES}
 )
 
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-  src/plugin-main.cpp
-  src/audio-sync-panel.cpp
-  src/recording-scanner.cpp
-  src/audio-analyzer.cpp
-  src/timeline-widget.cpp
-  src/video-extractor.cpp
+target_sources(
+  ${CMAKE_PROJECT_NAME}
+  PRIVATE
+    src/plugin-main.cpp
+    src/audio-sync-panel.cpp
+    src/recording-scanner.cpp
+    src/audio-analyzer.cpp
+    src/timeline-widget.cpp
+    src/video-extractor.cpp
 )
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
@@ -264,61 +179,47 @@ if(ENABLE_QT)
   find_package(Qt6 COMPONENTS Test REQUIRED)
 
   # Test executable
-  add_executable(${CMAKE_PROJECT_NAME}-tests
+  add_executable(
+    ${CMAKE_PROJECT_NAME}-tests
     tests/test-recording-scanner-standalone.cpp
     tests/test-timeline-widget.cpp
     tests/test-audio-analyzer.cpp
   )
 
   # Link test dependencies
-  target_link_libraries(${CMAKE_PROJECT_NAME}-tests PRIVATE
-    Qt6::Core
-    Qt6::Widgets
-    Qt6::Test
-  )
+  target_link_libraries(${CMAKE_PROJECT_NAME}-tests PRIVATE Qt6::Core Qt6::Widgets Qt6::Test)
 
   # Link against plugin sources (for testing)
   # Note: recording-scanner.cpp requires obs-frontend-api which may not be available
   # in test environment, so we only test the public isValidVideoFile method
-  target_sources(${CMAKE_PROJECT_NAME}-tests PRIVATE
-    src/recording-scanner.cpp
-    src/timeline-widget.cpp
-    src/audio-analyzer.cpp
+  target_sources(
+    ${CMAKE_PROJECT_NAME}-tests
+    PRIVATE src/recording-scanner.cpp src/timeline-widget.cpp src/audio-analyzer.cpp
   )
 
   # Link OBS libraries if available (optional for tests)
   if(ENABLE_FRONTEND_API)
-    target_link_libraries(${CMAKE_PROJECT_NAME}-tests PRIVATE
-      OBS::obs-frontend-api
-    )
+    target_link_libraries(${CMAKE_PROJECT_NAME}-tests PRIVATE OBS::obs-frontend-api)
   endif()
 
   # Include directories
-  target_include_directories(${CMAKE_PROJECT_NAME}-tests PRIVATE
-    src
-  )
+  target_include_directories(${CMAKE_PROJECT_NAME}-tests PRIVATE src)
 
   # Link FFmpeg libraries if available
   if(AVCODEC_FOUND AND AVFORMAT_FOUND AND AVUTIL_FOUND AND SWSCALE_FOUND)
-    target_include_directories(${CMAKE_PROJECT_NAME}-tests PRIVATE
-      ${AVCODEC_INCLUDE_DIRS}
-      ${AVFORMAT_INCLUDE_DIRS}
-      ${AVUTIL_INCLUDE_DIRS}
-      ${SWSCALE_INCLUDE_DIRS}
+    target_include_directories(
+      ${CMAKE_PROJECT_NAME}-tests
+      PRIVATE ${AVCODEC_INCLUDE_DIRS} ${AVFORMAT_INCLUDE_DIRS} ${AVUTIL_INCLUDE_DIRS} ${SWSCALE_INCLUDE_DIRS}
     )
 
-    target_link_libraries(${CMAKE_PROJECT_NAME}-tests PRIVATE
-      ${AVCODEC_LIBRARIES}
-      ${AVFORMAT_LIBRARIES}
-      ${AVUTIL_LIBRARIES}
-      ${SWSCALE_LIBRARIES}
+    target_link_libraries(
+      ${CMAKE_PROJECT_NAME}-tests
+      PRIVATE ${AVCODEC_LIBRARIES} ${AVFORMAT_LIBRARIES} ${AVUTIL_LIBRARIES} ${SWSCALE_LIBRARIES}
     )
   endif()
 
   # Set test properties
-  set_target_properties(${CMAKE_PROJECT_NAME}-tests PROPERTIES
-    AUTOMOC ON
-  )
+  set_target_properties(${CMAKE_PROJECT_NAME}-tests PROPERTIES AUTOMOC ON)
 
   # Add test
   add_test(NAME ${CMAKE_PROJECT_NAME}-tests COMMAND ${CMAKE_PROJECT_NAME}-tests)
