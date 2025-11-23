@@ -21,8 +21,13 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QWidget>
 #include <QListWidget>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QLabel>
+#include "timeline-widget.h"
+#include "video-extractor.h"
+#include "audio-analyzer.h"
 
 class AudioSyncPanel : public QWidget {
 	Q_OBJECT
@@ -36,13 +41,35 @@ public:
 private slots:
 	void onRecordingSelected(QListWidgetItem *item);
 	void onRefreshClicked();
+	void onSpikePositionChanged(double timestamp);
+	void onPrevFrameClicked();
+	void onNextFrameClicked();
 
 private:
 	void setupUI();
 	void scanRecordings();
+	void loadRecording(const QString &filePath);
+	void updateFrameDisplay();
+	void updateSyncDisplay();
 
 	QListWidget *m_recordingList;
 	QLabel *m_statusLabel;
 	QPushButton *m_refreshButton;
 	QVBoxLayout *m_layout;
+
+	// Analysis components
+	TimelineWidget *m_timelineWidget;
+	QLabel *m_frameLabel;
+	QPushButton *m_prevFrameButton;
+	QPushButton *m_nextFrameButton;
+	QLabel *m_frameInfoLabel;
+	QLabel *m_syncOffsetLabel;
+
+	// Data
+	QString m_currentRecording;
+	AudioSpike m_currentSpike;
+	QVector<VideoFrame> m_frames;
+	int m_currentFrameIndex;
+	double m_videoFPS;
+	VideoExtractor *m_videoExtractor;
 };

@@ -23,13 +23,23 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QDateTime>
 #include <QMessageBox>
 
-AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QWidget(parent)
+AudioSyncPanel::AudioSyncPanel(QWidget *parent)
+	: QWidget(parent), m_timelineWidget(nullptr), m_frameLabel(nullptr),
+	  m_prevFrameButton(nullptr), m_nextFrameButton(nullptr),
+	  m_frameInfoLabel(nullptr), m_syncOffsetLabel(nullptr),
+	  m_currentFrameIndex(-1), m_videoFPS(30.0), m_videoExtractor(nullptr)
 {
+	m_videoExtractor = new VideoExtractor();
 	setupUI();
 	refreshRecordings();
 }
 
-AudioSyncPanel::~AudioSyncPanel() {}
+AudioSyncPanel::~AudioSyncPanel()
+{
+	if (m_videoExtractor) {
+		delete m_videoExtractor;
+	}
+}
 
 void AudioSyncPanel::setupUI()
 {
@@ -52,11 +62,57 @@ void AudioSyncPanel::setupUI()
 	// Recording list
 	m_recordingList = new QListWidget(this);
 	m_recordingList->setSelectionMode(QAbstractItemView::SingleSelection);
+	m_recordingList->setMaximumHeight(100);
 	m_layout->addWidget(m_recordingList);
 
 	// Refresh button
 	m_refreshButton = new QPushButton("Refresh", this);
 	m_layout->addWidget(m_refreshButton);
+
+	// Timeline widget
+	QLabel *timelineLabel = new QLabel("Timeline:", this);
+	m_layout->addWidget(timelineLabel);
+	m_timelineWidget = new TimelineWidget(this);
+	m_timelineWidget->setVisible(false);
+	m_layout->addWidget(m_timelineWidget);
+
+	// Video frame display
+	QLabel *frameLabel = new QLabel("Video Frame:", this);
+	m_layout->addWidget(frameLabel);
+	m_frameLabel = new QLabel(this);
+	m_frameLabel->setMinimumHeight(200);
+	m_frameLabel->setAlignment(Qt::AlignCenter);
+	m_frameLabel->setStyleSheet("background-color: black; border: 1px solid gray;");
+	m_frameLabel->setText("No frame loaded");
+	m_frameLabel->setVisible(false);
+	m_layout->addWidget(m_frameLabel);
+
+	// Frame navigation
+	QHBoxLayout *navLayout = new QHBoxLayout();
+	m_prevFrameButton = new QPushButton("< Prev", this);
+	m_prevFrameButton->setEnabled(false);
+	m_prevFrameButton->setVisible(false);
+	m_nextFrameButton = new QPushButton("Next >", this);
+	m_nextFrameButton->setEnabled(false);
+	m_nextFrameButton->setVisible(false);
+	navLayout->addWidget(m_prevFrameButton);
+	navLayout->addStretch();
+	navLayout->addWidget(m_nextFrameButton);
+	m_layout->addLayout(navLayout);
+
+	// Frame info
+	m_frameInfoLabel = new QLabel("", this);
+	m_frameInfoLabel->setVisible(false);
+	m_layout->addWidget(m_frameInfoLabel);
+
+	// Sync offset display
+	m_syncOffsetLabel = new QLabel("", this);
+	QFont syncFont = m_syncOffsetLabel->font();
+	syncFont.setPointSize(12);
+	syncFont.setBold(true);
+	m_syncOffsetLabel->setFont(syncFont);
+	m_syncOffsetLabel->setVisible(false);
+	m_layout->addWidget(m_syncOffsetLabel);
 
 	// Status label
 	m_statusLabel = new QLabel("Ready", this);
@@ -68,6 +124,12 @@ void AudioSyncPanel::setupUI()
 		&AudioSyncPanel::onRecordingSelected);
 	connect(m_refreshButton, &QPushButton::clicked, this,
 		&AudioSyncPanel::onRefreshClicked);
+	connect(m_timelineWidget, &TimelineWidget::spikePositionChanged, this,
+		&AudioSyncPanel::onSpikePositionChanged);
+	connect(m_prevFrameButton, &QPushButton::clicked, this,
+		&AudioSyncPanel::onPrevFrameClicked);
+	connect(m_nextFrameButton, &QPushButton::clicked, this,
+		&AudioSyncPanel::onNextFrameClicked);
 }
 
 void AudioSyncPanel::refreshRecordings()
@@ -105,20 +167,137 @@ void AudioSyncPanel::onRecordingSelected(QListWidgetItem *item)
 	}
 
 	QString filePath = item->data(Qt::UserRole).toString();
+	loadRecording(filePath);
+}
+
+void AudioSyncPanel::loadRecording(const QString &filePath)
+{
+	m_currentRecording = filePath;
 	m_statusLabel->setText(QString("Analyzing: %1...").arg(QFileInfo(filePath).fileName()));
 
 	// Analyze audio and find spike
 	AudioAnalyzer analyzer;
-	AudioSpike spike;
-	if (analyzer.analyzeFile(filePath, spike)) {
-		m_statusLabel->setText(QString("Spike found at %1s (amplitude: %2)")
-					  .arg(spike.timestamp, 0, 'f', 3)
-					  .arg(spike.amplitude, 0, 'f', 3));
-		// TODO: Phase 3 - Display timeline and video frames
-	} else {
+	if (!analyzer.analyzeFile(filePath, m_currentSpike)) {
 		m_statusLabel->setText("Failed to analyze audio");
 		QMessageBox::warning(this, "Analysis Failed",
 				      "Could not analyze audio from recording.");
+		return;
+	}
+
+	// Get audio samples for timeline
+	QVector<AudioSample> samples = analyzer.getAudioSamples(
+		filePath, m_currentSpike.windowStart, m_currentSpike.windowEnd);
+
+	// Open video file
+	if (!m_videoExtractor->openFile(filePath)) {
+		m_statusLabel->setText("Failed to open video");
+		QMessageBox::warning(this, "Video Error",
+				      "Could not open video from recording.");
+		return;
+	}
+
+	m_videoFPS = m_videoExtractor->getFPS();
+	m_timelineWidget->setFPS(m_videoFPS);
+	m_timelineWidget->setAudioSamples(samples);
+	m_timelineWidget->setSpikePosition(m_currentSpike.timestamp);
+	m_timelineWidget->setVisible(true);
+
+	// Extract frames
+	m_statusLabel->setText("Extracting frames...");
+	m_frames = m_videoExtractor->extractFrames(m_currentSpike.windowStart,
+						   m_currentSpike.windowEnd);
+	m_currentFrameIndex = 0;
+
+	// Show UI components
+	m_frameLabel->setVisible(true);
+	m_prevFrameButton->setVisible(true);
+	m_nextFrameButton->setVisible(true);
+	m_frameInfoLabel->setVisible(true);
+	m_syncOffsetLabel->setVisible(true);
+
+	updateFrameDisplay();
+	updateSyncDisplay();
+
+	m_statusLabel->setText(QString("Spike found at %1s")
+				  .arg(m_currentSpike.timestamp, 0, 'f', 3));
+}
+
+void AudioSyncPanel::updateFrameDisplay()
+{
+	if (m_frames.isEmpty() || m_currentFrameIndex < 0 ||
+	    m_currentFrameIndex >= m_frames.size()) {
+		m_frameLabel->setText("No frame available");
+		m_prevFrameButton->setEnabled(false);
+		m_nextFrameButton->setEnabled(false);
+		return;
+	}
+
+	const VideoFrame &frame = m_frames[m_currentFrameIndex];
+	QPixmap scaledPixmap = frame.pixmap.scaled(m_frameLabel->size(),
+						    Qt::KeepAspectRatio,
+						    Qt::SmoothTransformation);
+	m_frameLabel->setPixmap(scaledPixmap);
+
+	m_frameInfoLabel->setText(
+		QString("Frame %1/%2 - Time: %3s")
+			.arg(m_currentFrameIndex + 1)
+			.arg(m_frames.size())
+			.arg(frame.timestamp, 0, 'f', 3));
+
+	m_prevFrameButton->setEnabled(m_currentFrameIndex > 0);
+	m_nextFrameButton->setEnabled(m_currentFrameIndex < m_frames.size() - 1);
+
+	updateSyncDisplay();
+}
+
+void AudioSyncPanel::updateSyncDisplay()
+{
+	if (m_frames.isEmpty() || m_currentFrameIndex < 0 ||
+	    m_currentFrameIndex >= m_frames.size()) {
+		return;
+	}
+
+	const VideoFrame &frame = m_frames[m_currentFrameIndex];
+	double timeDiff = frame.timestamp - m_currentSpike.timestamp;
+	double frameDiff = timeDiff * m_videoFPS;
+
+	QString syncText = QString("Sync Offset: %1ms (%2 frames)")
+				   .arg(timeDiff * 1000.0, 0, 'f', 1)
+				   .arg(frameDiff, 0, 'f', 2);
+
+	// Color coding
+	QString color = "white";
+	if (qAbs(frameDiff) < 1.0) {
+		color = "green"; // In sync
+	} else if (qAbs(frameDiff) < 3.0) {
+		color = "yellow"; // Close
+	} else {
+		color = "red"; // Out of sync
+	}
+
+	m_syncOffsetLabel->setText(syncText);
+	m_syncOffsetLabel->setStyleSheet(QString("color: %1;").arg(color));
+}
+
+void AudioSyncPanel::onSpikePositionChanged(double timestamp)
+{
+	m_currentSpike.timestamp = timestamp;
+	updateSyncDisplay();
+}
+
+void AudioSyncPanel::onPrevFrameClicked()
+{
+	if (m_currentFrameIndex > 0) {
+		m_currentFrameIndex--;
+		updateFrameDisplay();
+	}
+}
+
+void AudioSyncPanel::onNextFrameClicked()
+{
+	if (m_currentFrameIndex < m_frames.size() - 1) {
+		m_currentFrameIndex++;
+		updateFrameDisplay();
 	}
 }
 
