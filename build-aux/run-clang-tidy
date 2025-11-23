@@ -90,6 +90,10 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
     clang_tidy=clang-tidy-19
   } elif (( ${+commands[clang-tidy]} )) {
     clang_tidy=clang-tidy
+  } elif [[ -x /opt/homebrew/opt/llvm/bin/clang-tidy ]] {
+    clang_tidy=/opt/homebrew/opt/llvm/bin/clang-tidy
+  } elif [[ -x /usr/local/opt/llvm/bin/clang-tidy ]] {
+    clang_tidy=/usr/local/opt/llvm/bin/clang-tidy
   } else {
     log_error "No viable clang-tidy version found"
     exit 2
@@ -149,7 +153,7 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
   if (( num_failures && fail_on_error == 1 )) {
     log_error "Found ${num_failures} file(s) with linting issues"
     return 2
-  } elseif (( num_failures )) {
+  } elif (( num_failures )) {
     log_warning "Found ${num_failures} file(s) with linting issues"
   } else {
     log_info "All files passed linting checks"
