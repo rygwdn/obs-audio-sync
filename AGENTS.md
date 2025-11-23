@@ -246,10 +246,12 @@ build-aux/
 ```
 
 This script runs:
-- Code formatting check (clang-format)
-- CMake formatting check (gersemi)
-- Code linting check (clang-tidy)
-- Test suite (if build directory exists)
+- Code formatting (clang-format) - automatically fixes formatting issues
+- CMake formatting (gersemi) - automatically fixes CMake formatting issues
+- Code linting (clang-tidy) - automatically fixes linting issues where possible
+- Test suite - **must exist and pass** (missing tests are considered a failure)
+
+**Important**: The script uses fix mode for formatting and linting, so it will automatically correct issues where possible. However, unfixable linting issues and missing/failing tests will cause the script to fail.
 
 If any check fails, fix the issues before committing. The script will exit with a non-zero status if any checks fail.
 

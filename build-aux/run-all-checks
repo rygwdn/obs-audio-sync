@@ -79,6 +79,15 @@ Usage: %B${functrace[1]%:*}%b <option>
 
   set_loglevel ${verbosity}
 
+  # Get project name from buildspec.json
+  local project_name="obs-audio-sync"
+  if [[ -f ${project_root}/buildspec.json ]]; then
+    local buildspec_name=$(grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' ${project_root}/buildspec.json | head -1 | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+    if [[ -n ${buildspec_name} ]]; then
+      project_name=${buildspec_name}
+    fi
+  fi
+
   local -i num_failures=0
   local -i total_checks=0
 
@@ -116,71 +125,11 @@ Usage: %B${functrace[1]%:*}%b <option>
   if (( ! skip_linting )) {
     (( total_checks += 1 ))
     log_info "Linting code (with auto-fix)..."
-    # Run clang-tidy with --fix to auto-fix issues
-    # First, find clang-tidy
-    local clang_tidy=""
-    if (( ${+commands[clang-tidy-19]} )) {
-      clang_tidy=clang-tidy-19
-    } elif (( ${+commands[clang-tidy]} )) {
-      clang_tidy=clang-tidy
-    } elif [[ -x /opt/homebrew/opt/llvm/bin/clang-tidy ]] {
-      clang_tidy=/opt/homebrew/opt/llvm/bin/clang-tidy
-    } elif [[ -x /usr/local/opt/llvm/bin/clang-tidy ]] {
-      clang_tidy=/usr/local/opt/llvm/bin/clang-tidy
-    } else {
-      log_error "clang-tidy not found"
+    if ! "${SCRIPT_HOME}/run-clang-tidy" --fix --fail-error; then
+      log_error "Code linting failed"
       num_failures=$(( num_failures + 1 ))
-    }
-    
-    if [[ -n ${clang_tidy} ]]; then
-      # Generate compile_commands.json if needed
-      local compile_commands="${project_root}/compile_commands.json"
-      if [[ ! -f ${compile_commands} ]]; then
-        log_info "Generating compile_commands.json..."
-        local build_dir="${project_root}/build_lint"
-        mkdir -p ${build_dir}
-        cd ${build_dir}
-        cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${project_root} > /dev/null 2>&1
-        if [[ -f ${build_dir}/compile_commands.json ]]; then
-          cp ${build_dir}/compile_commands.json ${compile_commands}
-        fi
-        cd ${project_root}
-      fi
-      
-      # Get source files
-      local -a source_files=(src/**/*.(c|cpp|h|hpp)(.N))
-      local -i lint_failures=0
-      
-      for file (${source_files}) {
-        log_info "Linting ${file}..."
-        local -a tidy_args=(
-          -p ${project_root}
-          --config-file=${project_root}/.clang-tidy
-          --fix
-          --fix-errors
-        )
-        local output=$(${clang_tidy} ${tidy_args} ${file} 2>&1)
-        # Check if there are remaining issues after fixing
-        # Re-run without --fix to check for unfixable issues
-        local -a check_args=(
-          -p ${project_root}
-          --config-file=${project_root}/.clang-tidy
-          --warnings-as-errors=*
-        )
-        local check_output=$(${clang_tidy} ${check_args} ${file} 2>&1)
-        if (( ${#check_output} > 0 )); then
-          log_error "${file} has unfixable linting issues:"
-          print -u2 "${check_output}"
-          lint_failures=$(( lint_failures + 1 ))
-        fi
-      }
-      
-      if (( lint_failures > 0 )); then
-        log_error "Code linting failed (${lint_failures} file(s) with unfixable issues)"
-        num_failures=$(( num_failures + 1 ))
-      else
-        log_status "Code linting completed (auto-fixed issues where possible)"
-      fi
+    else
+      log_status "Code linting completed (auto-fixed issues where possible)"
     fi
   } else {
     log_info "Skipping code linting"
@@ -214,35 +163,135 @@ Usage: %B${functrace[1]%:*}%b <option>
         ;;
     }
 
+    # Build tests if build directory doesn't exist or tests aren't built
     if [[ -z ${build_dir} ]] || [[ ! -d ${build_dir} ]]; then
-      log_error "Build directory not found (${build_dir}). Tests require a build."
-      log_info "To build the project, run: cmake --preset ${host_os} && cmake --build ${build_dir}"
-      num_failures=$(( num_failures + 1 ))
-    else
+      log_info "Build directory not found. Configuring and building tests..."
+      build_dir="${project_root}/build_macos"
+      case ${host_os} {
+        macos)
+          build_dir="${project_root}/build_macos"
+          ;;
+        linux)
+          build_dir="${project_root}/build_x86_64"
+          ;;
+        windows)
+          build_dir="${project_root}/build_x64"
+          ;;
+      }
+      mkdir -p ${build_dir}
+      cd ${build_dir}
+      log_info "Configuring build with CMake..."
+      if ! cmake --preset ${host_os} 2>&1; then
+        log_error "Failed to configure build"
+        cd ${project_root}
+        num_failures=$(( num_failures + 1 ))
+      else
+        log_info "Building tests..."
+        if ! cmake --build ${build_dir} --target ${project_name}-tests 2>&1; then
+          log_error "Failed to build tests"
+          cd ${project_root}
+          num_failures=$(( num_failures + 1 ))
+        else
+          cd ${project_root}
+        fi
+      fi
+    fi
+    
+    # Now run tests
+    if [[ -d ${build_dir} ]]; then
       log_info "Running tests from ${build_dir}..."
       cd ${build_dir}
       
       # Try to run tests with ctest
       if command -v ctest > /dev/null 2>&1; then
-        if ctest --output-on-failure; then
-          log_status "Tests passed"
+        # Check if any tests are registered
+        local test_output=$(ctest -N 2>&1)
+        # Check for "No tests were found" message
+        if echo ${test_output} | grep -q "No tests were found"; then
+          log_info "No tests found. Attempting to build tests..."
+          if cmake --build ${build_dir} --target ${project_name}-tests 2>&1; then
+            # Check again after building
+            test_output=$(ctest -N 2>&1)
+            if echo ${test_output} | grep -q "No tests were found"; then
+              log_error "No tests found after building. Tests may not be enabled."
+              log_info "To enable tests, ensure Qt6 Test is available and rebuild the project."
+              num_failures=$(( num_failures + 1 ))
+            else
+              log_info "Tests found after building. Running tests..."
+              if ctest --output-on-failure; then
+                log_status "Tests passed"
+              else
+                log_error "Tests failed"
+                num_failures=$(( num_failures + 1 ))
+              fi
+            fi
+          else
+            log_error "Failed to build tests. Tests may not be enabled."
+            log_info "To enable tests, ensure Qt6 Test is available."
+            num_failures=$(( num_failures + 1 ))
+          fi
         else
-          log_error "Tests failed"
-          num_failures=$(( num_failures + 1 ))
+          # Count test lines
+          local test_count=$(echo ${test_output} | grep -c "Test #" 2>/dev/null)
+          if (( test_count == 0 )); then
+            log_info "No tests found. Attempting to build tests..."
+            if cmake --build ${build_dir} --target ${project_name}-tests 2>&1; then
+              test_output=$(ctest -N 2>&1)
+              test_count=$(echo ${test_output} | grep -c "Test #" 2>/dev/null)
+              if (( test_count == 0 )); then
+                log_error "No tests found after building. Tests may not be enabled."
+                log_info "To enable tests, ensure Qt6 Test is available."
+                num_failures=$(( num_failures + 1 ))
+              else
+                log_info "Tests found after building. Running tests..."
+                if ctest --output-on-failure; then
+                  log_status "Tests passed"
+                else
+                  log_error "Tests failed"
+                  num_failures=$(( num_failures + 1 ))
+                fi
+              fi
+            else
+              log_error "Failed to build tests. Tests may not be enabled."
+              log_info "To enable tests, ensure Qt6 Test is available."
+              num_failures=$(( num_failures + 1 ))
+            fi
+          else
+            # Build tests if needed before running
+            log_info "Building tests if needed..."
+            cmake --build ${build_dir} --target ${project_name}-tests > /dev/null 2>&1
+            if ctest --output-on-failure; then
+              log_status "Tests passed"
+            else
+              log_error "Tests failed"
+              num_failures=$(( num_failures + 1 ))
+            fi
+          fi
         fi
       else
         log_warning "ctest not found. Trying to run test executable directly..."
         
         # Try common test executable names
         local -a test_names=(
+          "${project_name}-tests"
           "obs-audio-sync-tests"
           "plugintemplate-for-obs-tests"
         )
         
         local test_executable=""
         for name in ${test_names}; do
-          if [[ -f ${build_dir}/${name} ]] || [[ -f ${build_dir}/${name}.exe ]]; then
-            test_executable=${build_dir}/${name}
+          # Check in various build config directories
+          for config_dir in "RelWithDebInfo" "Debug" "Release" ""; do
+            local test_path="${build_dir}"
+            if [[ -n ${config_dir} ]]; then
+              test_path="${build_dir}/${config_dir}"
+            fi
+            if [[ -f ${test_path}/${name} ]] || [[ -f ${test_path}/${name}.exe ]]; then
+              test_executable="${test_path}/${name}"
+              break
+            fi
+          done
+          if [[ -n ${test_executable} ]]; then
             break
           fi
         done
@@ -255,12 +304,47 @@ Usage: %B${functrace[1]%:*}%b <option>
             num_failures=$(( num_failures + 1 ))
           fi
         else
-          log_error "Test executable not found. Tests may not be enabled or project needs to be built."
-          log_info "To enable tests, ensure Qt6 Test is available and rebuild the project."
-          num_failures=$(( num_failures + 1 ))
+          log_error "Test executable not found. Attempting to build..."
+          if cmake --build ${build_dir} --target ${project_name}-tests 2>&1; then
+            # Try to find it again after building
+            for name in ${test_names}; do
+              for config_dir in "RelWithDebInfo" "Debug" "Release" ""; do
+                local test_path="${build_dir}"
+                if [[ -n ${config_dir} ]]; then
+                  test_path="${build_dir}/${config_dir}"
+                fi
+                if [[ -f ${test_path}/${name} ]] || [[ -f ${test_path}/${name}.exe ]]; then
+                  test_executable="${test_path}/${name}"
+                  break
+                fi
+              done
+              if [[ -n ${test_executable} ]]; then
+                break
+              fi
+            done
+            if [[ -n ${test_executable} ]]; then
+              if ${test_executable}; then
+                log_status "Tests passed"
+              else
+                log_error "Tests failed"
+                num_failures=$(( num_failures + 1 ))
+              fi
+            else
+              log_error "Test executable still not found after building. Tests may not be enabled."
+              log_info "To enable tests, ensure Qt6 Test is available."
+              num_failures=$(( num_failures + 1 ))
+            fi
+          else
+            log_error "Failed to build tests. Tests may not be enabled."
+            log_info "To enable tests, ensure Qt6 Test is available."
+            num_failures=$(( num_failures + 1 ))
+          fi
         fi
       fi
       cd ${project_root}
+    else
+      log_error "Build directory not found after configuration attempt."
+      num_failures=$(( num_failures + 1 ))
     fi
   } else {
     log_info "Skipping tests"

@@ -85,12 +85,14 @@ Before committing, run all checks to ensure everything passes:
 ```
 
 This script runs:
-- Code formatting check (clang-format)
-- CMake formatting check (gersemi)
-- Code linting check (clang-tidy)
-- Test suite (if build directory exists)
+- Code formatting (clang-format) - automatically fixes formatting issues
+- CMake formatting (gersemi) - automatically fixes CMake formatting issues
+- Code linting (clang-tidy) - automatically fixes linting issues where possible
+- Test suite - **must exist and pass** (missing tests are considered a failure)
 
 **All checks must pass before committing.** The script will exit with a non-zero status if any checks fail.
+
+**Note**: The script uses fix mode, so it will automatically correct formatting and linting issues where possible. However, unfixable linting issues and missing/failing tests will cause the script to fail.
 
 You can skip specific checks if needed:
 ```bash
