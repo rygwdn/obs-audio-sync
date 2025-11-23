@@ -1,59 +1,166 @@
-# OBS Plugin Template
+# OBS Audio Sync Plugin
 
-## Introduction
+A plugin for OBS Studio that helps users identify and correct audio/video synchronization issues in their recordings by analyzing audio spikes and correlating them with video frames.
 
-The plugin template is meant to be used as a starting point for OBS Studio plugin development. It includes:
+## Features
 
-* Boilerplate plugin source code
-* A CMake project file
-* GitHub Actions workflows and repository actions
+- **Recording Discovery**: Automatically scans and lists recordings under a configurable duration threshold (default: 15 seconds)
+- **Audio Spike Detection**: Automatically finds the largest audio spike in recordings using FFmpeg
+- **Timeline Visualization**: Interactive timeline showing:
+  - Audio waveform visualization
+  - Frame markers based on video FPS
+  - Time markers
+  - Clickable/draggable spike position indicator
+- **Video Frame Navigation**: Browse video frames in a 4-second window around the audio spike
+- **Sync Calculation**: Real-time display of time and frame difference between audio spike and selected video frame
+- **Visual Feedback**: Color-coded sync status (green/yellow/red) based on offset magnitude
 
-## Supported Build Environments
+## Requirements
 
-| Platform  | Tool   |
-|-----------|--------|
-| Windows   | Visal Studio 17 2022 |
-| macOS     | XCode 16.0 |
-| Windows, macOS  | CMake 3.30.5 |
-| Ubuntu 24.04 | CMake 3.28.3 |
-| Ubuntu 24.04 | `ninja-build` |
-| Ubuntu 24.04 | `pkg-config`
-| Ubuntu 24.04 | `build-essential` |
+- OBS Studio 31.1.1 or later
+- Qt6
+- FFmpeg/libav libraries (libavformat, libavcodec, libavutil, libswscale)
 
-## Quick Start
+## Building
 
-An absolute bare-bones [Quick Start Guide](https://github.com/obsproject/obs-plugintemplate/wiki/Quick-Start-Guide) is available in the wiki.
+### Prerequisites
 
-## Documentation
+- CMake 3.28 or later
+- OBS Studio development libraries
+- Qt6 development libraries
+- FFmpeg/libav development libraries
+- Platform-specific build tools:
+  - **macOS**: Xcode 16.0+
+  - **Windows**: Visual Studio 2022
+  - **Linux**: GCC/Clang, pkg-config, build-essential
 
-All documentation can be found in the [Plugin Template Wiki](https://github.com/obsproject/obs-plugintemplate/wiki).
+### Build Steps
 
-Suggested reading to get up and running:
+1. Clone the repository:
+```bash
+git clone https://github.com/rygwdn/obs-audio-sync.git
+cd obs-audio-sync
+```
 
-* [Getting started](https://github.com/obsproject/obs-plugintemplate/wiki/Getting-Started)
-* [Build system requirements](https://github.com/obsproject/obs-plugintemplate/wiki/Build-System-Requirements)
-* [Build system options](https://github.com/obsproject/obs-plugintemplate/wiki/CMake-Build-System-Options)
+2. Configure the build:
+```bash
+# macOS
+cmake --preset macos
 
-## GitHub Actions & CI
+# Windows
+cmake --preset windows-x64
 
-Default GitHub Actions workflows are available for the following repository actions:
+# Linux
+cmake --preset ubuntu-x86_64
+```
 
-* `push`: Run for commits or tags pushed to `master` or `main` branches.
-* `pr-pull`: Run when a Pull Request has been pushed or synchronized.
-* `dispatch`: Run when triggered by the workflow dispatch in GitHub's user interface.
-* `build-project`: Builds the actual project and is triggered by other workflows.
-* `check-format`: Checks CMake and plugin source code formatting and is triggered by other workflows.
+3. Build:
+```bash
+cmake --build build_macos  # or your platform's build directory
+```
 
-The workflows make use of GitHub repository actions (contained in `.github/actions`) and build scripts (contained in `.github/scripts`) which are not needed for local development, but might need to be adjusted if additional/different steps are required to build the plugin.
+4. Install:
+The plugin will be built to `rundir/RelWithDebInfo/` (or your build configuration directory).
 
-### Retrieving build artifacts
+## Usage
 
-Successful builds on GitHub Actions will produce build artifacts that can be downloaded for testing. These artifacts are commonly simple archives and will not contain package installers or installation programs.
+1. **Open OBS Studio** and ensure the plugin is loaded
+2. **Access the panel**: The "Audio Sync" panel should appear in OBS (View → Docks → Audio Sync)
+3. **Select a recording**: Double-click on a recording from the list (recordings under 15 seconds)
+4. **Review the analysis**:
+   - The timeline shows the audio waveform and detected spike
+   - Navigate through video frames using Previous/Next buttons
+   - The sync offset is displayed in real-time
+5. **Adjust spike position**: Click or drag the spike marker on the timeline to fine-tune
+6. **Identify sync issues**: Use the color-coded offset display to see if audio and video are in sync
 
-### Building a Release
+## Development
 
-To create a release, an appropriately named tag needs to be pushed to the `main`/`master` branch using semantic versioning (e.g., `12.3.4`, `23.4.5-beta2`). A draft release will be created on the associated repository with generated installer packages or installation programs attached as release artifacts.
+### Code Formatting
 
-## Signing and Notarizing on macOS
+This project uses `clang-format` for code formatting. Format your code before committing:
 
-Basic concepts of codesigning and notarization on macOS are explained in the correspodning [Wiki article](https://github.com/obsproject/obs-plugintemplate/wiki/Codesigning-On-macOS) which has a specific section for the [GitHub Actions setup](https://github.com/obsproject/obs-plugintemplate/wiki/Codesigning-On-macOS#setting-up-code-signing-for-github-actions).
+```bash
+./build-aux/run-clang-format
+```
+
+Check formatting without making changes:
+```bash
+./build-aux/run-clang-format --check
+```
+
+### Code Linting
+
+This project uses `clang-tidy` for static analysis:
+
+```bash
+./build-aux/run-clang-tidy --check
+```
+
+### Running Tests
+
+After building, run the test suite:
+
+```bash
+ctest
+# or directly
+./build/obs-audio-sync-tests
+```
+
+### Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on:
+- Code formatting standards
+- Linting requirements
+- Testing requirements
+- Pull request process
+
+## Architecture
+
+### Components
+
+- **AudioSyncPanel**: Main Qt widget panel for OBS
+- **RecordingScanner**: Discovers and filters recordings by duration
+- **AudioAnalyzer**: Extracts audio samples and detects spikes using FFmpeg
+- **TimelineWidget**: Custom widget for timeline visualization
+- **VideoExtractor**: Extracts video frames using FFmpeg
+
+### Dependencies
+
+- **Qt6**: Core and Widgets for UI
+- **obs-frontend-api**: OBS Studio frontend API for panel integration
+- **FFmpeg/libav**: Audio and video processing
+  - libavformat: Container format reading
+  - libavcodec: Audio/video decoding
+  - libavutil: Utilities
+  - libswscale: Image scaling/conversion
+
+## Implementation Plan
+
+See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for detailed implementation documentation.
+
+## Future Enhancements
+
+- Automatic frame detection using computer vision
+- Direct audio offset adjustment on OBS audio sources
+- Batch processing for multiple recordings
+- Advanced analysis with multiple spike detection
+- Statistical analysis of sync drift
+
+## License
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+See [LICENSE](LICENSE) for full details.
+
+## Author
+
+Ryan Wooden
+
+## Acknowledgments
+
+- Built using the [OBS Plugin Template](https://github.com/obsproject/obs-plugintemplate)
+- Uses FFmpeg/libav for media processing
