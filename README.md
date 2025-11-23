@@ -135,10 +135,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on:
   - libavutil: Utilities
   - libswscale: Image scaling/conversion
 
-## Implementation Plan
-
-See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for detailed implementation documentation.
-
 ## Future Enhancements
 
 - Automatic frame detection using computer vision
