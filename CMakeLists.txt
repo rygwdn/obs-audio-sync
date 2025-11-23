@@ -59,7 +59,6 @@ else()
     find_package(Qt6 COMPONENTS Widgets Core)
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Core Qt6::Widgets)
   endif()
-
 endif()
 
 if(ENABLE_QT AND (Qt6_FOUND OR _LINTING_MODE OR NOT CMAKE_EXPORT_COMPILE_COMMANDS))
@@ -74,10 +73,7 @@ if(ENABLE_QT AND (Qt6_FOUND OR _LINTING_MODE OR NOT CMAKE_EXPORT_COMPILE_COMMAND
 endif()
 
 # Suppress deprecation warnings from OBS headers
-target_compile_options(
-  ${CMAKE_PROJECT_NAME}
-  PRIVATE -Wno-deprecated-declarations
-)
+target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Wno-deprecated-declarations)
 
 # FFmpeg/libav
 # FFmpeg is required for audio/video analysis
@@ -225,12 +221,15 @@ if(APPLE)
   set(AGL_STUB_LIB "${AGL_STUB_DIR}/AGL")
   if(NOT EXISTS "${AGL_STUB_LIB}")
     file(MAKE_DIRECTORY "${AGL_STUB_DIR}")
-    file(WRITE "${AGL_STUB_DIR}/AGL-stub.c" "// Minimal stub for deprecated AGL framework\n__attribute__((visibility(\"default\"))) void AGLStub() {}\n")
+    file(
+      WRITE
+      "${AGL_STUB_DIR}/AGL-stub.c"
+      "// Minimal stub for deprecated AGL framework\n__attribute__((visibility(\"default\"))) void AGLStub() {}\n"
+    )
     execute_process(
-      COMMAND ${CMAKE_C_COMPILER} -shared -arch arm64 -arch x86_64
-              -o "${AGL_STUB_LIB}" "${AGL_STUB_DIR}/AGL-stub.c"
-              -install_name @rpath/AGL.framework/AGL
-              -compatibility_version 1.0 -current_version 1.0
+      COMMAND
+        ${CMAKE_C_COMPILER} -shared -arch arm64 -arch x86_64 -o "${AGL_STUB_LIB}" "${AGL_STUB_DIR}/AGL-stub.c"
+        -install_name @rpath/AGL.framework/AGL -compatibility_version 1.0 -current_version 1.0
       RESULT_VARIABLE AGL_STUB_RESULT
     )
     if(NOT AGL_STUB_RESULT EQUAL 0)

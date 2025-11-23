@@ -1,0 +1,281 @@
+#!/usr/bin/env zsh
+
+builtin emulate -L zsh
+setopt EXTENDED_GLOB
+setopt PUSHD_SILENT
+setopt ERR_EXIT
+setopt ERR_RETURN
+setopt NO_UNSET
+setopt PIPE_FAIL
+setopt NO_AUTO_PUSHD
+setopt NO_PUSHD_IGNORE_DUPS
+setopt FUNCTION_ARGZERO
+
+## Enable for script debugging
+# setopt WARN_CREATE_GLOBAL
+# setopt WARN_NESTED_VAR
+# setopt XTRACE
+
+autoload -Uz is-at-least && if ! is-at-least 5.8; then
+  print -u2 -PR "%F{1}${funcstack[1]##*/}:%f Running on Zsh version %B${ZSH_VERSION}%b, but Zsh %B5.2%b is the minimum supported version. Upgrade zsh to fix this issue."
+  exit 1
+fi
+
+run_all_checks() {
+  if (( ! ${+SCRIPT_HOME} )) typeset -g SCRIPT_HOME=${ZSH_ARGZERO:A:h}
+  local project_root=${SCRIPT_HOME:A:h}
+
+  typeset -g host_os=${${(L)$(uname -s)}//darwin/macos}
+  local -i verbosity=1
+  local -i skip_tests=0
+  local -i skip_formatting=0
+  local -i skip_linting=0
+  local -i skip_cmake_formatting=0
+  local -r _version='1.0.0'
+
+  fpath=("${SCRIPT_HOME}/.functions" ${fpath})
+  autoload -Uz log_info log_error log_output set_loglevel log_status log_warning log_group
+
+  local -r _usage="
+Usage: %B${functrace[1]%:*}%b <option>
+
+%BOptions%b:
+
+%F{yellow} Check options%f
+ -----------------------------------------------------------------------------
+  %B--skip-tests%b                    Skip running tests
+  %B--skip-formatting%b               Skip code formatting checks
+  %B--skip-linting%b                  Skip code linting checks
+  %B--skip-cmake-formatting%b         Skip CMake formatting checks
+
+%F{yellow} Output options%f
+ -----------------------------------------------------------------------------
+  %B-v | --verbose%b                  Verbose (more detailed output)
+  %B--debug%b                         Debug (very detailed and added output)
+
+%F{yellow} General options%f
+ -----------------------------------------------------------------------------
+  %B-h | --help%b                     Print this usage help
+  %B-V | --version%b                  Print script version information"
+
+  local -a args
+  while (( # )) {
+    case ${1} {
+      --skip-tests) skip_tests=1; shift ;;
+      --skip-formatting) skip_formatting=1; shift ;;
+      --skip-linting) skip_linting=1; shift ;;
+      --skip-cmake-formatting) skip_cmake_formatting=1; shift ;;
+      -v|--verbose) (( verbosity += 1 )); shift ;;
+      -h|--help) log_output ${_usage}; exit 0 ;;
+      -V|--version) print -Pr "${_version}"; exit 0 ;;
+      --debug) verbosity=3; shift ;;
+      *)
+        log_error "Unknown option: ${1}"
+        log_output ${_usage}
+        exit 2
+        ;;
+    }
+  }
+
+  set_loglevel ${verbosity}
+
+  local -i num_failures=0
+  local -i total_checks=0
+
+  log_group "Running all pre-commit checks"
+
+  # 1. Code Formatting (Fix Mode)
+  if (( ! skip_formatting )) {
+    (( total_checks += 1 ))
+    log_info "Formatting code..."
+    if ! "${SCRIPT_HOME}/run-clang-format" --fail-error; then
+      log_error "Code formatting failed"
+      num_failures=$(( num_failures + 1 ))
+    else
+      log_status "Code formatting completed"
+    fi
+  } else {
+    log_info "Skipping code formatting"
+  }
+
+  # 2. CMake Formatting (Fix Mode)
+  if (( ! skip_cmake_formatting )) {
+    (( total_checks += 1 ))
+    log_info "Formatting CMake files..."
+    if ! "${SCRIPT_HOME}/run-gersemi" --fail-error; then
+      log_error "CMake formatting failed"
+      num_failures=$(( num_failures + 1 ))
+    else
+      log_status "CMake formatting completed"
+    fi
+  } else {
+    log_info "Skipping CMake formatting"
+  }
+
+  # 3. Code Linting (Fix Mode)
+  if (( ! skip_linting )) {
+    (( total_checks += 1 ))
+    log_info "Linting code (with auto-fix)..."
+    # Run clang-tidy with --fix to auto-fix issues
+    # First, find clang-tidy
+    local clang_tidy=""
+    if (( ${+commands[clang-tidy-19]} )) {
+      clang_tidy=clang-tidy-19
+    } elif (( ${+commands[clang-tidy]} )) {
+      clang_tidy=clang-tidy
+    } elif [[ -x /opt/homebrew/opt/llvm/bin/clang-tidy ]] {
+      clang_tidy=/opt/homebrew/opt/llvm/bin/clang-tidy
+    } elif [[ -x /usr/local/opt/llvm/bin/clang-tidy ]] {
+      clang_tidy=/usr/local/opt/llvm/bin/clang-tidy
+    } else {
+      log_error "clang-tidy not found"
+      num_failures=$(( num_failures + 1 ))
+    }
+    
+    if [[ -n ${clang_tidy} ]]; then
+      # Generate compile_commands.json if needed
+      local compile_commands="${project_root}/compile_commands.json"
+      if [[ ! -f ${compile_commands} ]]; then
+        log_info "Generating compile_commands.json..."
+        local build_dir="${project_root}/build_lint"
+        mkdir -p ${build_dir}
+        cd ${build_dir}
+        cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${project_root} > /dev/null 2>&1
+        if [[ -f ${build_dir}/compile_commands.json ]]; then
+          cp ${build_dir}/compile_commands.json ${compile_commands}
+        fi
+        cd ${project_root}
+      fi
+      
+      # Get source files
+      local -a source_files=(src/**/*.(c|cpp|h|hpp)(.N))
+      local -i lint_failures=0
+      
+      for file (${source_files}) {
+        log_info "Linting ${file}..."
+        local -a tidy_args=(
+          -p ${project_root}
+          --config-file=${project_root}/.clang-tidy
+          --fix
+          --fix-errors
+        )
+        local output=$(${clang_tidy} ${tidy_args} ${file} 2>&1)
+        # Check if there are remaining issues after fixing
+        # Re-run without --fix to check for unfixable issues
+        local -a check_args=(
+          -p ${project_root}
+          --config-file=${project_root}/.clang-tidy
+          --warnings-as-errors=*
+        )
+        local check_output=$(${clang_tidy} ${check_args} ${file} 2>&1)
+        if (( ${#check_output} > 0 )); then
+          log_error "${file} has unfixable linting issues:"
+          print -u2 "${check_output}"
+          lint_failures=$(( lint_failures + 1 ))
+        fi
+      }
+      
+      if (( lint_failures > 0 )); then
+        log_error "Code linting failed (${lint_failures} file(s) with unfixable issues)"
+        num_failures=$(( num_failures + 1 ))
+      else
+        log_status "Code linting completed (auto-fixed issues where possible)"
+      fi
+    fi
+  } else {
+    log_info "Skipping code linting"
+  }
+
+  # 4. Tests
+  if (( ! skip_tests )) {
+    (( total_checks += 1 ))
+    log_info "Running tests..."
+
+    # Determine build directory based on platform
+    local build_dir=""
+    case ${host_os} {
+      macos)
+        build_dir="${project_root}/build_macos"
+        ;;
+      linux)
+        build_dir="${project_root}/build_x86_64"
+        ;;
+      windows)
+        build_dir="${project_root}/build_x64"
+        ;;
+      *)
+        log_warning "Unknown platform ${host_os}, trying common build directories..."
+        for dir in "${project_root}/build_macos" "${project_root}/build_x86_64" "${project_root}/build_x64" "${project_root}/build"; do
+          if [[ -d ${dir} ]]; then
+            build_dir=${dir}
+            break
+          fi
+        done
+        ;;
+    }
+
+    if [[ -z ${build_dir} ]] || [[ ! -d ${build_dir} ]]; then
+      log_error "Build directory not found (${build_dir}). Tests require a build."
+      log_info "To build the project, run: cmake --preset ${host_os} && cmake --build ${build_dir}"
+      num_failures=$(( num_failures + 1 ))
+    else
+      log_info "Running tests from ${build_dir}..."
+      cd ${build_dir}
+      
+      # Try to run tests with ctest
+      if command -v ctest > /dev/null 2>&1; then
+        if ctest --output-on-failure; then
+          log_status "Tests passed"
+        else
+          log_error "Tests failed"
+          num_failures=$(( num_failures + 1 ))
+        fi
+      else
+        log_warning "ctest not found. Trying to run test executable directly..."
+        
+        # Try common test executable names
+        local -a test_names=(
+          "obs-audio-sync-tests"
+          "plugintemplate-for-obs-tests"
+        )
+        
+        local test_executable=""
+        for name in ${test_names}; do
+          if [[ -f ${build_dir}/${name} ]] || [[ -f ${build_dir}/${name}.exe ]]; then
+            test_executable=${build_dir}/${name}
+            break
+          fi
+        done
+        
+        if [[ -n ${test_executable} ]]; then
+          if ${test_executable}; then
+            log_status "Tests passed"
+          else
+            log_error "Tests failed"
+            num_failures=$(( num_failures + 1 ))
+          fi
+        else
+          log_error "Test executable not found. Tests may not be enabled or project needs to be built."
+          log_info "To enable tests, ensure Qt6 Test is available and rebuild the project."
+          num_failures=$(( num_failures + 1 ))
+        fi
+      fi
+      cd ${project_root}
+    fi
+  } else {
+    log_info "Skipping tests"
+  }
+
+  log_group "Check Summary"
+
+  if (( num_failures > 0 )); then
+    log_error "Failed ${num_failures} out of ${total_checks} check(s)"
+    log_error "Please fix the issues above before committing"
+    exit 2
+  else
+    log_status "All ${total_checks} check(s) passed!"
+    exit 0
+  fi
+}
+
+run_all_checks ${@}

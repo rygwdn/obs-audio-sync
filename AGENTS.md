@@ -147,7 +147,8 @@ tests/
 build-aux/
   ├── run-clang-format         # Formatting script
   ├── run-clang-tidy           # Linting script
-  └── run-gersemi              # CMake formatting script
+  ├── run-gersemi              # CMake formatting script
+  └── run-all-checks           # Run all checks and tests (pre-commit)
 ```
 
 ## Common Tasks
@@ -232,11 +233,33 @@ build-aux/
 ## Development Workflow
 
 1. **Make Changes**: Edit source files
-2. **Format Code**: Run `./build-aux/run-clang-format`
-3. **Check Linting**: Run `./build-aux/run-clang-tidy --check`
-4. **Build**: `cmake --build build_macos` (or your platform)
-5. **Test**: Run `ctest` or test executable
-6. **Verify**: Check that plugin loads in OBS Studio
+2. **Run All Checks**: Run `./build-aux/run-all-checks` to verify all checks pass
+3. **Build**: `cmake --build build_macos` (or your platform)
+4. **Verify**: Check that plugin loads in OBS Studio
+
+### Pre-Commit Requirements
+
+**All checks must pass before committing code.** Run the comprehensive check script:
+
+```bash
+./build-aux/run-all-checks
+```
+
+This script runs:
+- Code formatting check (clang-format)
+- CMake formatting check (gersemi)
+- Code linting check (clang-tidy)
+- Test suite (if build directory exists)
+
+If any check fails, fix the issues before committing. The script will exit with a non-zero status if any checks fail.
+
+You can also run individual checks:
+- Format code: `./build-aux/run-clang-format`
+- Check formatting: `./build-aux/run-clang-format --check`
+- Check linting: `./build-aux/run-clang-tidy --check`
+- Format CMake: `./build-aux/run-gersemi`
+- Check CMake formatting: `./build-aux/run-gersemi --check`
+- Run tests: `ctest` or `./build_macos/obs-audio-sync-tests`
 
 ## Debugging Tips
 
@@ -284,9 +307,12 @@ This command will:
 1. **Read existing code** to understand patterns
 2. **Follow naming conventions** used in the codebase
 3. **Maintain consistency** with existing code style
-4. **Test thoroughly** before committing
-5. **Format and lint** before submitting
-6. **Update documentation** if adding features or changing behavior
+4. **Run all checks** using `./build-aux/run-all-checks` before committing
+5. **Test thoroughly** - ensure all tests pass
+6. **Format and lint** - all checks must pass before committing
+7. **Update documentation** if adding features or changing behavior
+
+**Important**: All checks (formatting, linting, CMake formatting, and tests) must pass before committing. The CI will reject commits that fail these checks.
 
 ## Common Pitfalls
 

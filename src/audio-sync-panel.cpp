@@ -27,21 +27,6 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 AudioSyncPanel::AudioSyncPanel(QWidget *parent)
 	: QDockWidget(parent),
-	  m_recordingList(nullptr),
-	  m_statusLabel(nullptr),
-	  m_refreshButton(nullptr),
-	  m_layout(nullptr),
-	  m_timelineWidget(nullptr),
-	  m_frameLabel(nullptr),
-	  m_prevFrameButton(nullptr),
-	  m_nextFrameButton(nullptr),
-	  m_frameInfoLabel(nullptr),
-	  m_syncOffsetLabel(nullptr),
-	  m_currentRecording(),
-	  m_currentSpike(),
-	  m_frames(),
-	  m_currentFrameIndex(-1),
-	  m_videoFPS(30.0),
 	  m_videoExtractor(new VideoExtractor())
 {
 	setWindowTitle("Audio Sync");
@@ -156,9 +141,9 @@ void AudioSyncPanel::refreshRecordings()
 	m_statusLabel->setText(QString("Found %1 recordings").arg(m_recordingList->count()));
 }
 
-void AudioSyncPanel::scanRecordings()
+void AudioSyncPanel::scanRecordings() // NOLINT(readability-convert-member-functions-to-static)
 {
-	const RecordingScanner scanner;
+	RecordingScanner scanner;
 	QList<RecordingInfo> recordings = scanner.scanRecordings(15.0); // 15 second threshold
 
 	for (const RecordingInfo &recording : recordings) {
@@ -174,7 +159,7 @@ void AudioSyncPanel::scanRecordings()
 	}
 }
 
-void AudioSyncPanel::onRecordingSelected(QListWidgetItem *item)
+void AudioSyncPanel::onRecordingSelected(QListWidgetItem *item) // NOLINT(readability-convert-member-functions-to-static)
 {
 	if (!item) {
 		return;
@@ -190,7 +175,7 @@ void AudioSyncPanel::loadRecording(const QString &filePath)
 	m_statusLabel->setText(QString("Analyzing: %1...").arg(QFileInfo(filePath).fileName()));
 
 	// Analyze audio and find spike
-	const AudioAnalyzer analyzer;
+	AudioAnalyzer analyzer;
 	if (!analyzer.analyzeFile(filePath, m_currentSpike)) {
 		m_statusLabel->setText("Failed to analyze audio");
 		QMessageBox::warning(this, "Analysis Failed", "Could not analyze audio from recording.");
@@ -263,7 +248,7 @@ void AudioSyncPanel::updateSyncDisplay() const
 	}
 
 	const VideoFrame &frame = m_frames[m_currentFrameIndex];
-	const double timeDiff = frame.timestamp - m_currentSpike.timestamp;
+	double timeDiff = frame.timestamp - m_currentSpike.timestamp;
 	double frameDiff = timeDiff * m_videoFPS;
 
 	QString syncText =

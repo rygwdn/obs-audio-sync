@@ -104,8 +104,18 @@ After building, run the test suite:
 ```bash
 ctest
 # or directly
-./build/obs-audio-sync-tests
+./build_macos/obs-audio-sync-tests
 ```
+
+### Running All Checks
+
+Before committing, run all checks (formatting, linting, CMake formatting, and tests):
+
+```bash
+./build-aux/run-all-checks
+```
+
+This ensures all pre-commit requirements are met. Individual checks can be skipped with `--skip-*` flags if needed.
 
 ### Contributing
 

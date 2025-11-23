@@ -64,7 +64,7 @@ if(NOT TARGET OBS::libobs)
     elseif(DEFINED CMAKE_EXPORT_COMPILE_COMMANDS AND CMAKE_EXPORT_COMPILE_COMMANDS)
       set(_is_linting TRUE)
     endif()
-    
+
     if(_is_linting)
       message(STATUS "LibObs not found, but CMAKE_EXPORT_COMPILE_COMMANDS is set. Creating dummy target for linting.")
       add_library(OBS::libobs INTERFACE IMPORTED)

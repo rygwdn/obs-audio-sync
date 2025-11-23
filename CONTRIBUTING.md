@@ -76,16 +76,39 @@ CMake files are formatted with `gersemi`. The configuration is in `.gersemirc`.
 ./build-aux/run-gersemi --check
 ```
 
+## Running All Checks
+
+Before committing, run all checks to ensure everything passes:
+
+```bash
+./build-aux/run-all-checks
+```
+
+This script runs:
+- Code formatting check (clang-format)
+- CMake formatting check (gersemi)
+- Code linting check (clang-tidy)
+- Test suite (if build directory exists)
+
+**All checks must pass before committing.** The script will exit with a non-zero status if any checks fail.
+
+You can skip specific checks if needed:
+```bash
+./build-aux/run-all-checks --skip-tests          # Skip tests
+./build-aux/run-all-checks --skip-formatting     # Skip formatting checks
+./build-aux/run-all-checks --skip-linting        # Skip linting checks
+./build-aux/run-all-checks --skip-cmake-formatting  # Skip CMake formatting
+```
+
 ## Pre-commit Hooks (Optional)
 
-You can set up pre-commit hooks to automatically format and lint your code:
+You can set up pre-commit hooks to automatically run all checks:
 
 ```bash
 # Create .git/hooks/pre-commit
 cat > .git/hooks/pre-commit << 'EOF'
 #!/bin/sh
-./build-aux/run-clang-format
-./build-aux/run-clang-tidy --check
+./build-aux/run-all-checks
 EOF
 chmod +x .git/hooks/pre-commit
 ```
