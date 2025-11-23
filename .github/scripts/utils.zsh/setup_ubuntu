@@ -58,8 +58,9 @@ if (( ! (${skips[(Ie)all]} + ${skips[(Ie)deps]}) )) {
       qt6-base-dev${suffix}
       libqt6svg6-dev${suffix}
       qt6-base-private-dev${suffix}
-      libqt6test6-dev${suffix}
     )
+    # Qt6 Test is included in qt6-base-dev on Ubuntu 24.04
+    # If separate package is needed, it would be qt6-base-dev-tools or similar
   }
 
   sudo apt-get install ${apt_args} ${_qt_packages}
