@@ -73,7 +73,11 @@ if(ENABLE_QT AND (Qt6_FOUND OR _LINTING_MODE OR NOT CMAKE_EXPORT_COMPILE_COMMAND
 endif()
 
 # Suppress deprecation warnings from OBS headers
-target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Wno-deprecated-declarations)
+# Only apply to GCC/Clang (MSVC doesn't support -Wno flags)
+target_compile_options(
+  ${CMAKE_PROJECT_NAME}
+  PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wno-deprecated-declarations>
+)
 
 # FFmpeg/libav
 # FFmpeg is required for audio/video analysis
