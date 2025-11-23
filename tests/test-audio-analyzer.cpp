@@ -35,10 +35,10 @@ void TestAudioAnalyzer::testAudioSampleStructure()
 	AudioSample sample;
 	sample.timestamp = 1.5;
 	sample.amplitude = 0.75;
-	
+
 	QVERIFY(sample.timestamp == 1.5);
 	QVERIFY(sample.amplitude == 0.75);
-	
+
 	// Test AudioSpike structure
 	AudioSpike spike;
 	spike.timestamp = 2.0;

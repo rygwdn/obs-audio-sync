@@ -21,9 +21,9 @@ int main(int argc, char *argv[])
 {
 	// Use QApplication since TestTimelineWidget requires it
 	QApplication app(argc, argv);
-	
+
 	int result = 0;
-	
+
 	// Run TestRecordingScannerStandalone
 	{
 		TestRecordingScannerStandalone test;
