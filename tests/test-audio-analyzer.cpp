@@ -8,23 +8,9 @@ the Free Software Foundation; either version 2 of the License, or
 (at your option) any later version.
 */
 
-#include <QtTest/QtTest>
-#include <QCoreApplication>
+#include "test-audio-analyzer.h"
 #include "../src/audio-analyzer.h"
 #include <QFileInfo>
-
-class TestAudioAnalyzer : public QObject {
-	Q_OBJECT
-
-private slots:
-	void initTestCase();
-	void cleanupTestCase();
-	void testGetFileDuration_invalidFile();
-	void testAudioSampleStructure();
-
-private:
-	AudioAnalyzer *m_analyzer;
-};
 
 void TestAudioAnalyzer::initTestCase()
 {
@@ -64,13 +50,6 @@ void TestAudioAnalyzer::testAudioSampleStructure()
 	QVERIFY(spike.amplitude == 1.0);
 	QVERIFY(spike.windowStart == 0.0);
 	QVERIFY(spike.windowEnd == 4.0);
-}
-
-int main(int argc, char *argv[])
-{
-	QCoreApplication app(argc, argv);
-	TestAudioAnalyzer test;
-	return QTest::qExec(&test, argc, argv);
 }
 
 #include "test-audio-analyzer.moc"

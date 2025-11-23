@@ -272,8 +272,10 @@ if(ENABLE_QT)
 
   if(ENABLE_QT_TESTS)
     # Test executable
+    # test-main.cpp is the entry point, other test files provide test classes
     add_executable(
       ${CMAKE_PROJECT_NAME}-tests
+      tests/test-main.cpp
       tests/test-recording-scanner-standalone.cpp
       tests/test-timeline-widget.cpp
       tests/test-audio-analyzer.cpp

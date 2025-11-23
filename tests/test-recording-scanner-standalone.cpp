@@ -8,16 +8,8 @@ the Free Software Foundation; either version 2 of the License, or
 (at your option) any later version.
 */
 
-#include <QtTest/QtTest>
-#include <QCoreApplication>
+#include "test-recording-scanner-standalone.h"
 #include "../src/recording-scanner.h"
-
-class TestRecordingScannerStandalone : public QObject {
-	Q_OBJECT
-
-private slots:
-	void testIsValidVideoFile();
-};
 
 void TestRecordingScannerStandalone::testIsValidVideoFile()
 {
@@ -36,13 +28,6 @@ void TestRecordingScannerStandalone::testIsValidVideoFile()
 	QVERIFY(!scanner.isValidVideoFile("test.jpg"));
 	QVERIFY(!scanner.isValidVideoFile("test"));
 	QVERIFY(!scanner.isValidVideoFile(""));
-}
-
-int main(int argc, char *argv[])
-{
-	QCoreApplication app(argc, argv);
-	TestRecordingScannerStandalone test;
-	return QTest::qExec(&test, argc, argv);
 }
 
 #include "test-recording-scanner-standalone.moc"
