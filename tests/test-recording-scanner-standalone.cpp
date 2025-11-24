@@ -31,3 +31,6 @@ void TestRecordingScannerStandalone::testIsValidVideoFile()
 }
 
 #include "test-recording-scanner-standalone.moc"
+#ifdef STANDALONE_TEST
+QTEST_MAIN(TestRecordingScannerStandalone)
+#endif

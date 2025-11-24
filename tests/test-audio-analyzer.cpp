@@ -53,3 +53,6 @@ void TestAudioAnalyzer::testAudioSampleStructure()
 }
 
 #include "test-audio-analyzer.moc"
+#ifdef STANDALONE_TEST
+QTEST_MAIN(TestAudioAnalyzer)
+#endif

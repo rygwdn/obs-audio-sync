@@ -11,10 +11,10 @@ the Free Software Foundation; either version 2 of the License, or
 #include "test-timeline-widget.h"
 #include "../src/timeline-widget.h"
 #include "../src/audio-analyzer.h"
+#include <QApplication>
 
 void TestTimelineWidget::initTestCase()
 {
-	// QApplication is created in test-main.cpp, so we just use the existing instance
 	m_widget = new TimelineWidget();
 }
 
@@ -64,3 +64,13 @@ void TestTimelineWidget::testTimestampConversion()
 }
 
 #include "test-timeline-widget.moc"
+
+#ifdef STANDALONE_TEST
+// Use QApplication for widget tests instead of QCoreApplication
+int main(int argc, char *argv[])
+{
+	QApplication app(argc, argv);
+	TestTimelineWidget test;
+	return QTest::qExec(&test, argc, argv);
+}
+#endif
