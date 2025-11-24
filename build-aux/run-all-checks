@@ -94,7 +94,7 @@ Usage: %B${functrace[1]%:*}%b <option>
   mkdir -p ${temp_base_dir}
   # Clean up previous temp files from this script
   rm -rf ${temp_base_dir}/run-all-checks-*
-  local temp_dir=$(mktemp -d -p ${temp_base_dir} run-all-checks-XXXXXX)
+  local temp_dir=$(mktemp -d ${temp_base_dir}/run-all-checks-XXXXXX)
   # Don't auto-delete temp files - they may be referenced in error messages
 
   log_group "Running all pre-commit checks"

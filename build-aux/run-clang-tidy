@@ -168,7 +168,11 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
   log_info "Linting ${#source_files} file(s) with ${num_jobs} parallel job(s)..."
 
   local -i num_failures=0
-  local temp_dir=$(mktemp -d)
+  local temp_base_dir="${project_root}/.tmp"
+  mkdir -p ${temp_base_dir}
+  # Clean up previous temp files from this script
+  rm -rf ${temp_base_dir}/run-clang-tidy-*
+  local temp_dir=$(mktemp -d ${temp_base_dir}/run-clang-tidy-XXXXXX)
   local verbose_output="${temp_dir}/verbose.log"
   trap "rm -rf ${temp_dir}" EXIT
 
