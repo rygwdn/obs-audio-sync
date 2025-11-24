@@ -50,7 +50,7 @@ public:
 	static bool analyzeFile(const QString &filePath, AudioSpike &spike);
 
 	// Get audio samples for visualization (4-second window)
-	QVector<AudioSample> getAudioSamples(const QString &filePath, double startTime, double endTime);
+	static QVector<AudioSample> getAudioSamples(const QString &filePath, double startTime, double endTime);
 
 	// Get file duration in seconds
 	static double getFileDuration(const QString &filePath);

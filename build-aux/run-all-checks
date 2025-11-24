@@ -90,9 +90,12 @@ Usage: %B${functrace[1]%:*}%b <option>
 
   local -i num_failures=0
   local -i total_checks=0
-  local temp_dir=$(mktemp -d)
+  local temp_base_dir="${project_root}/.tmp"
+  mkdir -p ${temp_base_dir}
+  # Clean up previous temp files from this script
+  rm -rf ${temp_base_dir}/run-all-checks-*
+  local temp_dir=$(mktemp -d -p ${temp_base_dir} run-all-checks-XXXXXX)
   # Don't auto-delete temp files - they may be referenced in error messages
-  # Temp files in /tmp are cleaned up by the OS periodically
 
   log_group "Running all pre-commit checks"
 

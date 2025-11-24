@@ -173,7 +173,7 @@ double calculateFrameRMS(AVFrame const *frame)
 }
 } // namespace
 
-QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath)
+QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath) // NOLINT(readability-convert-member-functions-to-static)
 {
 	QVector<AudioSample> samples;
 
@@ -247,7 +247,7 @@ QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath)
 	return samples;
 }
 
-AudioSpike AudioAnalyzer::findLargestSpike(const QVector<AudioSample> &samples)
+AudioSpike AudioAnalyzer::findLargestSpike(const QVector<AudioSample> &samples) // NOLINT(readability-convert-member-functions-to-static)
 {
 	AudioSpike spike = {0.0, 0.0, 0.0, 0.0};
 

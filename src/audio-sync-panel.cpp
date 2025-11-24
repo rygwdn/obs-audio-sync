@@ -40,7 +40,7 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent), m_videoEx
 	setWindowTitle("Audio Sync");
 
 	// Create central widget for QDockWidget
-	QWidget *centralWidget = new QWidget(this);
+	QWidget *centralWidget = new QWidget(this); // NOLINT(cppcoreguidelines-init-variables)
 	setWidget(centralWidget);
 
 	setupUI();
@@ -183,7 +183,6 @@ void AudioSyncPanel::loadRecording(const QString &filePath)
 	m_statusLabel->setText(QString("Analyzing: %1...").arg(QFileInfo(filePath).fileName()));
 
 	// Analyze audio and find spike
-	AudioAnalyzer const ANALYZER;
 	if (!AudioAnalyzer::analyzeFile(filePath, m_currentSpike)) {
 		m_statusLabel->setText("Failed to analyze audio");
 		QMessageBox::warning(this, "Analysis Failed", "Could not analyze audio from recording.");
@@ -192,7 +191,7 @@ void AudioSyncPanel::loadRecording(const QString &filePath)
 
 	// Get audio samples for timeline
 	QVector<AudioSample> samples =
-		ANALYZER.getAudioSamples(filePath, m_currentSpike.windowStart, m_currentSpike.windowEnd);
+		AudioAnalyzer::getAudioSamples(filePath, m_currentSpike.windowStart, m_currentSpike.windowEnd);
 
 	// Open video file
 	if (!m_videoExtractor->openFile(filePath)) {

@@ -31,8 +31,16 @@ invoke_formatter() {
   shift
   local -a source_files=(${@})
   
+  # Create temp directory in repo
+  if (( ! ${+SCRIPT_HOME} )) typeset -g SCRIPT_HOME=${ZSH_ARGZERO:A:h}
+  local project_root=${SCRIPT_HOME:A:h}
+  local temp_base_dir="${project_root}/.tmp"
+  mkdir -p ${temp_base_dir}
+  # Clean up previous temp files from this script
+  rm -f ${temp_base_dir}/run-clang-format-* ${temp_base_dir}/run-clang-format-*.check
+  
   # Create temp file for verbose output (accessible to nested functions)
-  local temp_output=$(mktemp)
+  local temp_output=$(mktemp -p ${temp_base_dir} run-clang-format-XXXXXX)
   trap "rm -f ${temp_output} ${temp_output}.check" EXIT
 
   case ${formatter} {

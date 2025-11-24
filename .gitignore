@@ -30,3 +30,6 @@
 # Exclude generated compile_commands.json (can be regenerated)
 compile_commands.json
 build_lint/
+
+# Exclude build-aux temp files
+.tmp/
