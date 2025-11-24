@@ -174,7 +174,13 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
   rm -rf ${temp_base_dir}/run-clang-tidy-*(N)
   local temp_dir=$(mktemp -d ${temp_base_dir}/run-clang-tidy-XXXXXX)
   local verbose_output="${temp_dir}/verbose.log"
-  trap "rm -rf ${temp_dir}" EXIT
+  # Create verbose.log file before parallel jobs start (ensure it exists)
+  touch ${verbose_output} || {
+    log_error "Failed to create verbose output file: ${verbose_output}"
+    return 2
+  }
+  # Don't auto-delete temp files - they may be referenced in error messages
+  # Temp files in .tmp are cleaned up on next run
 
   # Function to lint a single file
   lint_file() {
@@ -186,7 +192,10 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
     
     # Redirect output to temp file
     local output=$(${clang_tidy} ${tidy_args} ${file} 2>&1)
-    echo ${output} >> ${verbose_output}
+    # Append to verbose log (file should exist, but handle gracefully)
+    if [[ -f ${verbose_output} ]]; then
+      echo ${output} >> ${verbose_output} 2>/dev/null || true
+    fi
     echo ${output} > ${output_file}
     
     if (( ${#output} > 0 )); then
@@ -228,7 +237,6 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
       # Always log which file failed (for CI visibility)
       log_error "${file} has linting issues"
       if (( fail_on_error == 2 )) {
-        rm -rf ${temp_dir}
         return 2
       }
     fi
@@ -249,11 +257,15 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
 
   if (( num_failures && fail_on_error == 1 )) {
     log_error "Found ${num_failures} file(s) with linting issues"
+    log_info "Temp files with detailed output are available in: ${temp_dir}"
     return 2
   } elif (( num_failures )) {
     log_warning "Found ${num_failures} file(s) with linting issues"
+    log_info "Temp files with detailed output are available in: ${temp_dir}"
   } else {
     log_info "All files passed linting checks"
+    # Clean up temp files on success (they weren't needed)
+    rm -rf ${temp_dir}
   }
 }
 
