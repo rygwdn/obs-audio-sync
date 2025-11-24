@@ -111,6 +111,24 @@ When `CMAKE_EXPORT_COMPILE_COMMANDS=ON` is set, the build system operates in "li
 - **Script**: `./build-aux/run-clang-tidy`
   - Check: `./build-aux/run-clang-tidy --check`
 
+### Handling Linting/Formatting Conflicts
+
+**Important**: If a linter or formatting rule conflicts with what Qt or the build system requires, **the rule should be removed or disabled**, not the code changed to satisfy the rule.
+
+Examples of valid conflicts:
+- **Qt's `private slots:` syntax**: Qt requires `private slots:` followed by a separate `private:` section. This is not redundant - it's required Qt syntax for the MOC (Meta-Object Compiler). The `readability-redundant-access-specifiers` check should be disabled.
+- **Qt MOC requirements**: Qt classes with signals/slots must have `Q_OBJECT` macro and use Qt's specific syntax. Don't change Qt-specific code to satisfy generic C++ linting rules.
+- **Build system requirements**: If the build system or platform-specific code requires certain patterns that conflict with linting rules, disable the conflicting rule.
+- **FFmpeg API requirements**: FFmpeg's C API may require patterns that conflict with modern C++ guidelines. Use NOLINT comments or disable the specific check.
+
+When encountering a conflict:
+1. **Verify it's a real conflict**: Ensure the code pattern is actually required by Qt/build system, not just a code style preference
+2. **Disable the specific check**: Add the check to the disabled list in `.clang-tidy` (e.g., `-readability-redundant-access-specifiers`)
+3. **Document the reason**: Add a comment in `.clang-tidy` explaining why the check is disabled
+4. **Use NOLINT sparingly**: Only use `// NOLINT(...)` comments for false positives or unavoidable conflicts, not as a general workaround
+
+**Never compromise build functionality or Qt requirements for linting rules.**
+
 ### Code Standards
 
 - **Header Guards**: Use `#pragma once` (not include guards)
