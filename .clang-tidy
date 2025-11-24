@@ -34,11 +34,12 @@ Checks: >
   -readability-avoid-const-params-in-decls,
   -readability-magic-numbers,
   -readability-named-parameter,
-  -readability-redundant-access-specifiers
+  -readability-redundant-access-specifiers,
+  -readability-uppercase-literal-suffix
 
 WarningsAsErrors: ''
 
-HeaderFilterRegex: '(?!.*/(libav|ffmpeg|opt/homebrew/Cellar/ffmpeg|QtCore|QtWidgets|obs-deps)).*'
+HeaderFilterRegex: '(?!.*/(libav|ffmpeg|opt/homebrew/Cellar/ffmpeg|QtCore|QtWidgets|obs-deps|Frameworks|\.deps|/usr/include|/Applications/Xcode|/System/Library)).*'
 
 CheckOptions:
   - key: readability-identifier-naming.NamespaceCase
@@ -91,19 +92,11 @@ CheckOptions:
     value: camelBack
   - key: readability-identifier-naming.ConstantCase
     value: UPPER_CASE
-  - key: readability-identifier-naming.ConstantMemberCase
-    value: UPPER_CASE
-  - key: readability-identifier-naming.StaticConstantCase
-    value: UPPER_CASE
-  - key: readability-identifier-naming.GlobalConstantCase
-    value: UPPER_CASE
-  - key: readability-identifier-naming.ConstexprVariableCase
-    value: UPPER_CASE
-  - key: readability-identifier-naming.EnumConstantCase
-    value: UPPER_CASE
   - key: readability-identifier-naming.MacroDefinitionCase
     value: UPPER_CASE
   - key: readability-identifier-naming.MacroDefinitionIgnoredRegexp
     value: '^[A-Z][A-Z_0-9]*$'
   - key: readability-identifier-naming.IgnoreMainLikeFunctions
     value: '1'
+  - key: readability-identifier-naming.IgnoredRegexp
+    value: '^[A-Z][A-Z_0-9]*$'
