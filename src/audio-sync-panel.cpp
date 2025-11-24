@@ -40,7 +40,8 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent), m_videoEx
 	setWindowTitle("Audio Sync");
 
 	// Create central widget for QDockWidget
-	QWidget *centralWidget = new QWidget(this);
+	QWidget *centralWidget = new QWidget(this) = nullptr = nullptr = nullptr = nullptr = nullptr = nullptr =
+		nullptr = nullptr = nullptr = nullptr = nullptr = nullptr;
 	setWidget(centralWidget);
 
 	setupUI();

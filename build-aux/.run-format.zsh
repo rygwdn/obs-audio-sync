@@ -30,6 +30,10 @@ invoke_formatter() {
   local formatter="${1}"
   shift
   local -a source_files=(${@})
+  
+  # Create temp file for verbose output (accessible to nested functions)
+  local temp_output=$(mktemp)
+  trap "rm -f ${temp_output} ${temp_output}.check" EXIT
 
   case ${formatter} {
     clang)
@@ -67,10 +71,16 @@ invoke_formatter() {
         if (( _loglevel > 2 )) format_args+=(--verbose)
 
         local -a command=(${formatter} ${format_args})
-
+        local check_output_file="${temp_output}.check"
+        : > ${check_output_file}
+        
         for file (${source_files}) {
-          if ! ${command} "${file}" | diff -q "${file}" - &> /dev/null; then
+          local file_output=$(${command} "${file}" 2>&1)
+          if ! echo ${file_output} | diff -q "${file}" - &> /dev/null; then
+            # Always log the error message (for CI visibility)
             log_error "${file} requires formatting changes."
+            # Capture verbose output to temp file
+            echo ${file_output} >> ${check_output_file}
             if (( fail_on_error == 2 )) return 2;
             num_failures=$(( num_failures + 1 ))
           fi
@@ -85,7 +95,7 @@ invoke_formatter() {
           local -a format_args=(-style=file -fallback-style=none -i)
           if (( _loglevel > 2 )) format_args+=(--verbose)
 
-          "${formatter}" ${format_args} ${source_files}
+          "${formatter}" ${format_args} ${source_files} >> ${temp_output} 2>&1
         }
       }
       ;;
@@ -107,16 +117,21 @@ invoke_formatter() {
         local -a source_files=($@)
         local file
         local -a command=(${formatter} -c --no-cache ${source_files})
+        local check_output_file="${temp_output}.check"
+        : > ${check_output_file}
 
         if (( ${#source_files} )) {
           while read -r line; do
             local -a line_tokens=(${(z)line})
             if (( #line_tokens )) {
               file=${line_tokens[1]//*${project_root}\//}
-
+              # Always log the error message (for CI visibility)
               log_error "${file} requires formatting changes."
+              # Capture verbose output to temp file
+              echo ${line} >> ${check_output_file}
             } else {
-              log_error "${line}"
+              # Capture non-file lines to temp file
+              echo ${line} >> ${check_output_file}
             }
 
             if (( fail_on_error == 2 )) return 2
@@ -131,7 +146,7 @@ invoke_formatter() {
         local -a source_files=($@)
 
         if (( ${#source_files} )) {
-          "${formatter}" -i ${source_files}
+          "${formatter}" -i ${source_files} >> ${temp_output} 2>&1
         }
       }
       ;;
@@ -185,9 +200,28 @@ invoke_formatter() {
 
   local file
   local -i num_failures=0
+  
   if (( check_only )) {
     if (( ${+functions[check_files]} )) {
       check_files ${source_files}
+      local check_result=$?
+      
+      # Show verbose output based on line count (errors already logged via log_error)
+      local check_output_file="${temp_output}.check"
+      if [[ -f ${check_output_file} ]] && [[ -s ${check_output_file} ]]; then
+        local line_count=$(wc -l < ${check_output_file} 2>/dev/null || echo 0)
+        if (( line_count > 0 && line_count <= 20 )); then
+          # Show detailed output for small files
+          cat ${check_output_file}
+        elif (( line_count > 20 )); then
+          # For large output, just show the path (errors already logged)
+          log_info "Detailed formatting output (${line_count} lines): ${check_output_file}"
+        fi
+      fi
+      
+      if (( check_result != 0 )); then
+        exit ${check_result}
+      fi
     } else {
       log_error "No format check function defined for formatter '${formatter}'"
       exit 2
@@ -195,6 +229,21 @@ invoke_formatter() {
   } else {
     if (( ${+functions[format_files]} )) {
       format_files ${source_files}
+      local format_result=$?
+      
+      # Show output based on line count
+      if [[ -f ${temp_output} ]] && [[ -s ${temp_output} ]]; then
+        local line_count=$(wc -l < ${temp_output} 2>/dev/null || echo 0)
+        if (( line_count > 0 && line_count <= 20 )); then
+          cat ${temp_output}
+        elif (( line_count > 20 )); then
+          log_info "Formatting output (${line_count} lines): ${temp_output}"
+        fi
+      fi
+      
+      if (( format_result != 0 )); then
+        exit ${format_result}
+      fi
     } else {
       log_error "No format function defined for formatter '${formatter}'"
       exit 2

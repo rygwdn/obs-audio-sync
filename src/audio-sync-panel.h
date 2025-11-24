@@ -54,6 +54,7 @@ private slots:
 	void onPrevFrameClicked();
 	void onNextFrameClicked();
 
+private:
 	void setupUI();
 	void scanRecordings();
 	void loadRecording(const QString &filePath);

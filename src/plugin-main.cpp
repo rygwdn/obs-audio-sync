@@ -25,7 +25,9 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
 
-static AudioSyncPanel *panel = nullptr;
+namespace {
+AudioSyncPanel *panel = nullptr; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+}
 
 bool obs_module_load(void)
 {

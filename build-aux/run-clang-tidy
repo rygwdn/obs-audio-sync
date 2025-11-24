@@ -157,14 +157,26 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
     tidy_args+=('--warnings-as-errors=*')
   }
 
-  # Determine number of parallel jobs (use number of CPU cores)
-  local -i num_jobs=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
+  # Determine number of parallel jobs
+  # On macOS, use performance cores only (pcores), otherwise use all cores
+  local -i num_jobs=4
+  if [[ ${host_os} == "macos" ]]; then
+    # Try to get performance core count on macOS
+    if command -v sysctl > /dev/null 2>&1; then
+      # Try hw.perflevel0.logicalcpu (performance cores) first
+      num_jobs=$(sysctl -n hw.perflevel0.logicalcpu 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+    fi
+  else
+    # Linux/other: use all cores
+    num_jobs=$(nproc 2>/dev/null || echo 4)
+  fi
   if (( num_jobs < 1 )) num_jobs=4
   
   log_info "Linting ${#source_files} file(s) with ${num_jobs} parallel job(s)..."
 
   local -i num_failures=0
   local temp_dir=$(mktemp -d)
+  local verbose_output="${temp_dir}/verbose.log"
   trap "rm -rf ${temp_dir}" EXIT
 
   # Function to lint a single file
@@ -175,7 +187,9 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
     local error_file="${temp_dir}/${file_id}.err"
     local failed_file="${temp_dir}/${file_id}.failed"
     
+    # Redirect output to temp file
     local output=$(${clang_tidy} ${tidy_args} ${file} 2>&1)
+    echo ${output} >> ${verbose_output}
     echo ${output} > ${output_file}
     
     if (( fix_mode && ! check_only )); then
@@ -187,6 +201,7 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
       )
       local check_output=$(${clang_tidy} ${check_args} ${file} 2>&1)
       if (( ${#check_output} > 0 )); then
+        echo ${check_output} >> ${verbose_output}
         echo ${check_output} > ${error_file}
         echo ${file} > ${failed_file}
       fi
@@ -216,23 +231,37 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
     }
   done
 
-  # Collect results
+  # Collect results and log file names (for CI visibility)
+  local -a failed_files=()
   for failed_file (${temp_dir}/*.failed(.N)) {
     local file=$(cat ${failed_file})
     local file_id=${${failed_file:t}:r}
     local error_file="${temp_dir}/${file_id}.err"
     
+    failed_files+=(${file})
     (( num_failures += 1 ))
     if [[ -f ${error_file} ]]; then
-      local error_output=$(cat ${error_file})
-      log_error "${file} has linting issues:"
-      print -u2 "${error_output}"
+      # Always log which file failed (for CI visibility)
+      log_error "${file} has linting issues"
       if (( fail_on_error == 2 )) {
         rm -rf ${temp_dir}
         return 2
       }
     fi
   }
+
+  # Show verbose output if there are issues
+  if (( num_failures > 0 )) && [[ -f ${verbose_output} ]]; then
+    local line_count=$(wc -l < ${verbose_output} 2>/dev/null || echo 0)
+    if (( line_count > 0 && line_count <= 20 )); then
+      # Show detailed output for small files
+      log_error "Linting details:"
+      cat ${verbose_output}
+    elif (( line_count > 20 )); then
+      # For large output, show path (file names already logged above)
+      log_info "Detailed linting output (${line_count} lines): ${verbose_output}"
+    fi
+  fi
 
   if (( num_failures && fail_on_error == 1 )) {
     log_error "Found ${num_failures} file(s) with linting issues"

@@ -63,7 +63,7 @@ private:
 	static QVector<AudioSample> extractAudioSamples(const QString &filePath);
 
 	// Find largest spike in audio samples
-	AudioSpike findLargestSpike(const QVector<AudioSample> &samples);
+	static AudioSpike findLargestSpike(const QVector<AudioSample> &samples);
 };
 
 #endif // AUDIO_ANALYZER_H

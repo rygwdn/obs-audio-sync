@@ -24,6 +24,16 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QVector>
 #include <QPair>
 
+// FFmpeg forward declarations
+extern "C" {
+struct AVFormatContext;
+struct AVStream;
+struct AVCodecContext;
+struct SwsContext;
+struct AVFrame;
+struct AVPacket;
+}
+
 struct VideoFrame {
 	QPixmap pixmap{};
 	double timestamp{}; // Time in seconds
@@ -62,6 +72,34 @@ public:
 private:
 	bool initializeFFmpeg();
 	void cleanupFFmpeg();
+
+	// Helper functions for extractFrameAt
+	struct FormatContextData {
+		AVFormatContext *formatContext{};
+		int videoStreamIndex{};
+		AVStream *videoStream{};
+	};
+
+	struct CodecContextData {
+		AVCodecContext *codecContext{};
+		SwsContext *swsContext{};
+		AVFrame *avFrame{};
+		AVFrame *rgbFrame{};
+		AVPacket *packet{};
+		uint8_t *buffer{};
+	};
+
+	static FormatContextData setupFormatContext(const QString &filePath);
+	static void cleanupFormatContext(FormatContextData &data);
+	static CodecContextData setupCodecContext(const FormatContextData &formatData);
+	static void cleanupCodecContext(CodecContextData &data);
+	static AVFrame *findBestFrame(const FormatContextData &formatData, const CodecContextData &codecData,
+				      double timestamp);
+	static bool processDecodedFrame(const FormatContextData &formatData, const CodecContextData &codecData,
+					AVFrame *decodedFrame, double timestamp, double &bestTimeDiff,
+					AVFrame *&currentBestFrame);
+	static bool decodeVideoPackets(const FormatContextData &formatData, const CodecContextData &codecData,
+				       double timestamp, double &bestTimeDiff, AVFrame *&bestFrame);
 
 	QString m_filePath{};
 	double m_fps{};

@@ -93,9 +93,9 @@ QList<RecordingInfo> RecordingScanner::scanRecordings(double maxDurationSeconds)
 	}
 
 	// Scan for video files
-	QDirIterator it(RECORDING_PATH, QDirIterator::Subdirectories);
-	while (it.hasNext()) {
-		QString filePath = it.next();
+	QDirIterator dirIterator(RECORDING_PATH, QDirIterator::Subdirectories);
+	while (dirIterator.hasNext()) {
+		QString filePath = dirIterator.next();
 		QFileInfo const FILE_INFO(filePath);
 
 		if (!FILE_INFO.isFile()) {

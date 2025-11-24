@@ -90,49 +90,52 @@ Usage: %B${functrace[1]%:*}%b <option>
 
   local -i num_failures=0
   local -i total_checks=0
+  local temp_dir=$(mktemp -d)
+  # Don't auto-delete temp files - they may be referenced in error messages
+  # Temp files in /tmp are cleaned up by the OS periodically
 
   log_group "Running all pre-commit checks"
 
   # 1. Code Formatting (Fix Mode)
   if (( ! skip_formatting )) {
     (( total_checks += 1 ))
-    log_info "Formatting code..."
+    log_info "Running clang-format..."
     if ! "${SCRIPT_HOME}/run-clang-format" --fail-error; then
-      log_error "Code formatting failed"
+      log_error "clang-format failed"
       num_failures=$(( num_failures + 1 ))
     else
-      log_status "Code formatting completed"
+      log_status "clang-format completed"
     fi
   } else {
-    log_info "Skipping code formatting"
+    log_info "Skipping clang-format"
   }
 
   # 2. CMake Formatting (Fix Mode)
   if (( ! skip_cmake_formatting )) {
     (( total_checks += 1 ))
-    log_info "Formatting CMake files..."
+    log_info "Running gersemi..."
     if ! "${SCRIPT_HOME}/run-gersemi" --fail-error; then
-      log_error "CMake formatting failed"
+      log_error "gersemi failed"
       num_failures=$(( num_failures + 1 ))
     else
-      log_status "CMake formatting completed"
+      log_status "gersemi completed"
     fi
   } else {
-    log_info "Skipping CMake formatting"
+    log_info "Skipping gersemi"
   }
 
   # 3. Code Linting (Fix Mode)
   if (( ! skip_linting )) {
     (( total_checks += 1 ))
-    log_info "Linting code (with auto-fix)..."
+    log_info "Running clang-tidy (with auto-fix)..."
     if ! "${SCRIPT_HOME}/run-clang-tidy" --fix --fail-error; then
-      log_error "Code linting failed"
+      log_error "clang-tidy failed"
       num_failures=$(( num_failures + 1 ))
     else
-      log_status "Code linting completed (auto-fixed issues where possible)"
+      log_status "clang-tidy completed (auto-fixed issues where possible)"
     fi
   } else {
-    log_info "Skipping code linting"
+    log_info "Skipping clang-tidy"
   }
 
   # 4. Tests
@@ -180,26 +183,41 @@ Usage: %B${functrace[1]%:*}%b <option>
       }
       mkdir -p ${build_dir}
       cd ${build_dir}
-      log_info "Configuring build with CMake..."
-      if ! cmake --preset ${host_os} 2>&1; then
-        log_error "Failed to configure build"
+      log_info "Running cmake --preset ${host_os}..."
+      local cmake_config_output="${temp_dir}/cmake-config.log"
+      if ! cmake --preset ${host_os} > ${cmake_config_output} 2>&1; then
+        log_error "cmake configuration failed"
+        local line_count=$(wc -l < ${cmake_config_output} 2>/dev/null || echo 0)
+        if (( line_count > 0 && line_count <= 20 )); then
+          cat ${cmake_config_output}
+        elif (( line_count > 20 )); then
+          log_error "Full output (${line_count} lines): ${cmake_config_output}"
+        fi
         cd ${project_root}
         num_failures=$(( num_failures + 1 ))
       else
+        log_status "cmake configuration completed"
         cd ${project_root}
       fi
     fi
     
     # Always build the full project first
     if [[ -d ${build_dir} ]]; then
-      log_info "Building full project..."
+      log_info "Running cmake --build..."
       cd ${build_dir}
-      if ! cmake --build ${build_dir} 2>&1; then
-        log_error "Failed to build project"
+      local cmake_build_output="${temp_dir}/cmake-build.log"
+      if ! cmake --build ${build_dir} > ${cmake_build_output} 2>&1; then
+        log_error "cmake build failed"
+        local line_count=$(wc -l < ${cmake_build_output} 2>/dev/null || echo 0)
+        if (( line_count > 0 && line_count <= 20 )); then
+          cat ${cmake_build_output}
+        elif (( line_count > 20 )); then
+          log_error "Full output (${line_count} lines): ${cmake_build_output}"
+        fi
         cd ${project_root}
         num_failures=$(( num_failures + 1 ))
       else
-        log_status "Project built successfully"
+        log_status "cmake build completed"
         cd ${project_root}
       fi
     else
@@ -209,15 +227,22 @@ Usage: %B${functrace[1]%:*}%b <option>
     
     # Always build tests before running them
     if [[ -d ${build_dir} ]] && (( num_failures == 0 )); then
-      log_info "Building tests..."
+      log_info "Running cmake --build --target ${project_name}-tests..."
       cd ${build_dir}
-      if ! cmake --build ${build_dir} --target ${project_name}-tests 2>&1; then
+      local cmake_test_build_output="${temp_dir}/cmake-test-build.log"
+      if ! cmake --build ${build_dir} --target ${project_name}-tests > ${cmake_test_build_output} 2>&1; then
         log_error "Failed to build tests. Tests may not be enabled."
         log_info "To enable tests, ensure Qt6 Test is available."
+        local line_count=$(wc -l < ${cmake_test_build_output} 2>/dev/null || echo 0)
+        if (( line_count > 0 && line_count <= 20 )); then
+          cat ${cmake_test_build_output}
+        elif (( line_count > 20 )); then
+          log_info "Build output (${line_count} lines): ${cmake_test_build_output}"
+        fi
         cd ${project_root}
         num_failures=$(( num_failures + 1 ))
       else
-        log_status "Tests built successfully"
+        log_status "Test build completed"
         cd ${project_root}
       fi
     fi
@@ -230,7 +255,9 @@ Usage: %B${functrace[1]%:*}%b <option>
       # Try to run tests with ctest
       if command -v ctest > /dev/null 2>&1; then
         # Check if any tests are registered
-        local test_output=$(ctest -N 2>&1)
+        local test_list_output="${temp_dir}/ctest-list.log"
+        ctest -N > ${test_list_output} 2>&1
+        local test_output=$(cat ${test_list_output})
         # Check for "No tests were found" message
         if echo ${test_output} | grep -q "No tests were found"; then
           log_error "No tests found in build directory. Tests may not be enabled."
@@ -244,10 +271,23 @@ Usage: %B${functrace[1]%:*}%b <option>
             log_info "To enable tests, ensure Qt6 Test is available."
             num_failures=$(( num_failures + 1 ))
           else
-            if ctest --output-on-failure; then
-              log_status "Tests passed"
+            log_info "Running ctest (${test_count} test(s))..."
+            local ctest_output="${temp_dir}/ctest.log"
+            if ctest --output-on-failure > ${ctest_output} 2>&1; then
+              log_status "ctest passed"
+              # Show summary if output is small
+              local line_count=$(wc -l < ${ctest_output} 2>/dev/null || echo 0)
+              if (( line_count > 0 && line_count <= 20 )); then
+                cat ${ctest_output}
+              fi
             else
-              log_error "Tests failed"
+              log_error "ctest failed"
+              local line_count=$(wc -l < ${ctest_output} 2>/dev/null || echo 0)
+              if (( line_count > 0 && line_count <= 20 )); then
+                cat ${ctest_output}
+              elif (( line_count > 20 )); then
+                log_error "Full output (${line_count} lines): ${ctest_output}"
+              fi
               num_failures=$(( num_failures + 1 ))
             fi
           fi
@@ -281,10 +321,22 @@ Usage: %B${functrace[1]%:*}%b <option>
         done
         
         if [[ -n ${test_executable} ]]; then
-          if ${test_executable}; then
+          log_info "Running ${test_executable}..."
+          local test_exec_output="${temp_dir}/test-exec.log"
+          if ${test_executable} > ${test_exec_output} 2>&1; then
             log_status "Tests passed"
+            local line_count=$(wc -l < ${test_exec_output} 2>/dev/null || echo 0)
+            if (( line_count > 0 && line_count <= 20 )); then
+              cat ${test_exec_output}
+            fi
           else
             log_error "Tests failed"
+            local line_count=$(wc -l < ${test_exec_output} 2>/dev/null || echo 0)
+            if (( line_count > 0 && line_count <= 20 )); then
+              cat ${test_exec_output}
+            elif (( line_count > 20 )); then
+              log_error "Full output (${line_count} lines): ${test_exec_output}"
+            fi
             num_failures=$(( num_failures + 1 ))
           fi
         else
@@ -304,9 +356,12 @@ Usage: %B${functrace[1]%:*}%b <option>
   if (( num_failures > 0 )); then
     log_error "Failed ${num_failures} out of ${total_checks} check(s)"
     log_error "Please fix the issues above before committing"
+    log_info "Temp files with detailed output are available in: ${temp_dir}"
     exit 2
   else
     log_status "All ${total_checks} check(s) passed!"
+    # Clean up temp files on success (they weren't needed)
+    rm -rf ${temp_dir}
     exit 0
   fi
 }

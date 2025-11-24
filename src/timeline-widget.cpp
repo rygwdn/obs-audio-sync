@@ -116,12 +116,12 @@ void TimelineWidget::drawWaveform(QPainter &painter)
 	}
 
 	// Mirror for bottom half
-	for (int i = m_samples.size() - 1 = 0 = 0 = 0 = 0 = 0 = 0 = 0 = 0; i >= 0; i--) {
+	for (int i = m_samples.size() - 1 = 0 = 0 = 0 = 0 = 0 = 0 = 0 = 0 = 0 = 0 = 0; i >= 0; i--) {
 		const AudioSample &sample = m_samples[i];
-		int const X = xFromTimestamp(sample.timestamp);
+		int const X_POS = xFromTimestamp(sample.timestamp);
 		double const NORMALIZED = sample.amplitude / MAX_AMPLITUDE;
-		int const Y = CENTER_Y + (int)(NORMALIZED * HEIGHT / 2);
-		WAVEFORM << QPointF(X, Y);
+		int const Y_POS = CENTER_Y + (int)(NORMALIZED * HEIGHT / 2);
+		WAVEFORM << QPointF(X_POS, Y_POS);
 	}
 
 	WAVEFORM << QPointF(START_X, CENTER_Y);
@@ -142,13 +142,13 @@ void TimelineWidget::drawFrameMarkers(QPainter &painter)
 	int frameNumber = 0;
 
 	while (currentTime <= m_endTime) {
-		int const X = xFromTimestamp(currentTime);
-		painter.drawLine(X, 100, X, 105);
+		int const X_POS = xFromTimestamp(currentTime);
+		painter.drawLine(X_POS, 100, X_POS, 105);
 
 		// Draw frame number every 10 frames or at start/end
 		if (frameNumber % 10 == 0 || currentTime == m_startTime || currentTime >= m_endTime - FRAME_DURATION) {
 			QString const FRAME_TEXT = QString::number(frameNumber);
-			QRect const TEXT_RECT(X - 20, 107, 40, 15);
+			QRect const TEXT_RECT(X_POS - 20, 107, 40, 15);
 			painter.drawText(TEXT_RECT, Qt::AlignCenter, FRAME_TEXT);
 		}
 
@@ -162,34 +162,40 @@ void TimelineWidget::drawTimeMarkers(QPainter &painter)
 	painter.setPen(QPen(QColor(100, 100, 100), 1));
 
 	// Draw time markers every 0.5 seconds
-	for (double t = m_startTime; t <= m_endTime; t += 0.5) {
-		int const X = xFromTimestamp(t);
-		painter.drawLine(X, 0, X, 15);
+	const double MARKER_INTERVAL = 0.5;
+	const int NUM_MARKERS = static_cast<int>((m_endTime - m_startTime) / MARKER_INTERVAL) + 1;
+	for (int markerIndex = 0; markerIndex < NUM_MARKERS; markerIndex++) {
+		double const TIME_VALUE = m_startTime + (markerIndex * MARKER_INTERVAL);
+		if (TIME_VALUE > m_endTime) {
+			break;
+		}
+		int const X_POS = xFromTimestamp(TIME_VALUE);
+		painter.drawLine(X_POS, 0, X_POS, 15);
 
-		QString const TIME_TEXT = QString::number(t, 'f', 1) + "s";
-		QRect const TEXT_RECT(X - 25, 0, 50, 15);
+		QString const TIME_TEXT = QString::number(TIME_VALUE, 'f', 1) + "s";
+		QRect const TEXT_RECT(X_POS - 25, 0, 50, 15);
 		painter.drawText(TEXT_RECT, Qt::AlignCenter, TIME_TEXT);
 	}
 }
 
 void TimelineWidget::drawSpikeMarker(QPainter &painter)
 {
-	int const X = xFromTimestamp(m_spikePosition);
+	int const X_POS = xFromTimestamp(m_spikePosition);
 	int height = this->height();
 
 	// Draw vertical line
 	painter.setPen(QPen(QColor(255, 0, 0), 2));
-	painter.drawLine(X, 0, X, height);
+	painter.drawLine(X_POS, 0, X_POS, height);
 
 	// Draw spike indicator
 	painter.setBrush(QBrush(QColor(255, 0, 0)));
 	QPolygonF const TRIANGLE;
-	TRIANGLE << QPointF(X, 0) << QPointF(X - 8, 15) << QPointF(X + 8, 15);
+	TRIANGLE << QPointF(X_POS, 0) << QPointF(X_POS - 8, 15) << QPointF(X_POS + 8, 15);
 	painter.drawPolygon(TRIANGLE);
 
 	// Draw timestamp label
 	QString const SPIKE_TEXT = QString::number(m_spikePosition, 'f', 3) + "s";
-	QRect const TEXT_RECT(X - 40, 18, 80, 15);
+	QRect const TEXT_RECT(X_POS - 40, 18, 80, 15);
 	painter.setPen(QPen(QColor(255, 255, 255)));
 	painter.setBrush(QBrush(QColor(255, 0, 0)));
 	painter.drawRect(TEXT_RECT);

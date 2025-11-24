@@ -16,7 +16,7 @@ You should have received a copy of the GNU General Public License along
 with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
-#pragma once
+#pragma once // NOLINT(portability-avoid-pragma-once)
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,8 +27,8 @@ extern "C" {
 #include <stdarg.h>
 #include <string.h>
 
-extern const char *pluginName;
-extern const char *pluginVersion;
+extern const char *pluginName;    // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+extern const char *pluginVersion; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 void obsLog(int logLevel, const char *format, ...);
 extern void blogva(int logLevel, const char *format, va_list args);

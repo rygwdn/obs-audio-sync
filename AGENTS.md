@@ -197,6 +197,14 @@ build-aux/
 - Run with `ctest` or directly execute test binary
 - Tests may require OBS libraries (optional in linting mode)
 
+### Output Management
+
+The check scripts (`run-all-checks`, `run-clang-format`, `run-clang-tidy`, `run-gersemi`) automatically manage verbose output:
+- Verbose output (formatting/linting issues) is captured to temporary files
+- If output is ≤ 20 lines, it's displayed at the end
+- If output is > 20 lines, only the file path is shown
+- **AI agents do not need to use `tail` or pipe commands** - the scripts handle output appropriately
+
 ## Important Considerations
 
 ### OBS Plugin Lifecycle
