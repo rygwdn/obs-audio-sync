@@ -100,7 +100,7 @@ void AudioSyncPanel::setupUI()
 	m_layout->addWidget(m_frameLabel);
 
 	// Frame navigation
-	auto const *navLayout = new QHBoxLayout();
+	auto *navLayout = new QHBoxLayout();
 	m_prevFrameButton = new QPushButton("< Prev", centralWidget);
 	m_prevFrameButton->setEnabled(false);
 	m_prevFrameButton->setVisible(false);
@@ -151,7 +151,7 @@ void AudioSyncPanel::refreshRecordings()
 
 void AudioSyncPanel::scanRecordings() // NOLINT(readability-convert-member-functions-to-static)
 {
-	RecordingScanner const SCANNER;
+	RecordingScanner scanner;
 	QList<RecordingInfo> recordings = scanner.scanRecordings(15.0); // 15 second threshold
 
 	for (const RecordingInfo &recording : recordings) {

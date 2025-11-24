@@ -18,7 +18,6 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include "audio-analyzer.h"
 #include "libavcodec/codec.h"
-#include "libavutil/rational.h"
 #include "libavcodec/packet.h"
 #include "libavutil/frame.h"
 #include "libavutil/error.h"
@@ -35,7 +34,6 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
 #include <libavutil/samplefmt.h>
-#include <libavutil/channel_layout.h>
 }
 
 AudioAnalyzer::AudioAnalyzer()

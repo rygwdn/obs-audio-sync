@@ -97,21 +97,21 @@ void TimelineWidget::drawWaveform(QPainter &painter)
 	painter.setPen(QPen(QColor(100, 150, 255), 1));
 	painter.setBrush(QBrush(QColor(100, 150, 255, 100)));
 
-	QPolygonF const WAVEFORM;
+	QPolygonF WAVEFORM;
 	WAVEFORM << QPointF(START_X, CENTER_Y);
 
 	// Draw waveform
-	double const MAX_AMPLITUDE = 0.0;
+	double maxAmplitude = 0.0;
 	for (const AudioSample &sample : m_samples) {
 		maxAmplitude = qMax(maxAmplitude, sample.amplitude);
 	}
 
-	if (MAX_AMPLITUDE > 0.0) {
+	if (maxAmplitude > 0.0) {
 		for (const AudioSample &sample : m_samples) {
 			int x = xFromTimestamp(sample.timestamp);
 			double normalized = sample.amplitude / maxAmplitude;
-			int y = centerY - (int)(normalized * height / 2);
-			waveform << QPointF(x, y);
+			int y = CENTER_Y - (int)(normalized * HEIGHT / 2);
+			WAVEFORM << QPointF(x, y);
 		}
 	}
 
@@ -119,7 +119,7 @@ void TimelineWidget::drawWaveform(QPainter &painter)
 	for (int i = m_samples.size() - 1; i >= 0; i--) { // NOLINT(cppcoreguidelines-init-variables)
 		const AudioSample &sample = m_samples[i];
 		int const X_POS = xFromTimestamp(sample.timestamp);
-		double const NORMALIZED = sample.amplitude / MAX_AMPLITUDE;
+		double const NORMALIZED = sample.amplitude / maxAmplitude;
 		int const Y_POS = CENTER_Y + (int)(NORMALIZED * HEIGHT / 2);
 		WAVEFORM << QPointF(X_POS, Y_POS);
 	}
@@ -189,7 +189,7 @@ void TimelineWidget::drawSpikeMarker(QPainter &painter)
 
 	// Draw spike indicator
 	painter.setBrush(QBrush(QColor(255, 0, 0)));
-	QPolygonF const TRIANGLE;
+	QPolygonF TRIANGLE;
 	TRIANGLE << QPointF(X_POS, 0) << QPointF(X_POS - 8, 15) << QPointF(X_POS + 8, 15);
 	painter.drawPolygon(TRIANGLE);
 
