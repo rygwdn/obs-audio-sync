@@ -201,8 +201,7 @@ if(APPLE)
   if(NOT EXISTS "${AGL_STUB_LIB}")
     file(MAKE_DIRECTORY "${AGL_STUB_DIR}")
     file(
-      WRITE
-      "${AGL_STUB_DIR}/AGL-stub.c"
+      WRITE "${AGL_STUB_DIR}/AGL-stub.c"
       "// Minimal stub for deprecated AGL framework\n__attribute__((visibility(\"default\"))) void AGLStub() {}\n"
     )
     # Get target architectures from CMAKE_OSX_ARCHITECTURES or default to arm64
@@ -249,7 +248,135 @@ enable_testing()
 
 if(ENABLE_QT)
   # Qt6 Test is optional on all platforms
-  find_package(Qt6 COMPONENTS Test)
+  # First try to find in OBS deps (CMAKE_PREFIX_PATH)
+  find_package(Qt6 COMPONENTS Test QUIET)
+
+  # If not found in OBS deps, try to download from official Qt repository
+  if(NOT Qt6Test_FOUND)
+    # Determine Qt6 version from OBS deps
+    set(_qt6_version "")
+    foreach(_obs_path ${CMAKE_PREFIX_PATH})
+      set(_qt6_core_config "${_obs_path}/lib/cmake/Qt6Core/Qt6CoreConfig.cmake")
+      if(EXISTS "${_qt6_core_config}")
+        # Try to read version from Qt6CoreConfigVersionImpl.cmake
+        set(_qt6_version_file "${_obs_path}/lib/cmake/Qt6Core/Qt6CoreConfigVersionImpl.cmake")
+        if(EXISTS "${_qt6_version_file}")
+          file(READ "${_qt6_version_file}" _qt6_version_content)
+          # Extract version using regex (format: set(PACKAGE_VERSION "6.x.y"))
+          string(
+            REGEX MATCH
+            "set\\(PACKAGE_VERSION \"([0-9]+\\.[0-9]+\\.[0-9]+)\""
+            _version_match
+            "${_qt6_version_content}"
+          )
+          if(_version_match)
+            set(_qt6_version "${CMAKE_MATCH_1}")
+            message(STATUS "Detected Qt6 version: ${_qt6_version}")
+          endif()
+        endif()
+        break()
+      endif()
+    endforeach()
+
+    # If we found Qt6 version, try to download Qt6 Test from official Qt repository
+    if(_qt6_version AND NOT Qt6Test_FOUND)
+      message(STATUS "Qt6 Test not found in OBS deps. Attempting to download from official Qt repository...")
+
+      # Qt provides pre-built binaries via their online installer repository
+      # For macOS, we can try to download from: https://download.qt.io/online/qtsdkrepository/
+      # However, this requires knowing the exact architecture and component structure
+
+      # Extract major.minor version (e.g., "6.7" from "6.7.1")
+      string(REGEX MATCH "^([0-9]+\\.[0-9]+)" _qt6_major_minor "${_qt6_version}")
+
+      if(_qt6_major_minor AND APPLE)
+        # Determine architecture
+        if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
+          set(_qt_arch "macos")
+          set(_qt_arch_suffix "macos")
+        else()
+          set(_qt_arch "macos")
+          set(_qt_arch_suffix "macos")
+        endif()
+
+        # Qt online installer repository structure:
+        # https://download.qt.io/online/qtsdkrepository/mac_x64/desktop/qt6_${version}/qt.qt6.${version}.${arch}/qt.qt6.${version}.${arch}.test/
+        # However, this requires authentication or specific repository access
+
+        # Alternative: Try to find Qt6 Test in a local Qt installation
+        # Check common Qt installation paths
+        set(
+          _qt_install_paths
+          "$ENV{HOME}/Qt/${_qt6_major_minor}"
+          "/opt/qt/${_qt6_major_minor}"
+          "/usr/local/Qt/${_qt6_major_minor}"
+        )
+
+        foreach(_qt_path IN LISTS _qt_install_paths)
+          set(_qt_test_config "${_qt_path}/${_qt6_major_minor}/gcc_64/lib/cmake/Qt6Test/Qt6TestConfig.cmake")
+          if(EXISTS "${_qt_test_config}")
+            set(
+              Qt6Test_DIR
+              "${_qt_path}/${_qt6_major_minor}/gcc_64/lib/cmake/Qt6Test"
+              CACHE PATH
+              "Qt6Test directory"
+              FORCE
+            )
+            find_package(Qt6 COMPONENTS Test QUIET)
+            if(Qt6Test_FOUND)
+              message(STATUS "Found Qt6 Test in local Qt installation: ${_qt_path}")
+              break()
+            endif()
+          endif()
+        endforeach()
+
+        if(NOT Qt6Test_FOUND)
+          message(STATUS "Qt6 Test not found in local Qt installations.")
+
+          # Try to download Qt6 Test from Qt's official archive
+          # Qt provides pre-built binaries at: https://download.qt.io/archive/qt/
+          # For macOS, we need the macos version
+          set(_qt6_test_download_dir "${CMAKE_CURRENT_SOURCE_DIR}/.deps/qt6-test-${_qt6_version}")
+          set(_qt6_test_prefix "${_qt6_test_download_dir}")
+
+          # Check if already downloaded
+          set(_qt6_test_config_file "${_qt6_test_prefix}/lib/cmake/Qt6Test/Qt6TestConfig.cmake")
+          if(NOT EXISTS "${_qt6_test_config_file}")
+            message(STATUS "Attempting to download Qt6 Test ${_qt6_version} from Qt official repository...")
+            message(WARNING "Automatic download of Qt6 Test from official Qt repository is not yet implemented.")
+            message(STATUS "Please install Qt6 Test manually:")
+            message(STATUS "  1. Download Qt ${_qt6_major_minor} from https://www.qt.io/download")
+            message(STATUS "  2. Install Qt6 Test component")
+            message(STATUS "  3. Or use Homebrew: brew install qt@6 (may have version mismatch)")
+            message(STATUS "Will try Homebrew/system paths as fallback...")
+          else()
+            # Found downloaded Qt6 Test, add to prefix path
+            list(APPEND CMAKE_PREFIX_PATH "${_qt6_test_prefix}")
+            set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} CACHE PATH "CMake prefix search path" FORCE)
+            find_package(Qt6 COMPONENTS Test QUIET)
+            if(Qt6Test_FOUND)
+              message(STATUS "Found Qt6 Test in downloaded location: ${_qt6_test_prefix}")
+            endif()
+          endif()
+        endif()
+      endif()
+    endif()
+  endif()
+
+  # If still not found, skip Homebrew to avoid version mismatches
+  # Homebrew Qt6Test typically doesn't match OBS deps Qt6 version
+  if(NOT Qt6Test_FOUND AND APPLE)
+    message(STATUS "Skipping Homebrew Qt6Test to avoid version mismatch with OBS deps Qt6 ${_qt6_version}")
+    message(STATUS "")
+    message(STATUS "To enable tests, please install Qt6 Test that matches Qt6 ${_qt6_version}:")
+    message(STATUS "  1. Download Qt ${_qt6_major_minor} from https://www.qt.io/download-qt-installer")
+    message(STATUS "  2. Run the Qt installer and install Qt ${_qt6_major_minor} with the Test component")
+    message(STATUS "  3. The installer will install to ~/Qt/${_qt6_major_minor} by default")
+    message(STATUS "  4. Reconfigure the build after installation")
+    message(STATUS "")
+    message(STATUS "Alternatively, if Qt6 Test becomes available in OBS deps, it will be used automatically.")
+  endif()
+
   if(NOT Qt6Test_FOUND)
     message(STATUS "Qt6 Test not found. Tests will be disabled on ${CMAKE_SYSTEM_NAME}.")
     set(ENABLE_QT_TESTS OFF)
@@ -280,7 +407,11 @@ if(ENABLE_QT)
     )
 
     # Link OBS libraries if available (optional for tests)
-    if(ENABLE_FRONTEND_API)
+    # libobs is required for obs.h header (included by obs-frontend-api.h)
+    if(libobs_FOUND OR TARGET OBS::libobs)
+      target_link_libraries(${CMAKE_PROJECT_NAME}-tests PRIVATE OBS::libobs)
+    endif()
+    if(ENABLE_FRONTEND_API AND (obs-frontend-api_FOUND OR TARGET OBS::obs-frontend-api))
       target_link_libraries(${CMAKE_PROJECT_NAME}-tests PRIVATE OBS::obs-frontend-api)
     endif()
 

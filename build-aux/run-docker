@@ -1,0 +1,289 @@
+#!/usr/bin/env zsh
+
+builtin emulate -L zsh
+setopt EXTENDED_GLOB
+setopt PUSHD_SILENT
+setopt ERR_EXIT
+setopt ERR_RETURN
+setopt NO_UNSET
+setopt PIPE_FAIL
+setopt NO_AUTO_PUSHD
+setopt NO_PUSHD_IGNORE_DUPS
+setopt FUNCTION_ARGZERO
+
+## Enable for script debugging
+# setopt WARN_CREATE_GLOBAL
+# setopt WARN_NESTED_VAR
+# setopt XTRACE
+
+autoload -Uz is-at-least && if ! is-at-least 5.8; then
+  print -u2 -PR "%F{1}${funcstack[1]##*/}:%f Running on Zsh version %B${ZSH_VERSION}%b, but Zsh %B5.8%b is the minimum supported version. Upgrade zsh to fix this issue."
+  exit 1
+fi
+
+run_docker() {
+  if (( ! ${+SCRIPT_HOME} )) typeset -g SCRIPT_HOME=${ZSH_ARGZERO:A:h}
+  local project_root=${SCRIPT_HOME:A:h}
+
+  typeset -g host_os=${${(L)$(uname -s)}//darwin/macos}
+  local -i verbosity=1
+  local -i skip_tests=0
+  local -i skip_formatting=0
+  local -i skip_cmake_formatting=0
+  local -i skip_build=0
+  local -i rebuild_image=0
+  local -i interactive=0
+  local docker_image="obs-audio-sync-builder"
+  local docker_tag="latest"
+  local target_arch=""
+  local -r _version='1.0.0'
+
+  fpath=("${SCRIPT_HOME}/.functions" ${fpath})
+  autoload -Uz log_info log_error log_output set_loglevel log_status log_warning log_group
+
+  local -r _usage="
+Usage: %B${functrace[1]%:*}%b <option> [<options>]
+
+%BOptions%b:
+
+%F{yellow} Action options%f
+ -----------------------------------------------------------------------------
+  %B--build-only%b                    Only build, skip tests and linting
+  %B--test-only%b                     Only run tests, skip build and linting
+  %B--lint-only%b                     Only run linters, skip build and tests
+  %B--all%b                           Run everything (default)
+  %B--interactive%b                   Run interactive shell in container
+
+%F{yellow} Skip options%f
+ -----------------------------------------------------------------------------
+  %B--skip-tests%b                    Skip running tests
+  %B--skip-formatting%b               Skip code formatting checks
+  %B--skip-cmake-formatting%b         Skip CMake formatting checks
+  %B--skip-build%b                    Skip building the project
+
+%F{yellow} Docker options%f
+ -----------------------------------------------------------------------------
+  %B--rebuild-image%b                 Rebuild Docker image before running
+  %B--image%b                         Specify Docker image name (default: obs-audio-sync-builder)
+  %B--tag%b                           Specify Docker image tag (default: latest)
+  %B--arch%b                          Specify target architecture (arm64 or x86_64, auto-detected on macOS)
+
+%F{yellow} Output options%f
+ -----------------------------------------------------------------------------
+  %B-v | --verbose%b                  Verbose (more detailed output)
+  %B--debug%b                         Debug (very detailed and added output)
+
+%F{yellow} General options%f
+ -----------------------------------------------------------------------------
+  %B-h | --help%b                     Print this usage help
+  %B-V | --version%b                  Print script version information"
+
+  local -a args
+  while (( # )) {
+    case ${1} {
+      --image|--tag|--arch)
+        if (( # == 1 )) || [[ ${2:0:1} == '-' ]] {
+          log_error "Missing value for option %B${1}%b"
+          log_output ${_usage}
+          exit 2
+        }
+        ;;
+    }
+    case ${1} {
+      --)
+        shift
+        args+=($@)
+        break
+        ;;
+      --build-only) skip_tests=1; skip_formatting=1; skip_cmake_formatting=1; shift ;;
+      --test-only) skip_build=1; skip_formatting=1; skip_cmake_formatting=1; shift ;;
+      --lint-only) skip_build=1; skip_tests=1; shift ;;
+      --all) skip_tests=0; skip_formatting=0; skip_cmake_formatting=0; skip_build=0; shift ;;
+      --interactive) interactive=1; shift ;;
+      --skip-tests) skip_tests=1; shift ;;
+      --skip-formatting) skip_formatting=1; shift ;;
+      --skip-cmake-formatting) skip_cmake_formatting=1; shift ;;
+      --skip-build) skip_build=1; shift ;;
+      --rebuild-image) rebuild_image=1; shift ;;
+      --image) docker_image=${2}; shift 2 ;;
+      --tag) docker_tag=${2}; shift 2 ;;
+      --arch) target_arch=${2}; shift 2 ;;
+      -v|--verbose) (( verbosity += 1 )); shift ;;
+      -h|--help) log_output ${_usage}; exit 0 ;;
+      -V|--version) print -Pr "${_version}"; exit 0 ;;
+      --debug) verbosity=3; shift ;;
+      *)
+        log_error "Unknown option: ${1}"
+        log_output ${_usage}
+        exit 2
+        ;;
+    }
+  }
+
+  set_loglevel ${verbosity}
+
+  # Check if Docker is available
+  if ! command -v docker > /dev/null 2>&1; then
+    log_error "Docker is not installed or not in PATH"
+    log_info "Please install Docker: https://docs.docker.com/get-docker/"
+    exit 1
+  fi
+
+  # Detect architecture on macOS
+  if [[ -z ${target_arch} ]] && [[ ${host_os} == macos ]]; then
+    local cpu_arch=$(uname -m)
+    if [[ ${cpu_arch} == arm64 ]]; then
+      target_arch="arm64"
+    else
+      target_arch="x86_64"
+    fi
+    log_info "Detected architecture: ${target_arch}"
+  elif [[ -z ${target_arch} ]]; then
+    # Default to x86_64 for Linux
+    target_arch="x86_64"
+  fi
+
+  local full_image_name="${docker_image}:${docker_tag}"
+  local dockerfile_path="${project_root}/Dockerfile"
+
+  # Build Docker image if needed
+  if (( rebuild_image )) || ! docker image inspect ${full_image_name} > /dev/null 2>&1; then
+    log_group "Building Docker image ${full_image_name}..."
+    local -a docker_build_args=(
+      --tag ${full_image_name}
+      --platform linux/${target_arch}
+    )
+    if (( verbosity > 1 )); then
+      docker_build_args+=(--progress=plain)
+    else
+      docker_build_args+=(--quiet)
+    fi
+    
+    if ! docker build ${docker_build_args} -f ${dockerfile_path} ${project_root}; then
+      log_error "Failed to build Docker image"
+      exit 1
+    fi
+    log_status "Docker image built successfully"
+    log_group
+  else
+    log_info "Using existing Docker image: ${full_image_name}"
+  fi
+
+  # Prepare Docker run arguments
+  local -a docker_run_args=(
+    --rm
+    --platform linux/${target_arch}
+    --volume "${project_root}:/workspace"
+    --workdir /workspace
+    --env CCACHE_DIR=/workspace/.ccache
+    --env QT_VERSION=6
+  )
+
+  # Mount ccache directory if it exists
+  if [[ -d ${project_root}/.ccache ]]; then
+    docker_run_args+=(--volume "${project_root}/.ccache:/workspace/.ccache")
+  fi
+
+  # Run interactive shell if requested
+  if (( interactive )); then
+    log_info "Starting interactive shell in container..."
+    log_info "Project is mounted at /workspace"
+    docker run -it ${docker_run_args} ${full_image_name} /bin/zsh
+    return 0
+  fi
+
+  # Run commands in container
+  log_group "Running in Docker container..."
+
+  local -i num_failures=0
+  local -i total_checks=0
+
+  # 1. Code Formatting
+  if (( ! skip_formatting )); then
+    (( total_checks += 1 ))
+    log_info "Running clang-format..."
+    if docker run ${docker_run_args} ${full_image_name} \
+      /bin/zsh -c "./build-aux/run-clang-format --fail-error"; then
+      log_status "clang-format completed"
+    else
+      log_error "clang-format failed"
+      num_failures=$(( num_failures + 1 ))
+    fi
+  fi
+
+  # 2. CMake Formatting
+  if (( ! skip_cmake_formatting )); then
+    (( total_checks += 1 ))
+    log_info "Running gersemi..."
+    if docker run ${docker_run_args} ${full_image_name} \
+      /bin/zsh -c "./build-aux/run-gersemi --fail-error"; then
+      log_status "gersemi completed"
+    else
+      log_error "gersemi failed"
+      num_failures=$(( num_failures + 1 ))
+    fi
+  fi
+
+  # 3. Build
+  if (( ! skip_build )); then
+    (( total_checks += 1 ))
+    log_info "Building project..."
+    local -a build_args=(
+      --target ubuntu-x86_64
+      --config RelWithDebInfo
+    )
+    if (( verbosity > 1 )); then
+      build_args+=(--verbose)
+    fi
+    
+    if docker run ${docker_run_args} ${full_image_name} \
+      /bin/zsh -c ".github/scripts/build-ubuntu ${build_args}"; then
+      log_status "Build completed"
+    else
+      log_error "Build failed"
+      num_failures=$(( num_failures + 1 ))
+    fi
+  fi
+
+  # 4. Tests
+  if (( ! skip_tests )); then
+    (( total_checks += 1 ))
+    log_info "Running tests..."
+    
+    # Determine build directory based on target
+    local build_dir="build_x86_64"
+    if [[ ${target_arch} == arm64 ]]; then
+      build_dir="build_arm64"
+    fi
+    
+    # First ensure tests are built (tests should be built as part of the main build)
+    # But we need to make sure the build directory exists
+    log_info "Checking if tests are available..."
+    if docker run ${docker_run_args} ${full_image_name} \
+      /bin/zsh -c "if [[ ! -d ${build_dir} ]]; then echo 'Build directory not found. Run build first with --all or without --skip-build'; exit 1; fi && cd ${build_dir} && if ! cmake --build . --target obs-audio-sync-tests 2>/dev/null; then echo 'Test target not available. Building project first...' && cmake --build . && cmake --build . --target obs-audio-sync-tests; fi"; then
+      # Run tests
+      if docker run ${docker_run_args} ${full_image_name} \
+        /bin/zsh -c "cd ${build_dir} && ctest --output-on-failure"; then
+        log_status "Tests passed"
+      else
+        log_error "Tests failed"
+        num_failures=$(( num_failures + 1 ))
+      fi
+    else
+      log_error "Failed to build tests or build directory not found"
+      num_failures=$(( num_failures + 1 ))
+    fi
+  fi
+
+  log_group "Summary"
+
+  if (( num_failures > 0 )); then
+    log_error "Failed ${num_failures} out of ${total_checks} check(s)"
+    exit 2
+  else
+    log_status "All ${total_checks} check(s) passed!"
+    exit 0
+  fi
+}
+
+run_docker ${@}

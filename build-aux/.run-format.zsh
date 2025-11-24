@@ -56,14 +56,22 @@ invoke_formatter() {
       }
 
       local -a formatter_version=($(${formatter} --version))
-
-      if ! is-at-least 19.1.1 ${formatter_version[-1]}; then
-        log_error "clang-format is not version 19.1.1 or above (found ${formatter_version[-1]}."
-        exit 2
+      # Extract version number (e.g., "19.1.7" from "Ubuntu clang-format version 19.1.7 (...)")
+      # Version is typically the 4th element (index 3 in 0-based), but try to find it by pattern
+      local version_string=""
+      for v in ${formatter_version[@]}; do
+        if [[ ${v} =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+          version_string=${v}
+          break
+        fi
+      done
+      # Fallback to last element if pattern matching fails
+      if [[ -z ${version_string} ]]; then
+        version_string=${formatter_version[-1]}
       fi
 
-      if ! is-at-least ${formatter_version[-1]} 19.1.1; then
-        log_error "clang-format is more recent than version 19.1.1 (found ${formatter_version[-1]})."
+      if ! is-at-least 19.1.1 ${version_string}; then
+        log_error "clang-format is not version 19.1.1 or above (found ${version_string})."
         exit 2
       fi
 

@@ -99,6 +99,60 @@ ctest
 ./build_macos/obs-audio-sync-tests
 ```
 
+### Docker-Based Development
+
+For a consistent development environment that matches CI, you can use Docker to build, test, and lint the project. This is especially useful on macOS where you want to test Linux builds or ensure consistency with CI.
+
+**Prerequisites:**
+- Docker Desktop (or Docker Engine) installed
+- On Apple Silicon Macs, Docker will automatically use ARM64 architecture
+
+**Quick Start:**
+
+Run everything (formatting, build, tests):
+```bash
+./build-aux/run-docker
+```
+
+Run specific tasks:
+```bash
+# Only run linters
+./build-aux/run-docker --lint-only
+
+# Only build
+./build-aux/run-docker --build-only
+
+# Only run tests (requires build first)
+./build-aux/run-docker --test-only
+
+# Interactive shell in container
+./build-aux/run-docker --interactive
+```
+
+**Options:**
+- `--all`: Run everything (default)
+- `--build-only`: Only build, skip tests and linting
+- `--test-only`: Only run tests, skip build and linting
+- `--lint-only`: Only run linters, skip build and tests
+- `--interactive`: Run interactive shell in container
+- `--skip-tests`: Skip running tests
+- `--skip-formatting`: Skip code formatting checks
+- `--skip-cmake-formatting`: Skip CMake formatting checks
+- `--skip-build`: Skip building the project
+- `--rebuild-image`: Rebuild Docker image before running
+- `--arch arm64|x86_64`: Specify target architecture (auto-detected on macOS)
+- `-v, --verbose`: Verbose output
+- `--debug`: Debug output
+
+The Docker container includes:
+- Ubuntu 24.04 (matching CI)
+- All build dependencies (CMake, Ninja, OBS Studio, Qt6, etc.)
+- Qt6 Test component (for running tests)
+- Linting tools (clang-format, gersemi)
+- ccache for faster builds
+
+Build artifacts and cache are preserved between runs via Docker volumes.
+
 ### Running All Checks
 
 Before committing, run all checks (formatting, CMake formatting, and tests):
