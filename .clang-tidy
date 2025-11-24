@@ -33,7 +33,8 @@ Checks: >
   -modernize-use-trailing-return-type,
   -readability-avoid-const-params-in-decls,
   -readability-magic-numbers,
-  -readability-named-parameter
+  -readability-named-parameter,
+  -readability-redundant-access-specifiers
 
 WarningsAsErrors: ''
 
