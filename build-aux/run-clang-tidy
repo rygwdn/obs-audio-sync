@@ -28,7 +28,6 @@ run_lint() {
   typeset -g host_os=${${(L)$(uname -s)}//darwin/macos}
   local -i fail_on_error=0
   local -i check_only=0
-  local -i fix_mode=0
   local -i verbosity=1
   local -r _version='1.0.0'
 
@@ -43,7 +42,6 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
 %F{yellow} Linting options%f
  -----------------------------------------------------------------------------
   %B-c | --check%b                      Check only, no actual fixes
-  %B--fix%b                            Auto-fix issues where possible
 
 %F{yellow} Output options%f
  -----------------------------------------------------------------------------
@@ -60,7 +58,6 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
   while (( # )) {
     case ${1} {
       -c|--check) check_only=1; shift ;;
-      --fix) fix_mode=1; shift ;;
       -v|--verbose) (( verbosity += 1 )); shift ;;
       -h|--help) log_output ${_usage}; exit 0 ;;
       -V|--version) print -Pr "${_version}"; exit 0 ;;
@@ -149,10 +146,6 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
     --config-file=${project_root}/.clang-tidy
   )
 
-  if (( fix_mode )) {
-    tidy_args+=(--fix --fix-errors)
-  }
-
   if (( check_only )) {
     tidy_args+=('--warnings-as-errors=*')
   }
@@ -192,20 +185,7 @@ Usage: %B${functrace[1]%:*}%b <option> [SOURCE_FILES]
     echo ${output} >> ${verbose_output}
     echo ${output} > ${output_file}
     
-    if (( fix_mode && ! check_only )); then
-      # In fix mode, check for remaining unfixable issues
-      local -a check_args=(
-        -p ${project_root}
-        --config-file=${project_root}/.clang-tidy
-        '--warnings-as-errors=*'
-      )
-      local check_output=$(${clang_tidy} ${check_args} ${file} 2>&1)
-      if (( ${#check_output} > 0 )); then
-        echo ${check_output} >> ${verbose_output}
-        echo ${check_output} > ${error_file}
-        echo ${file} > ${failed_file}
-      fi
-    elif (( ${#output} > 0 )); then
+    if (( ${#output} > 0 )); then
       echo ${output} > ${error_file}
       echo ${file} > ${failed_file}
     fi

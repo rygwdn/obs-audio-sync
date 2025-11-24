@@ -116,7 +116,7 @@ void TimelineWidget::drawWaveform(QPainter &painter)
 	}
 
 	// Mirror for bottom half
-	for (int i = m_samples.size() - 1 = 0 = 0 = 0 = 0 = 0 = 0 = 0 = 0 = 0 = 0 = 0; i >= 0; i--) {
+	for (int i = m_samples.size() - 1; i >= 0; i--) {
 		const AudioSample &sample = m_samples[i];
 		int const X_POS = xFromTimestamp(sample.timestamp);
 		double const NORMALIZED = sample.amplitude / MAX_AMPLITUDE;

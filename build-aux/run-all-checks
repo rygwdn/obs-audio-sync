@@ -124,15 +124,15 @@ Usage: %B${functrace[1]%:*}%b <option>
     log_info "Skipping gersemi"
   }
 
-  # 3. Code Linting (Fix Mode)
+  # 3. Code Linting
   if (( ! skip_linting )) {
     (( total_checks += 1 ))
-    log_info "Running clang-tidy (with auto-fix)..."
-    if ! "${SCRIPT_HOME}/run-clang-tidy" --fix --fail-error; then
+    log_info "Running clang-tidy..."
+    if ! "${SCRIPT_HOME}/run-clang-tidy" --fail-error; then
       log_error "clang-tidy failed"
       num_failures=$(( num_failures + 1 ))
     else
-      log_status "clang-tidy completed (auto-fixed issues where possible)"
+      log_status "clang-tidy completed"
     fi
   } else {
     log_info "Skipping clang-tidy"
