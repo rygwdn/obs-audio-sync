@@ -46,6 +46,8 @@ set(CPACK_ARCHIVE_THREADS 0)
 
 include(CPack)
 
+include(buildspec)
+
 find_package(libobs QUIET)
 
 if(NOT TARGET OBS::libobs)

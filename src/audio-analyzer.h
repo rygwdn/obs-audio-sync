@@ -22,6 +22,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QString>
 #include <QVector>
 #include <QPair>
+#include <type_traits>
 
 struct AudioSpike {
 	double timestamp;   // Time in seconds where spike occurs
@@ -34,6 +35,8 @@ struct AudioSample {
 	double timestamp; // Time in seconds
 	double amplitude; // RMS or peak amplitude
 };
+static_assert(std::is_nothrow_destructible_v<AudioSample>,
+	      "AudioSample must be nothrow destructible for Qt6 containers");
 
 class AudioAnalyzer {
 public:

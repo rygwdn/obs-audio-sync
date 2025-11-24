@@ -32,26 +32,44 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsimde-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Add OBS PPA and install OBS Studio
+# Add OBS PPA and install OBS Studio development packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
     && add-apt-repository --yes ppa:obsproject/obs-studio \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
     obs-studio \
+    libobs-dev \
+    libobs0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Qt6 dependencies (including Qt6 Test)
+# Install Qt6 dependencies (including Qt6 Test and private headers)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     qt6-base-dev \
     libqt6svg6-dev \
     qt6-base-private-dev \
     qt6-tools-dev \
+    qt6-base-dev-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install FFmpeg development packages (for Linux builds)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libavcodec-dev \
+    libavformat-dev \
+    libavutil-dev \
+    libswscale-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install ccache for faster builds
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ccache \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Xvfb for headless GUI testing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb \
+    x11vnc \
+    x11-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Install clang-format and gersemi for linting

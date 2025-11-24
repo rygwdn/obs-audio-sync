@@ -231,6 +231,7 @@ Usage: %B${functrace[1]%:*}%b <option> [<options>]
     local -a build_args=(
       --target ubuntu-x86_64
       --config RelWithDebInfo
+      --skip-deps
     )
     if (( verbosity > 1 )); then
       build_args+=(--verbose)
@@ -250,23 +251,28 @@ Usage: %B${functrace[1]%:*}%b <option> [<options>]
     (( total_checks += 1 ))
     log_info "Running tests..."
     
-    # Determine build directory based on target
+    # Determine build directory - Ubuntu preset uses build_x86_64 regardless of host arch
+    # The build script uses --target ubuntu-x86_64 which creates build_x86_64
     local build_dir="build_x86_64"
-    if [[ ${target_arch} == arm64 ]]; then
-      build_dir="build_arm64"
-    fi
     
     # First ensure tests are built (tests should be built as part of the main build)
     # But we need to make sure the build directory exists
     log_info "Checking if tests are available..."
     if docker run ${docker_run_args} ${full_image_name} \
       /bin/zsh -c "if [[ ! -d ${build_dir} ]]; then echo 'Build directory not found. Run build first with --all or without --skip-build'; exit 1; fi && cd ${build_dir} && if ! cmake --build . --target obs-audio-sync-tests 2>/dev/null; then echo 'Test target not available. Building project first...' && cmake --build . && cmake --build . --target obs-audio-sync-tests; fi"; then
-      # Run tests
+      # Run tests with Xvfb for headless GUI testing
+      # Use timeout to prevent hanging, and set QT_QPA_PLATFORM to offscreen as fallback
+      log_info "Running tests with virtual display..."
       if docker run ${docker_run_args} ${full_image_name} \
-        /bin/zsh -c "cd ${build_dir} && ctest --output-on-failure"; then
+        /bin/zsh -c "cd ${build_dir} && export QT_QPA_PLATFORM=offscreen && timeout 60 xvfb-run -a -s '-screen 0 1024x768x24' ctest --output-on-failure --timeout 30"; then
         log_status "Tests passed"
       else
-        log_error "Tests failed"
+        local test_exit_code=$?
+        if (( test_exit_code == 124 )); then
+          log_error "Tests timed out"
+        else
+          log_error "Tests failed (exit code: ${test_exit_code})"
+        fi
         num_failures=$(( num_failures + 1 ))
       fi
     else

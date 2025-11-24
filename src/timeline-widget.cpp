@@ -29,7 +29,6 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qpolygon.h>
 #include <qpaintdevice.h>
 #include <qnamespace.h>
-#include <qtpreprocessorsupport.h>
 #include <qtmetamacros.h>
 
 TimelineWidget::TimelineWidget(QWidget *parent) : QWidget(parent)

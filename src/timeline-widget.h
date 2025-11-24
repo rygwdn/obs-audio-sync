@@ -26,8 +26,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QResizeEvent>
 #include <qtmetamacros.h>
 #include <qicon.h>
-
-struct AudioSample; // Forward declaration
+#include "audio-analyzer.h" // For AudioSample definition
 
 class TimelineWidget : public QWidget {
 	Q_OBJECT

@@ -212,19 +212,35 @@ Usage: %B${functrace[1]%:*}%b <option>
       num_failures=$(( num_failures + 1 ))
     fi
     
-    # Always build tests before running them
+    # Always build tests before running them (if test target exists)
     if [[ -d ${build_dir} ]] && (( num_failures == 0 )); then
       log_info "Running cmake --build --target ${project_name}-tests..."
       cd ${build_dir}
       local cmake_test_build_output="${temp_dir}/cmake-test-build.log"
       if ! cmake --build ${build_dir} --target ${project_name}-tests > ${cmake_test_build_output} 2>&1; then
-        log_error "Failed to build tests. Tests may not be enabled."
-        log_info "To enable tests, ensure Qt6 Test is available."
-        local line_count=$(wc -l < ${cmake_test_build_output} 2>/dev/null || echo 0)
-        if (( line_count > 0 && line_count <= 20 )); then
-          cat ${cmake_test_build_output}
-        elif (( line_count > 20 )); then
-          log_info "Build output (${line_count} lines): ${cmake_test_build_output}"
+        # Check if the error is due to target not found
+        local target_not_found=0
+        if grep -qi "does not contain a target named.*${project_name}-tests" ${cmake_test_build_output} 2>/dev/null || \
+           grep -qi "No rule to make target.*${project_name}-tests" ${cmake_test_build_output} 2>/dev/null || \
+           grep -qi "Unknown target.*${project_name}-tests" ${cmake_test_build_output} 2>/dev/null; then
+          target_not_found=1
+        fi
+        
+        if (( target_not_found )); then
+          log_error "Test target '${project_name}-tests' not found. Tests are not enabled."
+          log_error "Tests are required and must exist. Missing tests are considered a failure."
+          log_info "To enable tests, ensure Qt6 Test is available:"
+          log_info "  - Install Qt6 Test component"
+          log_info "  - Reconfigure the build: cmake --preset ${host_os}"
+          log_info "  - Rebuild the project"
+        else
+          log_error "Failed to build tests."
+          local line_count=$(wc -l < ${cmake_test_build_output} 2>/dev/null || echo 0)
+          if (( line_count > 0 && line_count <= 20 )); then
+            cat ${cmake_test_build_output}
+          elif (( line_count > 20 )); then
+            log_info "Build output (${line_count} lines): ${cmake_test_build_output}"
+          fi
         fi
         cd ${project_root}
         num_failures=$(( num_failures + 1 ))
@@ -286,7 +302,6 @@ Usage: %B${functrace[1]%:*}%b <option>
         local -a test_names=(
           "${project_name}-tests"
           "obs-audio-sync-tests"
-          "plugintemplate-for-obs-tests"
         )
         
         local test_executable=""

@@ -86,7 +86,7 @@ target_compile_options(
 # 1. CMAKE_PREFIX_PATH (OBS dependencies)
 # 2. .deps directory (local OBS dependencies)
 
-# Build search paths - OBS dependencies only
+# Build search paths - OBS dependencies first, then system paths on Linux
 set(FFMPEG_SEARCH_PATHS)
 foreach(path ${CMAKE_PREFIX_PATH})
   list(APPEND FFMPEG_SEARCH_PATHS "${path}/lib" "${path}")
@@ -99,16 +99,37 @@ foreach(path ${CMAKE_PREFIX_PATH})
 endforeach()
 list(APPEND FFMPEG_INCLUDE_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/.deps/include")
 
-# Find libraries directly - OBS dependencies only (NO system fallback)
-find_library(AVCODEC_LIBRARY NAMES avcodec PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
-find_library(AVFORMAT_LIBRARY NAMES avformat PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
-find_library(AVUTIL_LIBRARY NAMES avutil PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
-find_library(SWSCALE_LIBRARY NAMES swscale PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
+# On Linux, add system paths as fallback
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND FFMPEG_SEARCH_PATHS "/usr/lib" "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}" "/usr/local/lib")
+  list(APPEND FFMPEG_INCLUDE_PATHS "/usr/include" "/usr/local/include")
+endif()
 
-find_path(AVCODEC_INCLUDE_DIR NAMES libavcodec/avcodec.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
-find_path(AVFORMAT_INCLUDE_DIR NAMES libavformat/avformat.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
-find_path(AVUTIL_INCLUDE_DIR NAMES libavutil/avutil.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
-find_path(SWSCALE_INCLUDE_DIR NAMES libswscale/swscale.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
+# Find libraries - prefer OBS dependencies, but allow system fallback on Linux
+# (Linux doesn't have pre-built OBS deps, so system packages are acceptable)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # On Linux, try OBS deps first, then fall back to system
+  find_library(AVCODEC_LIBRARY NAMES avcodec PATHS ${FFMPEG_SEARCH_PATHS})
+  find_library(AVFORMAT_LIBRARY NAMES avformat PATHS ${FFMPEG_SEARCH_PATHS})
+  find_library(AVUTIL_LIBRARY NAMES avutil PATHS ${FFMPEG_SEARCH_PATHS})
+  find_library(SWSCALE_LIBRARY NAMES swscale PATHS ${FFMPEG_SEARCH_PATHS})
+
+  find_path(AVCODEC_INCLUDE_DIR NAMES libavcodec/avcodec.h PATHS ${FFMPEG_INCLUDE_PATHS})
+  find_path(AVFORMAT_INCLUDE_DIR NAMES libavformat/avformat.h PATHS ${FFMPEG_INCLUDE_PATHS})
+  find_path(AVUTIL_INCLUDE_DIR NAMES libavutil/avutil.h PATHS ${FFMPEG_INCLUDE_PATHS})
+  find_path(SWSCALE_INCLUDE_DIR NAMES libswscale/swscale.h PATHS ${FFMPEG_INCLUDE_PATHS})
+else()
+  # On macOS/Windows, OBS dependencies only (NO system fallback)
+  find_library(AVCODEC_LIBRARY NAMES avcodec PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
+  find_library(AVFORMAT_LIBRARY NAMES avformat PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
+  find_library(AVUTIL_LIBRARY NAMES avutil PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
+  find_library(SWSCALE_LIBRARY NAMES swscale PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
+
+  find_path(AVCODEC_INCLUDE_DIR NAMES libavcodec/avcodec.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
+  find_path(AVFORMAT_INCLUDE_DIR NAMES libavformat/avformat.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
+  find_path(AVUTIL_INCLUDE_DIR NAMES libavutil/avutil.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
+  find_path(SWSCALE_INCLUDE_DIR NAMES libswscale/swscale.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
+endif()
 
 # Verify all libraries and headers were found
 if(
@@ -134,7 +155,11 @@ if(
   set(AVUTIL_INCLUDE_DIRS ${AVUTIL_INCLUDE_DIR})
   set(SWSCALE_INCLUDE_DIRS ${SWSCALE_INCLUDE_DIR})
 
-  message(STATUS "Found FFmpeg libraries from OBS dependencies:")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(STATUS "Found FFmpeg libraries (using system packages on Linux):")
+  else()
+    message(STATUS "Found FFmpeg libraries from OBS dependencies:")
+  endif()
   message(STATUS "  avcodec: ${AVCODEC_LIBRARY}")
   message(STATUS "  avformat: ${AVFORMAT_LIBRARY}")
   message(STATUS "  avutil: ${AVUTIL_LIBRARY}")
@@ -147,25 +172,41 @@ if(NOT AVCODEC_FOUND OR NOT AVFORMAT_FOUND OR NOT AVUTIL_FOUND OR NOT SWSCALE_FO
     # When generating compile_commands.json for linting, FFmpeg is optional
     message(STATUS "FFmpeg libraries not found, but CMAKE_EXPORT_COMPILE_COMMANDS is set. Skipping FFmpeg for linting.")
   else()
-    set(
-      error_msg
-      "FFmpeg libraries are required but not found in OBS dependencies.\n"
-      "\n"
-      "Searched in:\n"
-      "  - CMAKE_PREFIX_PATH (OBS dependencies)\n"
-      "  - .deps directory (local OBS dependencies)\n"
-      "\n"
-      "FFmpeg MUST come from OBS dependencies, not from system.\n"
-      "System FFmpeg is explicitly excluded to ensure compatibility.\n"
-      "\n"
-      "Please ensure OBS dependencies (obs-deps) are properly set up:\n"
-      "  1. Download OBS dependencies for your platform\n"
-      "  2. Extract them to a directory\n"
-      "  3. Set CMAKE_PREFIX_PATH to point to that directory\n"
-      "     Example: cmake --preset macos -DCMAKE_PREFIX_PATH=/path/to/obs-deps\n"
-      "\n"
-      "If building in CI, ensure OBS dependencies are properly downloaded and extracted."
-    )
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      set(
+        error_msg
+        "FFmpeg libraries are required but not found.\n"
+        "\n"
+        "Searched in:\n"
+        "  - CMAKE_PREFIX_PATH (OBS dependencies)\n"
+        "  - .deps directory (local OBS dependencies)\n"
+        "  - System paths (Linux fallback)\n"
+        "\n"
+        "On Linux, system FFmpeg packages are acceptable if OBS deps are not available.\n"
+        "Please install FFmpeg development packages:\n"
+        "  sudo apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev"
+      )
+    else()
+      set(
+        error_msg
+        "FFmpeg libraries are required but not found in OBS dependencies.\n"
+        "\n"
+        "Searched in:\n"
+        "  - CMAKE_PREFIX_PATH (OBS dependencies)\n"
+        "  - .deps directory (local OBS dependencies)\n"
+        "\n"
+        "FFmpeg MUST come from OBS dependencies, not from system.\n"
+        "System FFmpeg is explicitly excluded to ensure compatibility.\n"
+        "\n"
+        "Please ensure OBS dependencies (obs-deps) are properly set up:\n"
+        "  1. Download OBS dependencies for your platform\n"
+        "  2. Extract them to a directory\n"
+        "  3. Set CMAKE_PREFIX_PATH to point to that directory\n"
+        "     Example: cmake --preset macos -DCMAKE_PREFIX_PATH=/path/to/obs-deps\n"
+        "\n"
+        "If building in CI, ensure OBS dependencies are properly downloaded and extracted."
+      )
+    endif()
     message(FATAL_ERROR ${error_msg})
   endif()
 endif()
@@ -201,7 +242,8 @@ if(APPLE)
   if(NOT EXISTS "${AGL_STUB_LIB}")
     file(MAKE_DIRECTORY "${AGL_STUB_DIR}")
     file(
-      WRITE "${AGL_STUB_DIR}/AGL-stub.c"
+      WRITE
+      "${AGL_STUB_DIR}/AGL-stub.c"
       "// Minimal stub for deprecated AGL framework\n__attribute__((visibility(\"default\"))) void AGLStub() {}\n"
     )
     # Get target architectures from CMAKE_OSX_ARCHITECTURES or default to arm64
