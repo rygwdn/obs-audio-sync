@@ -93,7 +93,7 @@ Usage: %B${functrace[1]%:*}%b <option>
   local temp_base_dir="${project_root}/.tmp"
   mkdir -p ${temp_base_dir}
   # Clean up previous temp files from this script
-  rm -rf ${temp_base_dir}/run-all-checks-*
+  rm -rf ${temp_base_dir}/run-all-checks-*(N)
   local temp_dir=$(mktemp -d ${temp_base_dir}/run-all-checks-XXXXXX)
   # Don't auto-delete temp files - they may be referenced in error messages
 

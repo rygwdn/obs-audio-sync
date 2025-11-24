@@ -38,7 +38,7 @@ invoke_formatter() {
   local temp_base_dir="${project_root}/.tmp"
   mkdir -p ${temp_base_dir}
   # Clean up previous temp files from this script
-  rm -f ${temp_base_dir}/${script_name}-* ${temp_base_dir}/${script_name}-*.check
+  rm -f ${temp_base_dir}/${script_name}-*(N) ${temp_base_dir}/${script_name}-*.check(N)
   
   # Create temp file for verbose output (accessible to nested functions)
   local temp_output=$(mktemp ${temp_base_dir}/${script_name}-XXXXXX)
