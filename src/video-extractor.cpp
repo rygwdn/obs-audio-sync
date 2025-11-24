@@ -36,6 +36,7 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
+#include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 }
 
@@ -263,7 +264,7 @@ bool VideoExtractor::decodeVideoPackets(const FormatContextData &formatData, con
 		}
 
 		bool const SHOULD_CONTINUE = processDecodedFrame(formatData, codecData, codecData.avFrame, timestamp,
-								bestTimeDiff, bestFrame);
+								 bestTimeDiff, bestFrame);
 		if (!SHOULD_CONTINUE) {
 			return false; // Time exceeded, stop processing
 		}
@@ -288,8 +289,8 @@ AVFrame *VideoExtractor::findBestFrame(const FormatContextData &formatData, cons
 	}
 
 	// Read and decode frames until we find the one closest to timestamp
-	double const bestTimeDiff = 1e10;
-	AVFrame const *bestFrame = nullptr;
+	double bestTimeDiff = 1e10;
+	AVFrame *bestFrame = nullptr;
 
 	while (avReadFrame(formatData.formatContext, codecData.packet) >= 0) {
 		if (codecData.packet->streamIndex == formatData.videoStreamIndex) {
@@ -331,7 +332,7 @@ VideoFrame VideoExtractor::extractFrameAt(double timestamp) const
 		return frame;
 	}
 
-	AVFrame const *bestFrame = findBestFrame(formatData, codecData, timestamp);
+	AVFrame *bestFrame = findBestFrame(formatData, codecData, timestamp);
 
 	// Convert to QPixmap
 	if (bestFrame != nullptr) {
@@ -349,7 +350,7 @@ VideoFrame VideoExtractor::extractFrameAt(double timestamp) const
 	return frame;
 }
 
-QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTime) const
+QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTime)
 {
 	QVector<VideoFrame> frames;
 
