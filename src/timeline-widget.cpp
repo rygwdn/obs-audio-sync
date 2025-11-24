@@ -97,8 +97,8 @@ void TimelineWidget::drawWaveform(QPainter &painter)
 	painter.setPen(QPen(QColor(100, 150, 255), 1));
 	painter.setBrush(QBrush(QColor(100, 150, 255, 100)));
 
-	QPolygonF WAVEFORM;
-	WAVEFORM << QPointF(START_X, CENTER_Y);
+	QPolygonF waveform;
+	waveform << QPointF(START_X, CENTER_Y);
 
 	// Draw waveform
 	double maxAmplitude = 0.0;
@@ -111,7 +111,7 @@ void TimelineWidget::drawWaveform(QPainter &painter)
 			int x = xFromTimestamp(sample.timestamp);
 			double normalized = sample.amplitude / maxAmplitude;
 			int y = CENTER_Y - (int)(normalized * HEIGHT / 2);
-			WAVEFORM << QPointF(x, y);
+			waveform << QPointF(x, y);
 		}
 	}
 
@@ -121,11 +121,11 @@ void TimelineWidget::drawWaveform(QPainter &painter)
 		int const X_POS = xFromTimestamp(sample.timestamp);
 		double const NORMALIZED = sample.amplitude / maxAmplitude;
 		int const Y_POS = CENTER_Y + (int)(NORMALIZED * HEIGHT / 2);
-		WAVEFORM << QPointF(X_POS, Y_POS);
+		waveform << QPointF(X_POS, Y_POS);
 	}
 
-	WAVEFORM << QPointF(START_X, CENTER_Y);
-	painter.drawPolygon(WAVEFORM);
+	waveform << QPointF(START_X, CENTER_Y);
+	painter.drawPolygon(waveform);
 }
 
 void TimelineWidget::drawFrameMarkers(QPainter &painter)
@@ -189,9 +189,9 @@ void TimelineWidget::drawSpikeMarker(QPainter &painter)
 
 	// Draw spike indicator
 	painter.setBrush(QBrush(QColor(255, 0, 0)));
-	QPolygonF TRIANGLE;
-	TRIANGLE << QPointF(X_POS, 0) << QPointF(X_POS - 8, 15) << QPointF(X_POS + 8, 15);
-	painter.drawPolygon(TRIANGLE);
+	QPolygonF triangle;
+	triangle << QPointF(X_POS, 0) << QPointF(X_POS - 8, 15) << QPointF(X_POS + 8, 15);
+	painter.drawPolygon(triangle);
 
 	// Draw timestamp label
 	QString const SPIKE_TEXT = QString::number(m_spikePosition, 'f', 3) + "s";

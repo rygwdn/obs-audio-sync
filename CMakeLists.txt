@@ -205,10 +205,19 @@ if(APPLE)
       "${AGL_STUB_DIR}/AGL-stub.c"
       "// Minimal stub for deprecated AGL framework\n__attribute__((visibility(\"default\"))) void AGLStub() {}\n"
     )
+    # Get target architectures from CMAKE_OSX_ARCHITECTURES or default to arm64
+    if(CMAKE_OSX_ARCHITECTURES)
+      set(AGL_ARCH_FLAGS "")
+      foreach(arch ${CMAKE_OSX_ARCHITECTURES})
+        list(APPEND AGL_ARCH_FLAGS "-arch" "${arch}")
+      endforeach()
+    else()
+      set(AGL_ARCH_FLAGS "-arch" "arm64")
+    endif()
     execute_process(
       COMMAND
-        ${CMAKE_C_COMPILER} -shared -arch arm64 -arch x86_64 -o "${AGL_STUB_LIB}" "${AGL_STUB_DIR}/AGL-stub.c"
-        -install_name @rpath/AGL.framework/AGL -compatibility_version 1.0 -current_version 1.0
+        ${CMAKE_C_COMPILER} -shared ${AGL_ARCH_FLAGS} -o "${AGL_STUB_LIB}" "${AGL_STUB_DIR}/AGL-stub.c" -install_name
+        @rpath/AGL.framework/AGL -compatibility_version 1.0 -current_version 1.0
       RESULT_VARIABLE AGL_STUB_RESULT
     )
     if(NOT AGL_STUB_RESULT EQUAL 0)
@@ -232,7 +241,7 @@ target_sources(
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
 
-# Generate compile_commands.json for clang-tidy
+# Generate compile_commands.json for IDE support
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Generate compile_commands.json" FORCE)
 
 # Tests

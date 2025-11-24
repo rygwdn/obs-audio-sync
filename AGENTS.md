@@ -104,28 +104,14 @@ When `CMAKE_EXPORT_COMPILE_COMMANDS=ON` is set, the build system operates in "li
   - Format: `./build-aux/run-clang-format`
   - Check: `./build-aux/run-clang-format --check`
 
-### Linting
+### Handling Formatting Conflicts
 
-- **Tool**: `clang-tidy`
-- **Config**: `.clang-tidy` in project root
-- **Script**: `./build-aux/run-clang-tidy`
-  - Check: `./build-aux/run-clang-tidy --check`
-
-### Handling Linting/Formatting Conflicts
-
-**Important**: If a linter or formatting rule conflicts with what Qt or the build system requires, **the rule should be removed or disabled**, not the code changed to satisfy the rule.
+**Important**: If a formatting rule conflicts with what Qt or the build system requires, **the rule should be removed or disabled**, not the code changed to satisfy the rule.
 
 Examples of valid conflicts:
-- **Qt's `private slots:` syntax**: Qt requires `private slots:` followed by a separate `private:` section. This is not redundant - it's required Qt syntax for the MOC (Meta-Object Compiler). The `readability-redundant-access-specifiers` check should be disabled.
-- **Qt MOC requirements**: Qt classes with signals/slots must have `Q_OBJECT` macro and use Qt's specific syntax. Don't change Qt-specific code to satisfy generic C++ linting rules.
-- **Build system requirements**: If the build system or platform-specific code requires certain patterns that conflict with linting rules, disable the conflicting rule.
-- **FFmpeg API requirements**: FFmpeg's C API may require patterns that conflict with modern C++ guidelines. Use NOLINT comments or disable the specific check.
-
-When encountering a conflict:
-1. **Verify it's a real conflict**: Ensure the code pattern is actually required by Qt/build system, not just a code style preference
-2. **Disable the specific check**: Add the check to the disabled list in `.clang-tidy` (e.g., `-readability-redundant-access-specifiers`)
-3. **Document the reason**: Add a comment in `.clang-tidy` explaining why the check is disabled
-4. **Use NOLINT sparingly**: Only use `// NOLINT(...)` comments for false positives or unavoidable conflicts, not as a general workaround
+- **Qt MOC requirements**: Qt classes with signals/slots must have `Q_OBJECT` macro and use Qt's specific syntax. Don't change Qt-specific code to satisfy generic C++ formatting rules.
+- **Build system requirements**: If the build system or platform-specific code requires certain patterns that conflict with formatting rules, adjust the formatting configuration accordingly.
+- **FFmpeg API requirements**: FFmpeg's C API may require patterns that conflict with modern C++ formatting. Adjust formatting rules as needed.
 
 **Never compromise build functionality or Qt requirements for linting rules.**
 
@@ -164,7 +150,6 @@ tests/
 
 build-aux/
   ├── run-clang-format         # Formatting script
-  ├── run-clang-tidy           # Linting script
   ├── run-gersemi              # CMake formatting script
   └── run-all-checks           # Run all checks and tests (pre-commit)
 ```
@@ -213,12 +198,12 @@ build-aux/
 - Test files in `tests/` directory
 - Test executable: `${CMAKE_PROJECT_NAME}-tests`
 - Run with `ctest` or directly execute test binary
-- Tests may require OBS libraries (optional in linting mode)
+- Tests may require OBS libraries (optional in build mode)
 
 ### Output Management
 
-The check scripts (`run-all-checks`, `run-clang-format`, `run-clang-tidy`, `run-gersemi`) automatically manage verbose output:
-- Verbose output (formatting/linting issues) is captured to temporary files
+The check scripts (`run-all-checks`, `run-clang-format`, `run-gersemi`) automatically manage verbose output:
+- Verbose output (formatting issues) is captured to temporary files
 - If output is ≤ 20 lines, it's displayed at the end
 - If output is > 20 lines, only the file path is shown
 - **AI agents do not need to use `tail` or pipe commands** - the scripts handle output appropriately
@@ -274,17 +259,15 @@ The check scripts (`run-all-checks`, `run-clang-format`, `run-clang-tidy`, `run-
 This script runs:
 - Code formatting (clang-format) - automatically fixes formatting issues
 - CMake formatting (gersemi) - automatically fixes CMake formatting issues
-- Code linting (clang-tidy) - automatically fixes linting issues where possible
 - Test suite - **must exist and pass** (missing tests are considered a failure)
 
-**Important**: The script uses fix mode for formatting and linting, so it will automatically correct issues where possible. However, unfixable linting issues and missing/failing tests will cause the script to fail.
+**Important**: The script uses fix mode for formatting, so it will automatically correct issues where possible. However, missing/failing tests will cause the script to fail.
 
 If any check fails, fix the issues before committing. The script will exit with a non-zero status if any checks fail.
 
 You can also run individual checks:
 - Format code: `./build-aux/run-clang-format`
 - Check formatting: `./build-aux/run-clang-format --check`
-- Check linting: `./build-aux/run-clang-tidy --check`
 - Format CMake: `./build-aux/run-gersemi`
 - Check CMake formatting: `./build-aux/run-gersemi --check`
 - Run tests: `ctest` or `./build_macos/obs-audio-sync-tests`

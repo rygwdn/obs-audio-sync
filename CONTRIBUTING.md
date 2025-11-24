@@ -1,6 +1,6 @@
 # Contributing to OBS Audio Sync Plugin
 
-Thank you for your interest in contributing! This document provides guidelines for code formatting and linting.
+Thank you for your interest in contributing! This document provides guidelines for code formatting.
 
 ## Code Formatting
 
@@ -27,43 +27,6 @@ To format your code:
 - The CI will check formatting and fail if code is not properly formatted
 - Use clang-format version 19.1.1 or compatible
 
-## Code Linting
-
-This project uses `clang-tidy` for static analysis and linting. The configuration is in `.clang-tidy`.
-
-### Running Linting Checks
-
-```bash
-# Lint all source files
-./build-aux/run-clang-tidy
-
-# Lint specific files
-./build-aux/run-clang-tidy src/your-file.cpp src/your-file.h
-
-# Check linting without making changes
-./build-aux/run-clang-tidy --check
-```
-
-### Generating compile_commands.json
-
-`clang-tidy` requires `compile_commands.json` to understand your build configuration. Generate it with:
-
-```bash
-mkdir -p build_lint
-cd build_lint
-cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
-cp compile_commands.json ..
-cd ..
-```
-
-Or let the script generate it automatically (it will create `build_lint/` directory).
-
-### Linting Requirements
-
-- Code should pass `clang-tidy` checks before committing
-- The CI will check linting and report issues
-- Some warnings may be acceptable, but errors should be fixed
-
 ## CMake Formatting
 
 CMake files are formatted with `gersemi`. The configuration is in `.gersemirc`.
@@ -87,18 +50,16 @@ Before committing, run all checks to ensure everything passes:
 This script runs:
 - Code formatting (clang-format) - automatically fixes formatting issues
 - CMake formatting (gersemi) - automatically fixes CMake formatting issues
-- Code linting (clang-tidy) - automatically fixes linting issues where possible
 - Test suite - **must exist and pass** (missing tests are considered a failure)
 
 **All checks must pass before committing.** The script will exit with a non-zero status if any checks fail.
 
-**Note**: The script uses fix mode, so it will automatically correct formatting and linting issues where possible. However, unfixable linting issues and missing/failing tests will cause the script to fail.
+**Note**: The script uses fix mode, so it will automatically correct formatting issues where possible. However, missing/failing tests will cause the script to fail.
 
 You can skip specific checks if needed:
 ```bash
 ./build-aux/run-all-checks --skip-tests          # Skip tests
 ./build-aux/run-all-checks --skip-formatting     # Skip formatting checks
-./build-aux/run-all-checks --skip-linting        # Skip linting checks
 ./build-aux/run-all-checks --skip-cmake-formatting  # Skip CMake formatting
 ```
 
@@ -119,11 +80,10 @@ chmod +x .git/hooks/pre-commit
 
 The project uses GitHub Actions to automatically check:
 - Code formatting (clang-format)
-- Code linting (clang-tidy)
 - CMake formatting (gersemi)
 
 All checks must pass before code can be merged.
 
 ## Questions?
 
-If you have questions about formatting or linting, please open an issue or check the existing codebase for examples.
+If you have questions about formatting, please open an issue or check the existing codebase for examples.

@@ -17,14 +17,6 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
 #include "video-extractor.h"
-#include "libavcodec/codec_par.h"
-#include "libavcodec/codec.h"
-#include "libavutil/frame.h"
-#include "libavcodec/packet.h"
-#include "libavutil/mem.h"
-#include "libavutil/pixfmt.h"
-#include "libavutil/error.h"
-#include "libavutil/rational.h"
 #include <QDebug>
 #include <QImage>
 #include <qlogging.h>
@@ -37,6 +29,14 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/frame.h>
+#include <libavutil/mem.h>
+#include <libavutil/pixfmt.h>
+#include <libavutil/error.h>
+#include <libavutil/rational.h>
+#include <libavcodec/codec_par.h>
+#include <libavcodec/codec.h>
+#include <libavcodec/packet.h>
 #include <libswscale/swscale.h>
 }
 

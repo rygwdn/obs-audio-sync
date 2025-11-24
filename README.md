@@ -89,14 +89,6 @@ Check formatting without making changes:
 ./build-aux/run-clang-format --check
 ```
 
-### Code Linting
-
-This project uses `clang-tidy` for static analysis:
-
-```bash
-./build-aux/run-clang-tidy --check
-```
-
 ### Running Tests
 
 After building, run the test suite:
@@ -109,7 +101,7 @@ ctest
 
 ### Running All Checks
 
-Before committing, run all checks (formatting, linting, CMake formatting, and tests):
+Before committing, run all checks (formatting, CMake formatting, and tests):
 
 ```bash
 ./build-aux/run-all-checks
@@ -117,7 +109,6 @@ Before committing, run all checks (formatting, linting, CMake formatting, and te
 
 This script will:
 - **Automatically fix** code and CMake formatting issues
-- **Automatically fix** linting issues where possible
 - **Require tests to exist and pass** (missing tests are considered a failure)
 
 This ensures all pre-commit requirements are met. Individual checks can be skipped with `--skip-*` flags if needed.

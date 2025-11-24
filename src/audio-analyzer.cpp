@@ -17,10 +17,6 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 */
 
 #include "audio-analyzer.h"
-#include "libavcodec/codec.h"
-#include "libavcodec/packet.h"
-#include "libavutil/frame.h"
-#include "libavutil/error.h"
 #include <QDebug>
 #include <QFileInfo>
 #include <algorithm>
@@ -34,6 +30,10 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
 #include <libavutil/samplefmt.h>
+#include <libavutil/frame.h>
+#include <libavutil/error.h>
+#include <libavcodec/codec.h>
+#include <libavcodec/packet.h>
 }
 
 AudioAnalyzer::AudioAnalyzer()

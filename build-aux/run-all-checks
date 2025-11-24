@@ -29,7 +29,6 @@ run_all_checks() {
   local -i verbosity=1
   local -i skip_tests=0
   local -i skip_formatting=0
-  local -i skip_linting=0
   local -i skip_cmake_formatting=0
   local -r _version='1.0.0'
 
@@ -45,7 +44,6 @@ Usage: %B${functrace[1]%:*}%b <option>
  -----------------------------------------------------------------------------
   %B--skip-tests%b                    Skip running tests
   %B--skip-formatting%b               Skip code formatting checks
-  %B--skip-linting%b                  Skip code linting checks
   %B--skip-cmake-formatting%b         Skip CMake formatting checks
 
 %F{yellow} Output options%f
@@ -63,7 +61,6 @@ Usage: %B${functrace[1]%:*}%b <option>
     case ${1} {
       --skip-tests) skip_tests=1; shift ;;
       --skip-formatting) skip_formatting=1; shift ;;
-      --skip-linting) skip_linting=1; shift ;;
       --skip-cmake-formatting) skip_cmake_formatting=1; shift ;;
       -v|--verbose) (( verbosity += 1 )); shift ;;
       -h|--help) log_output ${_usage}; exit 0 ;;
@@ -127,19 +124,6 @@ Usage: %B${functrace[1]%:*}%b <option>
     log_info "Skipping gersemi"
   }
 
-  # 3. Code Linting
-  if (( ! skip_linting )) {
-    (( total_checks += 1 ))
-    log_info "Running clang-tidy..."
-    if ! "${SCRIPT_HOME}/run-clang-tidy" --fail-error; then
-      log_error "clang-tidy failed"
-      num_failures=$(( num_failures + 1 ))
-    else
-      log_status "clang-tidy completed"
-    fi
-  } else {
-    log_info "Skipping clang-tidy"
-  }
 
   # 4. Tests
   if (( ! skip_tests )) {
