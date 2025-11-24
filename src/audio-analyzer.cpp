@@ -63,15 +63,15 @@ void AudioAnalyzer::cleanupFFmpeg()
 double AudioAnalyzer::getFileDuration(const QString &filePath)
 {
 	AVFormatContext *formatContext = nullptr;
-	int ret = avformatOpenInput(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
+	int ret = avformat_open_input(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
 	if (ret < 0) {
 		qWarning() << "Could not open file:" << filePath;
 		return 0.0;
 	}
 
-	ret = avformatFindStreamInfo(formatContext, nullptr);
+	ret = avformat_find_stream_info(formatContext, nullptr);
 	if (ret < 0) {
-		avformatCloseInput(&formatContext);
+		avformat_close_input(&formatContext);
 		return 0.0;
 	}
 
@@ -80,7 +80,7 @@ double AudioAnalyzer::getFileDuration(const QString &filePath)
 		duration = (double)formatContext->duration / AV_TIME_BASE;
 	}
 
-	avformatCloseInput(&formatContext);
+	avformat_close_input(&formatContext);
 	return duration;
 }
 
@@ -88,8 +88,8 @@ namespace {
 // Helper function to find audio stream index
 int findAudioStreamIndex(AVFormatContext *formatContext)
 {
-	for (unsigned int i = 0; i < formatContext->nbStreams; i++) {
-		if (formatContext->streams[i]->codecpar->codecType == AVMEDIA_TYPE_AUDIO) {
+	for (unsigned int i = 0; i < formatContext->nb_streams; i++) {
+		if (formatContext->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
 			return static_cast<int>(i);
 		}
 	}
@@ -100,26 +100,26 @@ int findAudioStreamIndex(AVFormatContext *formatContext)
 AVCodecContext *setupCodecContext(AVFormatContext *formatContext, int audioStreamIndex)
 {
 	AVCodecParameters const *codecParams = formatContext->streams[audioStreamIndex]->codecpar;
-	const AVCodec *codec = avcodecFindDecoder(codecParams->codecId);
+	const AVCodec *codec = avcodec_find_decoder(codecParams->codec_id);
 	if (codec == nullptr) {
 		qWarning() << "Codec not found";
 		return nullptr;
 	}
 
-	AVCodecContext *codecContext = avcodecAllocContext3(codec);
+	AVCodecContext *codecContext = avcodec_alloc_context3(codec);
 	if (codecContext == nullptr) {
 		return nullptr;
 	}
 
-	int ret = avcodecParametersToContext(codecContext, codecParams);
+	int ret = avcodec_parameters_to_context(codecContext, codecParams);
 	if (ret < 0) {
-		avcodecFreeContext(&codecContext);
+		avcodec_free_context(&codecContext);
 		return nullptr;
 	}
 
-	ret = avcodecOpen2(codecContext, codec, nullptr);
+	ret = avcodec_open2(codecContext, codec, nullptr);
 	if (ret < 0) {
-		avcodecFreeContext(&codecContext);
+		avcodec_free_context(&codecContext);
 		return nullptr;
 	}
 
@@ -129,15 +129,15 @@ AVCodecContext *setupCodecContext(AVFormatContext *formatContext, int audioStrea
 // Helper function to calculate RMS amplitude for a frame
 double calculateFrameRMS(AVFrame const *frame)
 {
-	int const CHANNELS = frame->chLayout.nbChannels;
-	int const SAMPLE_COUNT = frame->nbSamples * CHANNELS;
+	int const CHANNELS = frame->ch_layout.nb_channels;
+	int const SAMPLE_COUNT = frame->nb_samples * CHANNELS;
 	double rms = 0.0;
 
 	if (frame->format == AV_SAMPLE_FMT_FLTP) {
 		// Planar float format - each channel is separate
 		for (int ch = 0; ch < CHANNELS; ch++) {
 			auto const *channelData = reinterpret_cast<float const *>(frame->data[ch]);
-			for (int i = 0; i < frame->nbSamples; i++) {
+			for (int i = 0; i < frame->nb_samples; i++) {
 				rms += channelData[i] * channelData[i];
 			}
 		}
@@ -153,7 +153,7 @@ double calculateFrameRMS(AVFrame const *frame)
 		// Planar 16-bit integer format
 		for (int ch = 0; ch < CHANNELS; ch++) {
 			auto const *channelData = reinterpret_cast<int16_t const *>(frame->data[ch]);
-			for (int i = 0; i < frame->nbSamples; i++) {
+			for (int i = 0; i < frame->nb_samples; i++) {
 				double const NORMALIZED = static_cast<double>(channelData[i]) / 32768.0;
 				rms += NORMALIZED * NORMALIZED;
 			}
@@ -173,53 +173,54 @@ double calculateFrameRMS(AVFrame const *frame)
 }
 } // namespace
 
-QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath) // NOLINT(readability-convert-member-functions-to-static)
+QVector<AudioSample>
+AudioAnalyzer::extractAudioSamples(const QString &filePath) // NOLINT(readability-convert-member-functions-to-static)
 {
 	QVector<AudioSample> samples;
 
 	AVFormatContext *formatContext = nullptr;
-	int ret = avformatOpenInput(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
+	int ret = avformat_open_input(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
 	if (ret < 0) {
 		qWarning() << "Could not open file:" << filePath;
 		return samples;
 	}
 
-	ret = avformatFindStreamInfo(formatContext, nullptr);
+	ret = avformat_find_stream_info(formatContext, nullptr);
 	if (ret < 0) {
-		avformatCloseInput(&formatContext);
+		avformat_close_input(&formatContext);
 		return samples;
 	}
 
 	int const AUDIO_STREAM_INDEX = findAudioStreamIndex(formatContext);
 	if (AUDIO_STREAM_INDEX == -1) {
 		qWarning() << "No audio stream found";
-		avformatCloseInput(&formatContext);
+		avformat_close_input(&formatContext);
 		return samples;
 	}
 
 	AVCodecContext *codecContext = setupCodecContext(formatContext, AUDIO_STREAM_INDEX);
 	if (codecContext == nullptr) {
-		avformatCloseInput(&formatContext);
+		avformat_close_input(&formatContext);
 		return samples;
 	}
 
 	// Get time base for timestamp calculation
-	double const TIME_BASE = avQ2d(formatContext->streams[AUDIO_STREAM_INDEX]->timeBase);
+	double const TIME_BASE = av_q2d(formatContext->streams[AUDIO_STREAM_INDEX]->time_base);
 
-	AVPacket *packet = avPacketAlloc();
-	AVFrame *frame = avFrameAlloc();
+	AVPacket *packet = av_packet_alloc();
+	AVFrame *frame = av_frame_alloc();
 
 	// Read packets and decode
-	while (avReadFrame(formatContext, packet) >= 0) {
-		if (packet->streamIndex == AUDIO_STREAM_INDEX) {
-			ret = avcodecSendPacket(codecContext, packet);
+	while (av_read_frame(formatContext, packet) >= 0) {
+		if (packet->stream_index == AUDIO_STREAM_INDEX) {
+			ret = avcodec_send_packet(codecContext, packet);
 			if (ret < 0) {
-				avPacketUnref(packet);
+				av_packet_unref(packet);
 				continue;
 			}
 
 			while (ret >= 0) {
-				ret = avcodecReceiveFrame(codecContext, frame);
+				ret = avcodec_receive_frame(codecContext, frame);
 				if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
 					break;
 				}
@@ -236,18 +237,19 @@ QVector<AudioSample> AudioAnalyzer::extractAudioSamples(const QString &filePath)
 				samples.append(sample);
 			}
 		}
-		avPacketUnref(packet);
+		av_packet_unref(packet);
 	}
 
-	avFrameFree(&frame);
-	avPacketFree(&packet);
-	avcodecFreeContext(&codecContext);
-	avformatCloseInput(&formatContext);
+	av_frame_free(&frame);
+	av_packet_free(&packet);
+	avcodec_free_context(&codecContext);
+	avformat_close_input(&formatContext);
 
 	return samples;
 }
 
-AudioSpike AudioAnalyzer::findLargestSpike(const QVector<AudioSample> &samples) // NOLINT(readability-convert-member-functions-to-static)
+AudioSpike AudioAnalyzer::findLargestSpike(
+	const QVector<AudioSample> &samples) // NOLINT(readability-convert-member-functions-to-static)
 {
 	AudioSpike spike = {0.0, 0.0, 0.0, 0.0};
 

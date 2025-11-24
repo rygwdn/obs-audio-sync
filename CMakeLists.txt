@@ -81,53 +81,17 @@ target_compile_options(
 
 # FFmpeg/libav
 # FFmpeg is required for audio/video analysis
-# Try multiple methods to find FFmpeg:
-# 1. Through CMAKE_PREFIX_PATH (OBS dependencies) - prioritized for universal builds
-# 2. Through pkg-config (if available and not building universal)
-# 3. Through system paths (only if not building universal)
+# FFmpeg MUST come from OBS dependencies, not from system
+# Search only in:
+# 1. CMAKE_PREFIX_PATH (OBS dependencies)
+# 2. .deps directory (local OBS dependencies)
 
-# Check if building universal binary
-set(IS_UNIVERSAL_BUILD FALSE)
-if(APPLE AND CMAKE_OSX_ARCHITECTURES)
-  list(LENGTH CMAKE_OSX_ARCHITECTURES arch_count)
-  if(arch_count GREATER 1)
-    set(IS_UNIVERSAL_BUILD TRUE)
-    message(STATUS "Building universal binary - prioritizing OBS dependencies for FFmpeg")
-  endif()
-endif()
-
-# Helper function to check if a library is universal (macOS only)
-function(check_library_architectures library_path result_var)
-  set(${result_var} FALSE PARENT_SCOPE)
-  if(APPLE AND EXISTS "${library_path}")
-    execute_process(
-      COMMAND lipo -info "${library_path}"
-      OUTPUT_VARIABLE lipo_output
-      ERROR_VARIABLE lipo_error
-      RESULT_VARIABLE lipo_result
-    )
-    if(lipo_result EQUAL 0)
-      # Check if output contains multiple architectures
-      string(FIND "${lipo_output}" "arm64" has_arm64)
-      string(FIND "${lipo_output}" "x86_64" has_x86_64)
-      if(has_arm64 GREATER_EQUAL 0 AND has_x86_64 GREATER_EQUAL 0)
-        set(${result_var} TRUE PARENT_SCOPE)
-      endif()
-    endif()
-  endif()
-endfunction()
-
-# Build search paths - prioritize CMAKE_PREFIX_PATH (OBS dependencies)
+# Build search paths - OBS dependencies only
 set(FFMPEG_SEARCH_PATHS)
 foreach(path ${CMAKE_PREFIX_PATH})
   list(APPEND FFMPEG_SEARCH_PATHS "${path}/lib" "${path}")
 endforeach()
 list(APPEND FFMPEG_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/.deps/lib")
-
-# Only add system paths if not building universal (they're usually single-arch)
-if(NOT IS_UNIVERSAL_BUILD)
-  list(APPEND FFMPEG_SEARCH_PATHS /usr/local/lib /opt/homebrew/lib /usr/lib)
-endif()
 
 set(FFMPEG_INCLUDE_PATHS)
 foreach(path ${CMAKE_PREFIX_PATH})
@@ -135,140 +99,46 @@ foreach(path ${CMAKE_PREFIX_PATH})
 endforeach()
 list(APPEND FFMPEG_INCLUDE_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/.deps/include")
 
-# Only add system include paths if not building universal
-if(NOT IS_UNIVERSAL_BUILD)
-  list(APPEND FFMPEG_INCLUDE_PATHS /usr/local/include /opt/homebrew/include /usr/include)
-endif()
+# Find libraries directly - OBS dependencies only (NO system fallback)
+find_library(AVCODEC_LIBRARY NAMES avcodec PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
+find_library(AVFORMAT_LIBRARY NAMES avformat PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
+find_library(AVUTIL_LIBRARY NAMES avutil PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
+find_library(SWSCALE_LIBRARY NAMES swscale PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
 
-# Try pkg-config only if not building universal (pkg-config finds system libs)
-if(NOT IS_UNIVERSAL_BUILD)
-  find_package(PkgConfig)
-  if(PkgConfig_FOUND)
-    pkg_check_modules(AVCODEC libavcodec)
-    pkg_check_modules(AVFORMAT libavformat)
-    pkg_check_modules(AVUTIL libavutil)
-    pkg_check_modules(SWSCALE libswscale)
-  endif()
-endif()
+find_path(AVCODEC_INCLUDE_DIR NAMES libavcodec/avcodec.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
+find_path(AVFORMAT_INCLUDE_DIR NAMES libavformat/avformat.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
+find_path(AVUTIL_INCLUDE_DIR NAMES libavutil/avutil.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
+find_path(SWSCALE_INCLUDE_DIR NAMES libswscale/swscale.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
 
-# Find libraries directly - prioritize CMAKE_PREFIX_PATH
-if(NOT AVCODEC_FOUND)
-  # Search in CMAKE_PREFIX_PATH first (OBS dependencies)
-  find_library(AVCODEC_LIBRARY NAMES avcodec PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
+# Verify all libraries and headers were found
+if(
+  AVCODEC_LIBRARY
+  AND AVFORMAT_LIBRARY
+  AND AVUTIL_LIBRARY
+  AND SWSCALE_LIBRARY
+  AND AVCODEC_INCLUDE_DIR
+  AND AVFORMAT_INCLUDE_DIR
+  AND AVUTIL_INCLUDE_DIR
+  AND SWSCALE_INCLUDE_DIR
+)
+  set(AVCODEC_FOUND TRUE)
+  set(AVFORMAT_FOUND TRUE)
+  set(AVUTIL_FOUND TRUE)
+  set(SWSCALE_FOUND TRUE)
+  set(AVCODEC_LIBRARIES ${AVCODEC_LIBRARY})
+  set(AVFORMAT_LIBRARIES ${AVFORMAT_LIBRARY})
+  set(AVUTIL_LIBRARIES ${AVUTIL_LIBRARY})
+  set(SWSCALE_LIBRARIES ${SWSCALE_LIBRARY})
+  set(AVCODEC_INCLUDE_DIRS ${AVCODEC_INCLUDE_DIR})
+  set(AVFORMAT_INCLUDE_DIRS ${AVFORMAT_INCLUDE_DIR})
+  set(AVUTIL_INCLUDE_DIRS ${AVUTIL_INCLUDE_DIR})
+  set(SWSCALE_INCLUDE_DIRS ${SWSCALE_INCLUDE_DIR})
 
-  # Only search system paths if not building universal and not found in OBS deps
-  if(NOT AVCODEC_LIBRARY AND NOT IS_UNIVERSAL_BUILD)
-    find_library(AVCODEC_LIBRARY NAMES avcodec PATHS /usr/local/lib /opt/homebrew/lib /usr/lib)
-  endif()
-
-  find_library(AVFORMAT_LIBRARY NAMES avformat PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
-  if(NOT AVFORMAT_LIBRARY AND NOT IS_UNIVERSAL_BUILD)
-    find_library(AVFORMAT_LIBRARY NAMES avformat PATHS /usr/local/lib /opt/homebrew/lib /usr/lib)
-  endif()
-
-  find_library(AVUTIL_LIBRARY NAMES avutil PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
-  if(NOT AVUTIL_LIBRARY AND NOT IS_UNIVERSAL_BUILD)
-    find_library(AVUTIL_LIBRARY NAMES avutil PATHS /usr/local/lib /opt/homebrew/lib /usr/lib)
-  endif()
-
-  find_library(SWSCALE_LIBRARY NAMES swscale PATHS ${FFMPEG_SEARCH_PATHS} NO_DEFAULT_PATH)
-  if(NOT SWSCALE_LIBRARY AND NOT IS_UNIVERSAL_BUILD)
-    find_library(SWSCALE_LIBRARY NAMES swscale PATHS /usr/local/lib /opt/homebrew/lib /usr/lib)
-  endif()
-
-  find_path(AVCODEC_INCLUDE_DIR NAMES libavcodec/avcodec.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
-  if(NOT AVCODEC_INCLUDE_DIR AND NOT IS_UNIVERSAL_BUILD)
-    find_path(
-      AVCODEC_INCLUDE_DIR
-      NAMES libavcodec/avcodec.h
-      PATHS /usr/local/include /opt/homebrew/include /usr/include
-    )
-  endif()
-
-  find_path(AVFORMAT_INCLUDE_DIR NAMES libavformat/avformat.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
-  if(NOT AVFORMAT_INCLUDE_DIR AND NOT IS_UNIVERSAL_BUILD)
-    find_path(
-      AVFORMAT_INCLUDE_DIR
-      NAMES libavformat/avformat.h
-      PATHS /usr/local/include /opt/homebrew/include /usr/include
-    )
-  endif()
-
-  find_path(AVUTIL_INCLUDE_DIR NAMES libavutil/avutil.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
-  if(NOT AVUTIL_INCLUDE_DIR AND NOT IS_UNIVERSAL_BUILD)
-    find_path(AVUTIL_INCLUDE_DIR NAMES libavutil/avutil.h PATHS /usr/local/include /opt/homebrew/include /usr/include)
-  endif()
-
-  find_path(SWSCALE_INCLUDE_DIR NAMES libswscale/swscale.h PATHS ${FFMPEG_INCLUDE_PATHS} NO_DEFAULT_PATH)
-  if(NOT SWSCALE_INCLUDE_DIR AND NOT IS_UNIVERSAL_BUILD)
-    find_path(
-      SWSCALE_INCLUDE_DIR
-      NAMES libswscale/swscale.h
-      PATHS /usr/local/include /opt/homebrew/include /usr/include
-    )
-  endif()
-
-  # Verify libraries are universal if building universal
-  if(
-    AVCODEC_LIBRARY
-    AND AVFORMAT_LIBRARY
-    AND AVUTIL_LIBRARY
-    AND SWSCALE_LIBRARY
-    AND AVCODEC_INCLUDE_DIR
-    AND AVFORMAT_INCLUDE_DIR
-    AND AVUTIL_INCLUDE_DIR
-    AND SWSCALE_INCLUDE_DIR
-  )
-    set(libs_ok TRUE)
-    if(IS_UNIVERSAL_BUILD)
-      # Check each library is universal
-      check_library_architectures("${AVCODEC_LIBRARY}" avcodec_universal)
-      check_library_architectures("${AVFORMAT_LIBRARY}" avformat_universal)
-      check_library_architectures("${AVUTIL_LIBRARY}" avutil_universal)
-      check_library_architectures("${SWSCALE_LIBRARY}" swscale_universal)
-
-      if(NOT avcodec_universal OR NOT avformat_universal OR NOT avutil_universal OR NOT swscale_universal)
-        set(libs_ok FALSE)
-        # Save library paths for error message before clearing
-        set(non_universal_avcodec ${AVCODEC_LIBRARY})
-        set(non_universal_avformat ${AVFORMAT_LIBRARY})
-        set(non_universal_avutil ${AVUTIL_LIBRARY})
-        set(non_universal_swscale ${SWSCALE_LIBRARY})
-        # Clear the found libraries so error message is shown
-        unset(AVCODEC_LIBRARY)
-        unset(AVFORMAT_LIBRARY)
-        unset(AVUTIL_LIBRARY)
-        unset(SWSCALE_LIBRARY)
-        message(
-          WARNING
-          "FFmpeg libraries found but not universal. "
-          "When building universal binaries, FFmpeg must be universal.\n"
-          "Found libraries:\n"
-          "  avcodec: ${non_universal_avcodec}\n"
-          "  avformat: ${non_universal_avformat}\n"
-          "  avutil: ${non_universal_avutil}\n"
-          "  swscale: ${non_universal_swscale}\n"
-          "\n"
-          "Please use OBS dependencies (obs-deps) which provide universal libraries."
-        )
-      endif()
-    endif()
-
-    if(libs_ok)
-      set(AVCODEC_FOUND TRUE)
-      set(AVFORMAT_FOUND TRUE)
-      set(AVUTIL_FOUND TRUE)
-      set(SWSCALE_FOUND TRUE)
-      set(AVCODEC_LIBRARIES ${AVCODEC_LIBRARY})
-      set(AVFORMAT_LIBRARIES ${AVFORMAT_LIBRARY})
-      set(AVUTIL_LIBRARIES ${AVUTIL_LIBRARY})
-      set(SWSCALE_LIBRARIES ${SWSCALE_LIBRARY})
-      set(AVCODEC_INCLUDE_DIRS ${AVCODEC_INCLUDE_DIR})
-      set(AVFORMAT_INCLUDE_DIRS ${AVFORMAT_INCLUDE_DIR})
-      set(AVUTIL_INCLUDE_DIRS ${AVUTIL_INCLUDE_DIR})
-      set(SWSCALE_INCLUDE_DIRS ${SWSCALE_INCLUDE_DIR})
-    endif()
-  endif()
+  message(STATUS "Found FFmpeg libraries from OBS dependencies:")
+  message(STATUS "  avcodec: ${AVCODEC_LIBRARY}")
+  message(STATUS "  avformat: ${AVFORMAT_LIBRARY}")
+  message(STATUS "  avutil: ${AVUTIL_LIBRARY}")
+  message(STATUS "  swscale: ${SWSCALE_LIBRARY}")
 endif()
 
 # Check if all required FFmpeg components were found
@@ -279,31 +149,21 @@ if(NOT AVCODEC_FOUND OR NOT AVFORMAT_FOUND OR NOT AVUTIL_FOUND OR NOT SWSCALE_FO
   else()
     set(
       error_msg
-      "FFmpeg libraries are required but not found.\n"
+      "FFmpeg libraries are required but not found in OBS dependencies.\n"
+      "\n"
       "Searched in:\n"
       "  - CMAKE_PREFIX_PATH (OBS dependencies)\n"
-    )
-    if(NOT IS_UNIVERSAL_BUILD)
-      string(APPEND error_msg "  - pkg-config\n" "  - System paths\n")
-    endif()
-    string(APPEND error_msg "\n" "Please install FFmpeg development libraries:\n")
-    if(IS_UNIVERSAL_BUILD)
-      string(
-        APPEND
-        error_msg
-        "  macOS (universal): Use OBS dependencies (obs-deps) which provide universal libraries.\n"
-        "    System FFmpeg (Homebrew) is arm64-only and cannot be used for universal builds.\n"
-      )
-    else()
-      string(APPEND error_msg "  macOS: brew install ffmpeg\n")
-    endif()
-    string(
-      APPEND
-      error_msg
-      "  Ubuntu: sudo apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev\n"
-      "  Windows: Install FFmpeg and set CMAKE_PREFIX_PATH\n"
+      "  - .deps directory (local OBS dependencies)\n"
       "\n"
-      "Note: FFmpeg should be available through OBS dependencies (obs-deps).\n"
+      "FFmpeg MUST come from OBS dependencies, not from system.\n"
+      "System FFmpeg is explicitly excluded to ensure compatibility.\n"
+      "\n"
+      "Please ensure OBS dependencies (obs-deps) are properly set up:\n"
+      "  1. Download OBS dependencies for your platform\n"
+      "  2. Extract them to a directory\n"
+      "  3. Set CMAKE_PREFIX_PATH to point to that directory\n"
+      "     Example: cmake --preset macos -DCMAKE_PREFIX_PATH=/path/to/obs-deps\n"
+      "\n"
       "If building in CI, ensure OBS dependencies are properly downloaded and extracted."
     )
     message(FATAL_ERROR ${error_msg})

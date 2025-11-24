@@ -54,22 +54,22 @@ bool VideoExtractor::openFile(const QString &filePath)
 	m_filePath = filePath;
 
 	AVFormatContext *formatContext = nullptr;
-	int ret = avformatOpenInput(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
+	int ret = avformat_open_input(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
 	if (ret < 0) {
 		qWarning() << "Could not open video file:" << filePath;
 		return false;
 	}
 
-	ret = avformatFindStreamInfo(formatContext, nullptr);
+	ret = avformat_find_stream_info(formatContext, nullptr);
 	if (ret < 0) {
-		avformatCloseInput(&formatContext);
+		avformat_close_input(&formatContext);
 		return false;
 	}
 
 	// Find video stream
 	int videoStreamIndex = -1;
-	for (unsigned int i = 0; i < formatContext->nbStreams; i++) {
-		if (formatContext->streams[i]->codecpar->codecType == AVMEDIA_TYPE_VIDEO) {
+	for (unsigned int i = 0; i < formatContext->nb_streams; i++) {
+		if (formatContext->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
 			videoStreamIndex = static_cast<int>(i);
 			break;
 		}
@@ -77,14 +77,14 @@ bool VideoExtractor::openFile(const QString &filePath)
 
 	if (videoStreamIndex == -1) {
 		qWarning() << "No video stream found";
-		avformatCloseInput(&formatContext);
+		avformat_close_input(&formatContext);
 		return false;
 	}
 
 	// Get FPS and duration
 	AVStream const *videoStream = formatContext->streams[videoStreamIndex];
-	if (videoStream->rFrameRate.num > 0 && videoStream->rFrameRate.den > 0) {
-		m_fps = avQ2d(videoStream->rFrameRate);
+	if (videoStream->r_frame_rate.num > 0 && videoStream->r_frame_rate.den > 0) {
+		m_fps = av_q2d(videoStream->r_frame_rate);
 	} else {
 		m_fps = 30.0; // Default
 	}
@@ -93,7 +93,7 @@ bool VideoExtractor::openFile(const QString &filePath)
 		m_duration = (double)formatContext->duration / AV_TIME_BASE;
 	}
 
-	avformatCloseInput(&formatContext);
+	avformat_close_input(&formatContext);
 	m_fileOpen = true;
 
 	return true;
@@ -104,28 +104,28 @@ VideoExtractor::FormatContextData VideoExtractor::setupFormatContext(const QStri
 	FormatContextData data{};
 
 	AVFormatContext *formatContext = nullptr;
-	int ret = avformatOpenInput(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
+	int ret = avformat_open_input(&formatContext, filePath.toUtf8().constData(), nullptr, nullptr);
 	if (ret < 0) {
 		return data;
 	}
 
-	ret = avformatFindStreamInfo(formatContext, nullptr);
+	ret = avformat_find_stream_info(formatContext, nullptr);
 	if (ret < 0) {
-		avformatCloseInput(&formatContext);
+		avformat_close_input(&formatContext);
 		return data;
 	}
 
 	// Find video stream
 	int videoStreamIndex = -1;
-	for (unsigned int i = 0; i < formatContext->nbStreams; i++) {
-		if (formatContext->streams[i]->codecpar->codecType == AVMEDIA_TYPE_VIDEO) {
+	for (unsigned int i = 0; i < formatContext->nb_streams; i++) {
+		if (formatContext->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
 			videoStreamIndex = static_cast<int>(i);
 			break;
 		}
 	}
 
 	if (videoStreamIndex == -1) {
-		avformatCloseInput(&formatContext);
+		avformat_close_input(&formatContext);
 		return data;
 	}
 
@@ -138,7 +138,7 @@ VideoExtractor::FormatContextData VideoExtractor::setupFormatContext(const QStri
 void VideoExtractor::cleanupFormatContext(FormatContextData &data)
 {
 	if (data.formatContext != nullptr) {
-		avformatCloseInput(&data.formatContext);
+		avformat_close_input(&data.formatContext);
 	}
 	data = FormatContextData{};
 }
@@ -152,43 +152,43 @@ VideoExtractor::CodecContextData VideoExtractor::setupCodecContext(const FormatC
 	}
 
 	AVCodecParameters const *codecParams = formatData.formatContext->streams[formatData.videoStreamIndex]->codecpar;
-	const AVCodec *codec = avcodecFindDecoder(codecParams->codecId);
+	const AVCodec *codec = avcodec_find_decoder(codecParams->codec_id);
 	if (codec == nullptr) {
 		return data;
 	}
 
-	AVCodecContext *codecContext = avcodecAllocContext3(codec);
+	AVCodecContext *codecContext = avcodec_alloc_context3(codec);
 	if (codecContext == nullptr) {
 		return data;
 	}
 
-	int ret = avcodecParametersToContext(codecContext, codecParams);
+	int ret = avcodec_parameters_to_context(codecContext, codecParams);
 	if (ret < 0) {
-		avcodecFreeContext(&codecContext);
+		avcodec_free_context(&codecContext);
 		return data;
 	}
 
-	ret = avcodecOpen2(codecContext, codec, nullptr);
+	ret = avcodec_open2(codecContext, codec, nullptr);
 	if (ret < 0) {
-		avcodecFreeContext(&codecContext);
+		avcodec_free_context(&codecContext);
 		return data;
 	}
 
 	// Allocate frame for decoding
-	AVFrame *avFrame = avFrameAlloc();
-	AVFrame *rgbFrame = avFrameAlloc();
-	AVPacket *packet = avPacketAlloc();
+	AVFrame *avFrame = av_frame_alloc();
+	AVFrame *rgbFrame = av_frame_alloc();
+	AVPacket *packet = av_packet_alloc();
 
 	// Allocate buffer for RGB frame
-	int const NUM_BYTES = avImageGetBufferSize(AV_PIX_FMT_RGB24, codecContext->width, codecContext->height, 1);
-	auto *buffer = (uint8_t *)avMalloc(NUM_BYTES * sizeof(uint8_t));
-	avImageFillArrays(rgbFrame->data, rgbFrame->linesize, buffer, AV_PIX_FMT_RGB24, codecContext->width,
-			  codecContext->height, 1);
+	int const NUM_BYTES = av_image_get_buffer_size(AV_PIX_FMT_RGB24, codecContext->width, codecContext->height, 1);
+	auto *buffer = (uint8_t *)av_malloc(NUM_BYTES * sizeof(uint8_t));
+	av_image_fill_arrays(rgbFrame->data, rgbFrame->linesize, buffer, AV_PIX_FMT_RGB24, codecContext->width,
+			     codecContext->height, 1);
 
 	// Create sws context for conversion
-	SwsContext *swsContext = swsGetContext(codecContext->width, codecContext->height, codecContext->pixFmt,
-					       codecContext->width, codecContext->height, AV_PIX_FMT_RGB24,
-					       SWS_BILINEAR, nullptr, nullptr, nullptr);
+	SwsContext *swsContext = sws_getContext(codecContext->width, codecContext->height, codecContext->pix_fmt,
+						codecContext->width, codecContext->height, AV_PIX_FMT_RGB24,
+						SWS_BILINEAR, nullptr, nullptr, nullptr);
 
 	data.codecContext = codecContext;
 	data.swsContext = swsContext;
@@ -202,22 +202,22 @@ VideoExtractor::CodecContextData VideoExtractor::setupCodecContext(const FormatC
 void VideoExtractor::cleanupCodecContext(CodecContextData &data)
 {
 	if (data.swsContext != nullptr) {
-		swsFreeContext(data.swsContext);
+		sws_freeContext(data.swsContext);
 	}
 	if (data.buffer != nullptr) {
-		avFree(data.buffer);
+		av_free(data.buffer);
 	}
 	if (data.rgbFrame != nullptr) {
-		avFrameFree(&data.rgbFrame);
+		av_frame_free(&data.rgbFrame);
 	}
 	if (data.avFrame != nullptr) {
-		avFrameFree(&data.avFrame);
+		av_frame_free(&data.avFrame);
 	}
 	if (data.packet != nullptr) {
-		avPacketFree(&data.packet);
+		av_packet_free(&data.packet);
 	}
 	if (data.codecContext != nullptr) {
-		avcodecFreeContext(&data.codecContext);
+		avcodec_free_context(&data.codecContext);
 	}
 	data = CodecContextData{};
 }
@@ -226,20 +226,20 @@ bool VideoExtractor::processDecodedFrame(const FormatContextData &formatData, co
 					 AVFrame *decodedFrame, double timestamp, double &bestTimeDiff,
 					 AVFrame *&currentBestFrame)
 {
-	double const FRAME_TIME = decodedFrame->pts * avQ2d(formatData.videoStream->timeBase);
+	double const FRAME_TIME = decodedFrame->pts * av_q2d(formatData.videoStream->time_base);
 	double timeDiff = qAbs(FRAME_TIME - timestamp);
 
 	if (timeDiff < bestTimeDiff) {
 		bestTimeDiff = timeDiff;
 		// Convert to RGB
-		swsScale(codecData.swsContext, (const uint8_t *const *)decodedFrame->data, decodedFrame->linesize, 0,
-			 codecData.codecContext->height, codecData.rgbFrame->data, codecData.rgbFrame->linesize);
+		sws_scale(codecData.swsContext, (const uint8_t *const *)decodedFrame->data, decodedFrame->linesize, 0,
+			  codecData.codecContext->height, codecData.rgbFrame->data, codecData.rgbFrame->linesize);
 
 		// Copy frame data
 		if (currentBestFrame != nullptr) {
-			avFrameFree(&currentBestFrame);
+			av_frame_free(&currentBestFrame);
 		}
-		currentBestFrame = avFrameClone(codecData.rgbFrame);
+		currentBestFrame = av_frame_clone(codecData.rgbFrame);
 	}
 
 	// If we've passed the timestamp, stop processing
@@ -249,13 +249,13 @@ bool VideoExtractor::processDecodedFrame(const FormatContextData &formatData, co
 bool VideoExtractor::decodeVideoPackets(const FormatContextData &formatData, const CodecContextData &codecData,
 					double timestamp, double &bestTimeDiff, AVFrame *&bestFrame)
 {
-	int ret = avcodecSendPacket(codecData.codecContext, codecData.packet);
+	int ret = avcodec_send_packet(codecData.codecContext, codecData.packet);
 	if (ret < 0) {
 		return true; // Continue reading packets
 	}
 
 	while (ret >= 0) {
-		ret = avcodecReceiveFrame(codecData.codecContext, codecData.avFrame);
+		ret = avcodec_receive_frame(codecData.codecContext, codecData.avFrame);
 		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
 			break;
 		}
@@ -281,9 +281,9 @@ AVFrame *VideoExtractor::findBestFrame(const FormatContextData &formatData, cons
 	}
 
 	// Seek to timestamp
-	auto seekTarget = (int64_t)(timestamp / avQ2d(formatData.videoStream->timeBase));
+	auto seekTarget = (int64_t)(timestamp / av_q2d(formatData.videoStream->time_base));
 	int const RET =
-		avSeekFrame(formatData.formatContext, formatData.videoStreamIndex, seekTarget, AVSEEK_FLAG_BACKWARD);
+		av_seek_frame(formatData.formatContext, formatData.videoStreamIndex, seekTarget, AVSEEK_FLAG_BACKWARD);
 	if (RET < 0) {
 		return nullptr;
 	}
@@ -292,16 +292,16 @@ AVFrame *VideoExtractor::findBestFrame(const FormatContextData &formatData, cons
 	double bestTimeDiff = 1e10;
 	AVFrame *bestFrame = nullptr;
 
-	while (avReadFrame(formatData.formatContext, codecData.packet) >= 0) {
-		if (codecData.packet->streamIndex == formatData.videoStreamIndex) {
+	while (av_read_frame(formatData.formatContext, codecData.packet) >= 0) {
+		if (codecData.packet->stream_index == formatData.videoStreamIndex) {
 			bool const SHOULD_CONTINUE =
 				decodeVideoPackets(formatData, codecData, timestamp, bestTimeDiff, bestFrame);
 			if (!SHOULD_CONTINUE) {
-				avPacketUnref(codecData.packet);
+				av_packet_unref(codecData.packet);
 				break;
 			}
 		}
-		avPacketUnref(codecData.packet);
+		av_packet_unref(codecData.packet);
 
 		if (bestTimeDiff < 0.05) { // Close enough (50ms)
 			break;
@@ -340,7 +340,7 @@ VideoFrame VideoExtractor::extractFrameAt(double timestamp) const
 			     bestFrame->linesize[0], QImage::Format_RGB888);
 		frame.pixmap = QPixmap::fromImage(image);
 		frame.frameNumber = (int)(timestamp * m_fps);
-		avFrameFree(&bestFrame);
+		av_frame_free(&bestFrame);
 	}
 
 	// Cleanup

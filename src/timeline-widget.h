@@ -27,6 +27,8 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qtmetamacros.h>
 #include <qicon.h>
 
+struct AudioSample; // Forward declaration
+
 class TimelineWidget : public QWidget {
 	Q_OBJECT
 
