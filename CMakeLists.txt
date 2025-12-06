@@ -275,9 +275,12 @@ target_sources(
     src/plugin-main.cpp
     src/audio-sync-panel.cpp
     src/recording-scanner.cpp
+    src/recording-scanner-worker.cpp
     src/audio-analyzer.cpp
+    src/audio-analysis-worker.cpp
     src/timeline-widget.cpp
     src/video-extractor.cpp
+    src/video-extraction-worker.cpp
 )
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})

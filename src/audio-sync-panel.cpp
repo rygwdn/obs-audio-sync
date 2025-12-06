@@ -21,6 +21,9 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "audio-analyzer.h"
 #include "video-extractor.h"
 #include "timeline-widget.h"
+#include "recording-scanner-worker.h"
+#include "audio-analysis-worker.h"
+#include "video-extraction-worker.h"
 #include <QFileInfo>
 #include <QDateTime>
 #include <QMessageBox>
@@ -34,8 +37,10 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qnamespace.h>
 #include <qlist.h>
 #include <qpixmap.h>
+#include <qprogressbar.h>
+#include <qthread.h>
 
-AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent), m_videoExtractor(new VideoExtractor())
+AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent)
 {
 	setWindowTitle("Audio Sync");
 
@@ -49,7 +54,22 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent), m_videoEx
 
 AudioSyncPanel::~AudioSyncPanel()
 {
-	delete m_videoExtractor;
+	// Stop and cleanup worker threads
+	if (m_scanThread) {
+		m_scanThread->quit();
+		m_scanThread->wait();
+		delete m_scanThread;
+	}
+	if (m_audioThread) {
+		m_audioThread->quit();
+		m_audioThread->wait();
+		delete m_audioThread;
+	}
+	if (m_videoThread) {
+		m_videoThread->quit();
+		m_videoThread->wait();
+		delete m_videoThread;
+	}
 }
 
 void AudioSyncPanel::setupUI()
@@ -131,28 +151,86 @@ void AudioSyncPanel::setupUI()
 	m_statusLabel->setStyleSheet("color: gray;");
 	m_layout->addWidget(m_statusLabel);
 
+	// Spinner (initially hidden)
+	m_spinner = new QProgressBar(centralWidget);
+	m_spinner->setRange(0, 0); // Indeterminate progress
+	m_spinner->setTextVisible(false);
+	m_spinner->setVisible(false);
+	m_layout->addWidget(m_spinner);
+
+	m_spinnerLabel = new QLabel("", centralWidget);
+	m_spinnerLabel->setStyleSheet("color: gray;");
+	m_spinnerLabel->setVisible(false);
+	m_layout->addWidget(m_spinnerLabel);
+
 	// Connect signals
 	connect(m_recordingList, &QListWidget::itemDoubleClicked, this, &AudioSyncPanel::onRecordingSelected);
 	connect(m_refreshButton, &QPushButton::clicked, this, &AudioSyncPanel::onRefreshClicked);
 	connect(m_timelineWidget, &TimelineWidget::spikePositionChanged, this, &AudioSyncPanel::onSpikePositionChanged);
 	connect(m_prevFrameButton, &QPushButton::clicked, this, &AudioSyncPanel::onPrevFrameClicked);
 	connect(m_nextFrameButton, &QPushButton::clicked, this, &AudioSyncPanel::onNextFrameClicked);
+
+	// Setup worker threads
+	setupWorkerThreads();
+}
+
+void AudioSyncPanel::setupWorkerThreads()
+{
+	// Setup scanning worker thread
+	m_scanThread = new QThread(this);
+	m_scanWorker = new RecordingScannerWorker();
+	m_scanWorker->moveToThread(m_scanThread);
+	connect(m_scanThread, &QThread::finished, m_scanWorker, &QObject::deleteLater);
+	connect(m_scanWorker, &RecordingScannerWorker::recordingsScanned, this, &AudioSyncPanel::onRecordingsScanned);
+	connect(m_scanWorker, &RecordingScannerWorker::scanError, this, &AudioSyncPanel::onScanError);
+	m_scanThread->start();
+
+	// Setup audio analysis worker thread
+	m_audioThread = new QThread(this);
+	m_audioWorker = new AudioAnalysisWorker();
+	m_audioWorker->moveToThread(m_audioThread);
+	connect(m_audioThread, &QThread::finished, m_audioWorker, &QObject::deleteLater);
+	connect(m_audioWorker, &AudioAnalysisWorker::audioAnalyzed, this, &AudioSyncPanel::onAudioAnalyzed);
+	connect(m_audioWorker, &AudioAnalysisWorker::analysisError, this, &AudioSyncPanel::onAnalysisError);
+	m_audioThread->start();
+
+	// Setup video extraction worker thread
+	m_videoThread = new QThread(this);
+	m_videoWorker = new VideoExtractionWorker();
+	m_videoWorker->moveToThread(m_videoThread);
+	connect(m_videoThread, &QThread::finished, m_videoWorker, &QObject::deleteLater);
+	connect(m_videoWorker, &VideoExtractionWorker::framesExtracted, this, &AudioSyncPanel::onFramesExtracted);
+	connect(m_videoWorker, &VideoExtractionWorker::extractionError, this, &AudioSyncPanel::onExtractionError);
+	m_videoThread->start();
+}
+
+void AudioSyncPanel::showSpinner(const QString &message)
+{
+	m_spinner->setVisible(true);
+	m_spinnerLabel->setText(message);
+	m_spinnerLabel->setVisible(true);
+	m_statusLabel->setText(message);
+}
+
+void AudioSyncPanel::hideSpinner()
+{
+	m_spinner->setVisible(false);
+	m_spinnerLabel->setVisible(false);
 }
 
 void AudioSyncPanel::refreshRecordings()
 {
-	m_statusLabel->setText("Scanning recordings...");
+	showSpinner("Scanning recordings...");
 	m_recordingList->clear();
+	m_refreshButton->setEnabled(false);
 
-	scanRecordings();
-
-	m_statusLabel->setText(QString("Found %1 recordings").arg(m_recordingList->count()));
+	// Start scanning in background thread
+	QMetaObject::invokeMethod(m_scanWorker, "scanRecordings", Qt::QueuedConnection, Q_ARG(double, 15.0));
 }
 
-void AudioSyncPanel::scanRecordings() // NOLINT(readability-convert-member-functions-to-static)
+void AudioSyncPanel::onRecordingsScanned(const QList<RecordingInfo> &recordings)
 {
-	RecordingScanner scanner;
-	QList<RecordingInfo> recordings = scanner.scanRecordings(15.0); // 15 second threshold
+	m_recordingList->clear();
 
 	for (const RecordingInfo &recording : recordings) {
 		QFileInfo fileInfo(recording.filePath);
@@ -165,6 +243,18 @@ void AudioSyncPanel::scanRecordings() // NOLINT(readability-convert-member-funct
 		item->setData(Qt::UserRole, recording.filePath);
 		m_recordingList->addItem(item);
 	}
+
+	hideSpinner();
+	m_statusLabel->setText(QString("Found %1 recordings").arg(m_recordingList->count()));
+	m_refreshButton->setEnabled(true);
+}
+
+void AudioSyncPanel::onScanError(const QString &error)
+{
+	hideSpinner();
+	m_statusLabel->setText("Scan failed");
+	QMessageBox::warning(this, "Scan Error", error);
+	m_refreshButton->setEnabled(true);
 }
 
 void AudioSyncPanel::onRecordingSelected(QListWidgetItem *item) // NOLINT(readability-convert-member-functions-to-static)
@@ -180,36 +270,46 @@ void AudioSyncPanel::onRecordingSelected(QListWidgetItem *item) // NOLINT(readab
 void AudioSyncPanel::loadRecording(const QString &filePath)
 {
 	m_currentRecording = filePath;
-	m_statusLabel->setText(QString("Analyzing: %1...").arg(QFileInfo(filePath).fileName()));
+	showSpinner(QString("Analyzing: %1...").arg(QFileInfo(filePath).fileName()));
 
-	// Analyze audio and find spike
-	if (!AudioAnalyzer::analyzeFile(filePath, m_currentSpike)) {
-		m_statusLabel->setText("Failed to analyze audio");
-		QMessageBox::warning(this, "Analysis Failed", "Could not analyze audio from recording.");
-		return;
-	}
+	// Disable recording list and buttons during analysis
+	m_recordingList->setEnabled(false);
 
-	// Get audio samples for timeline
-	QVector<AudioSample> samples =
-		AudioAnalyzer::getAudioSamples(filePath, m_currentSpike.windowStart, m_currentSpike.windowEnd);
+	// Start audio analysis in background thread
+	QMetaObject::invokeMethod(m_audioWorker, "analyzeAudio", Qt::QueuedConnection, Q_ARG(QString, filePath));
+}
 
-	// Open video file
-	if (!m_videoExtractor->openFile(filePath)) {
-		m_statusLabel->setText("Failed to open video");
-		QMessageBox::warning(this, "Video Error", "Could not open video from recording.");
-		return;
-	}
+void AudioSyncPanel::onAudioAnalyzed(const AudioSpike &spike, const QVector<AudioSample> &samples)
+{
+	m_currentSpike = spike;
 
-	m_videoFPS = m_videoExtractor->getFPS();
-	m_timelineWidget->setFPS(m_videoFPS);
+	// Update timeline with audio data
 	m_timelineWidget->setAudioSamples(samples);
 	m_timelineWidget->setSpikePosition(m_currentSpike.timestamp);
 	m_timelineWidget->setVisible(true);
 
-	// Extract frames
-	m_statusLabel->setText("Extracting frames...");
-	m_frames = m_videoExtractor->extractFrames(m_currentSpike.windowStart, m_currentSpike.windowEnd);
+	// Start video extraction in background thread
+	showSpinner("Extracting frames...");
+	QMetaObject::invokeMethod(m_videoWorker, "extractFrames", Qt::QueuedConnection, Q_ARG(QString, m_currentRecording),
+				  Q_ARG(double, m_currentSpike.windowStart), Q_ARG(double, m_currentSpike.windowEnd));
+}
+
+void AudioSyncPanel::onAnalysisError(const QString &error)
+{
+	hideSpinner();
+	m_statusLabel->setText("Analysis failed");
+	QMessageBox::warning(this, "Analysis Failed", error);
+	m_recordingList->setEnabled(true);
+}
+
+void AudioSyncPanel::onFramesExtracted(const QVector<VideoFrame> &frames, double fps)
+{
+	m_frames = frames;
+	m_videoFPS = fps;
 	m_currentFrameIndex = 0;
+
+	// Update timeline with FPS
+	m_timelineWidget->setFPS(m_videoFPS);
 
 	// Show UI components
 	m_frameLabel->setVisible(true);
@@ -221,7 +321,17 @@ void AudioSyncPanel::loadRecording(const QString &filePath)
 	updateFrameDisplay();
 	updateSyncDisplay();
 
+	hideSpinner();
 	m_statusLabel->setText(QString("Spike found at %1s").arg(m_currentSpike.timestamp, 0, 'f', 3));
+	m_recordingList->setEnabled(true);
+}
+
+void AudioSyncPanel::onExtractionError(const QString &error)
+{
+	hideSpinner();
+	m_statusLabel->setText("Extraction failed");
+	QMessageBox::warning(this, "Video Error", error);
+	m_recordingList->setEnabled(true);
 }
 
 void AudioSyncPanel::updateFrameDisplay()

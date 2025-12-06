@@ -26,11 +26,15 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QProgressBar>
+#include <QThread>
 #include <qtmetamacros.h>
 #include <qobject.h>
 #include "timeline-widget.h"
-#include "video-extractor.h"
 #include "audio-analyzer.h"
+#include "recording-scanner-worker.h"
+#include "audio-analysis-worker.h"
+#include "video-extraction-worker.h"
 
 class AudioSyncPanel : public QDockWidget {
 	Q_OBJECT
@@ -53,18 +57,28 @@ private slots:
 	void onSpikePositionChanged(double timestamp);
 	void onPrevFrameClicked();
 	void onNextFrameClicked();
+	// Worker slots
+	void onRecordingsScanned(const QList<RecordingInfo> &recordings);
+	void onScanError(const QString &error);
+	void onAudioAnalyzed(const AudioSpike &spike, const QVector<AudioSample> &samples);
+	void onAnalysisError(const QString &error);
+	void onFramesExtracted(const QVector<VideoFrame> &frames, double fps);
+	void onExtractionError(const QString &error);
 
 private:
 	void setupUI();
-	void scanRecordings();
 	void loadRecording(const QString &filePath);
 	void updateFrameDisplay();
 	void updateSyncDisplay() const;
+	void showSpinner(const QString &message);
+	void hideSpinner();
 
 	QListWidget *m_recordingList{nullptr};
 	QLabel *m_statusLabel{nullptr};
 	QPushButton *m_refreshButton{nullptr};
 	QVBoxLayout *m_layout{nullptr};
+	QProgressBar *m_spinner{nullptr};
+	QLabel *m_spinnerLabel{nullptr};
 
 	// Analysis components
 	TimelineWidget *m_timelineWidget{nullptr};
@@ -80,7 +94,14 @@ private:
 	QVector<VideoFrame> m_frames{};
 	int m_currentFrameIndex{-1};
 	double m_videoFPS{30.0};
-	VideoExtractor *m_videoExtractor{nullptr};
+
+	// Worker threads
+	QThread *m_scanThread{nullptr};
+	RecordingScannerWorker *m_scanWorker{nullptr};
+	QThread *m_audioThread{nullptr};
+	AudioAnalysisWorker *m_audioWorker{nullptr};
+	QThread *m_videoThread{nullptr};
+	VideoExtractionWorker *m_videoWorker{nullptr};
 };
 
 #endif // AUDIO_SYNC_PANEL_H
