@@ -244,33 +244,166 @@ The check scripts (`run-all-checks`, `run-clang-format`, `run-gersemi`) automati
 ## Development Workflow
 
 1. **Make Changes**: Edit source files
-2. **Run All Checks**: Run `./build-aux/run-all-checks` to verify all checks pass
+2. **Run Docker Checks**: Run `./build-aux/run-docker --all` to verify builds across all platforms
 3. **Build**: `cmake --build build_macos` (or your platform)
 4. **Verify**: Check that plugin loads in OBS Studio
+5. **Commit and Push**: Commit changes and push to the repository
+6. **Watch CI**: After pushing, use `gh` to watch the CI workflow and fix any errors that arise
+7. **Notify on Success**: When CI checks complete successfully, notify the user with an alert popup
 
 ### Pre-Commit Requirements
 
-**All checks must pass before committing code.** Run the comprehensive check script:
+**All checks must pass before committing code.** Agents should always run Docker checks before committing:
 
 ```bash
-./build-aux/run-all-checks
+./build-aux/run-docker --all
 ```
 
-This script runs:
-- Code formatting (clang-format) - automatically fixes formatting issues
-- CMake formatting (gersemi) - automatically fixes CMake formatting issues
-- Test suite - **must exist and pass** (missing tests are considered a failure)
+This verifies builds across all platforms and runs all necessary checks (formatting, linting, and tests).
 
-**Important**: The script uses fix mode for formatting, so it will automatically correct issues where possible. However, missing/failing tests will cause the script to fail.
+**Important**: If any check fails, fix the issues before committing. The script will exit with a non-zero status if any checks fail.
 
-If any check fails, fix the issues before committing. The script will exit with a non-zero status if any checks fail.
+## Issue Tracking with bd (beads)
 
-You can also run individual checks:
-- Format code: `./build-aux/run-clang-format`
-- Check formatting: `./build-aux/run-clang-format --check`
-- Format CMake: `./build-aux/run-gersemi`
-- Check CMake formatting: `./build-aux/run-gersemi --check`
-- Run tests: `ctest` or `./build_macos/obs-audio-sync-tests`
+**IMPORTANT**: This project uses **bd (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
+
+### Why bd?
+
+- Dependency-aware: Track blockers and relationships between issues
+- Git-friendly: Auto-syncs to JSONL for version control
+- Agent-optimized: JSON output, ready work detection, discovered-from links
+- Prevents duplicate tracking systems and confusion
+
+### Quick Start
+
+**Check for ready work:**
+```bash
+bd ready --json
+```
+
+**Create new issues:**
+```bash
+bd create "Issue title" -t bug|feature|task -p 0-4 --json
+bd create "Issue title" -p 1 --deps discovered-from:bd-123 --json
+bd create "Subtask" --parent <epic-id> --json  # Hierarchical subtask (gets ID like epic-id.1)
+```
+
+**Claim and update:**
+```bash
+bd update bd-42 --status in_progress --json
+bd update bd-42 --priority 1 --json
+```
+
+**Complete work:**
+```bash
+bd close bd-42 --reason "Completed" --json
+```
+
+### Issue Types
+
+- `bug` - Something broken
+- `feature` - New functionality
+- `task` - Work item (tests, docs, refactoring)
+- `epic` - Large feature with subtasks
+- `chore` - Maintenance (dependencies, tooling)
+
+### Priorities
+
+- `0` - Critical (security, data loss, broken builds)
+- `1` - High (major features, important bugs)
+- `2` - Medium (default, nice-to-have)
+- `3` - Low (polish, optimization)
+- `4` - Backlog (future ideas)
+
+### Workflow for AI Agents
+
+1. **Check ready work**: `bd ready` shows unblocked issues
+2. **Claim your task**: `bd update <id> --status in_progress`
+3. **Work on it**: Implement, test, document
+4. **Discover new work?** Create linked issue:
+   - `bd create "Found bug" -p 1 --deps discovered-from:<parent-id>`
+5. **Complete**: `bd close <id> --reason "Done"`
+6. **Commit together**: Always commit the `.beads/issues.jsonl` file together with the code changes so issue state stays in sync with code state
+
+### Auto-Sync
+
+bd automatically syncs with git:
+- Exports to `.beads/issues.jsonl` after changes (5s debounce)
+- Imports from JSONL when newer (e.g., after `git pull`)
+- No manual export/import needed!
+
+### GitHub Copilot Integration
+
+If using GitHub Copilot, also create `.github/copilot-instructions.md` for automatic instruction loading.
+Run `bd onboard` to get the content, or see step 2 of the onboard instructions.
+
+### MCP Server (Recommended)
+
+If using Claude or MCP-compatible clients, install the beads MCP server:
+
+```bash
+pip install beads-mcp
+```
+
+Add to MCP config (e.g., `~/.config/claude/config.json`):
+```json
+{
+  "beads": {
+    "command": "beads-mcp",
+    "args": []
+  }
+}
+```
+
+Then use `mcp__beads__*` functions instead of CLI commands.
+
+### Managing AI-Generated Planning Documents
+
+AI assistants often create planning and design documents during development:
+- PLAN.md, IMPLEMENTATION.md, ARCHITECTURE.md
+- DESIGN.md, CODEBASE_SUMMARY.md, INTEGRATION_PLAN.md
+- TESTING_GUIDE.md, TECHNICAL_DESIGN.md, and similar files
+
+**Best Practice: Use a dedicated directory for these ephemeral files**
+
+**Recommended approach:**
+- Create a `history/` directory in the project root
+- Store ALL AI-generated planning/design docs in `history/`
+- Keep the repository root clean and focused on permanent project files
+- Only access `history/` when explicitly asked to review past planning
+
+**Example .gitignore entry (optional):**
+```
+# AI planning documents (ephemeral)
+history/
+```
+
+**Benefits:**
+- ✅ Clean repository root
+- ✅ Clear separation between ephemeral and permanent documentation
+- ✅ Easy to exclude from version control if desired
+- ✅ Preserves planning history for archeological research
+- ✅ Reduces noise when browsing the project
+
+### CLI Help
+
+Run `bd <command> --help` to see all available flags for any command.
+For example: `bd create --help` shows `--parent`, `--deps`, `--assignee`, etc.
+
+### Important Rules
+
+- ✅ Use bd for ALL task tracking
+- ✅ Always use `--json` flag for programmatic use
+- ✅ Link discovered work with `discovered-from` dependencies
+- ✅ Check `bd ready` before asking "what should I work on?"
+- ✅ Store AI planning docs in `history/` directory
+- ✅ Run `bd <cmd> --help` to discover available flags
+- ❌ Do NOT create markdown TODO lists
+- ❌ Do NOT use external issue trackers
+- ❌ Do NOT duplicate tracking systems
+- ❌ Do NOT clutter repo root with planning documents
+
+For more details, see README.md and QUICKSTART.md.
 
 ## Debugging Tips
 
@@ -289,7 +422,7 @@ You can also run individual checks:
 
 ### Watching Build Status
 
-To watch the build status for the current commit:
+After pushing changes, agents should watch the CI workflow using `gh`:
 
 ```bash
 gh run watch $(gh run list --commit $(git rev-parse HEAD) --json=databaseId --jq='.[0].databaseId') --exit-status --compact | cat
@@ -300,6 +433,10 @@ This command will:
 - Watch it in real-time with compact output
 - Exit with the workflow's exit status
 - Pipe through `cat` to avoid pager issues
+
+**Important**: 
+- If CI checks fail, fix the errors and push again
+- When CI checks complete successfully, notify the user with an alert popup
 
 ## Documentation
 
@@ -318,12 +455,11 @@ This command will:
 1. **Read existing code** to understand patterns
 2. **Follow naming conventions** used in the codebase
 3. **Maintain consistency** with existing code style
-4. **Run all checks** using `./build-aux/run-all-checks` before committing
+4. **Run Docker checks** using `./build-aux/run-docker --all` before committing
 5. **Test thoroughly** - ensure all tests pass
-6. **Format and lint** - all checks must pass before committing
-7. **Update documentation** if adding features or changing behavior
+6. **Update documentation** if adding features or changing behavior
 
-**Important**: All checks (formatting, linting, CMake formatting, and tests) must pass before committing. The CI will reject commits that fail these checks.
+**Important**: All Docker checks (builds, formatting, linting, CMake formatting, and tests) must pass before committing. The CI will reject commits that fail these checks.
 
 ## Common Pitfalls
 
