@@ -117,3 +117,86 @@ jobs:
             ${{ github.workspace }}/*.deb
             ${{ github.workspace }}/*.ddeb
             ${{ github.workspace }}/*.tar.xz
+
+  update-development-release:
+    name: Update Development Release 🧪
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-24.04
+    needs: build-project
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Download Build Artifacts 📥
+        uses: actions/download-artifact@v4
+        id: download
+
+      - name: Rename Files 🏷️
+        run: |
+          : Rename Files 🏷️
+          if [[ "${RUNNER_DEBUG}" ]]; then set -x; fi
+          shopt -s extglob
+          shopt -s nullglob
+
+          root_dir="$(pwd)"
+          commit_hash="${GITHUB_SHA:0:9}"
+
+          variants=(
+            'windows-x64;zip|exe'
+            'macos-universal;tar.xz|pkg'
+            'ubuntu-24.04-x86_64;tar.xz|deb|ddeb'
+            'sources;tar.xz'
+          )
+
+          for variant_data in "${variants[@]}"; do
+            IFS=';' read -r variant suffix <<< "${variant_data}"
+
+            candidates=(*-${variant}-${commit_hash}/@(*|*-dbgsym).@(${suffix}))
+
+            for candidate in "${candidates[@]}"; do
+              mv "${candidate}" "${root_dir}"
+            done
+          done
+
+      - name: Generate Checksums 🪪
+        run: |
+          : Generate Checksums 🪪
+          if [[ "${RUNNER_DEBUG}" ]]; then set -x; fi
+          shopt -s extglob
+
+          commit_hash="${GITHUB_SHA:0:9}"
+          commit_date="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          commit_message="${{ github.event.head_commit.message }}"
+          commit_message="${commit_message:-N/A}"
+
+          {
+            echo "### Development Build"
+            echo ""
+            echo "**Commit:** \`${commit_hash}\`"
+            echo "**Date:** ${commit_date}"
+            echo "**Branch:** \`${GITHUB_REF_NAME}\`"
+            echo "**Message:** ${commit_message}"
+            echo ""
+            echo "### Checksums"
+          } > ${{ github.workspace }}/RELEASE_BODY.txt
+
+          for file in ${{ github.workspace }}/@(*.exe|*.deb|*.ddeb|*.pkg|*.tar.xz|*.zip); do
+            echo "    ${file##*/}: $(sha256sum "${file}" | cut -d " " -f 1)" >> ${{ github.workspace }}/RELEASE_BODY.txt
+          done
+
+      - name: Update Development Release 🛫
+        id: update_release
+        uses: softprops/action-gh-release@9d7c94cfd0a1f3ed45544c887983e9fa900f0564
+        with:
+          tag_name: development
+          name: ${{ needs.build-project.outputs.pluginName }} Development Build
+          body_path: ${{ github.workspace }}/RELEASE_BODY.txt
+          prerelease: true
+          make_latest: false
+          files: |
+            ${{ github.workspace }}/*.exe
+            ${{ github.workspace }}/*.zip
+            ${{ github.workspace }}/*.pkg
+            ${{ github.workspace }}/*.deb
+            ${{ github.workspace }}/*.ddeb
+            ${{ github.workspace }}/*.tar.xz
