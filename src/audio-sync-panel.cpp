@@ -290,8 +290,9 @@ void AudioSyncPanel::onAudioAnalyzed(const AudioSpike &spike, const QVector<Audi
 
 	// Start video extraction in background thread
 	showSpinner("Extracting frames...");
-	QMetaObject::invokeMethod(m_videoWorker, "extractFrames", Qt::QueuedConnection, Q_ARG(QString, m_currentRecording),
-				  Q_ARG(double, m_currentSpike.windowStart), Q_ARG(double, m_currentSpike.windowEnd));
+	QMetaObject::invokeMethod(m_videoWorker, "extractFrames", Qt::QueuedConnection,
+				  Q_ARG(QString, m_currentRecording), Q_ARG(double, m_currentSpike.windowStart),
+				  Q_ARG(double, m_currentSpike.windowEnd));
 }
 
 void AudioSyncPanel::onAnalysisError(const QString &error)

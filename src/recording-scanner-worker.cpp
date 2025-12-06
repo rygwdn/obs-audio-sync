@@ -20,9 +20,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "recording-scanner.h"
 #include <QDebug>
 
-RecordingScannerWorker::RecordingScannerWorker(QObject *parent) : QObject(parent)
-{
-}
+RecordingScannerWorker::RecordingScannerWorker(QObject *parent) : QObject(parent) {}
 
 void RecordingScannerWorker::scanRecordings(double maxDurationSeconds)
 {

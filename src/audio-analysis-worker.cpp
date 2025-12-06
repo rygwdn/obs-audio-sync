@@ -20,9 +20,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "audio-analyzer.h"
 #include <QDebug>
 
-AudioAnalysisWorker::AudioAnalysisWorker(QObject *parent) : QObject(parent)
-{
-}
+AudioAnalysisWorker::AudioAnalysisWorker(QObject *parent) : QObject(parent) {}
 
 void AudioAnalysisWorker::analyzeAudio(const QString &filePath)
 {
