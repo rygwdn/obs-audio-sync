@@ -16,6 +16,7 @@ the Free Software Foundation; either version 2 of the License, or
 #include "test-recording-scanner-standalone.h"
 #include "test-timeline-widget.h"
 #include "test-audio-analyzer.h"
+#include "test-video-extractor.h"
 
 int main(int argc, char *argv[])
 {
@@ -43,6 +44,14 @@ int main(int argc, char *argv[])
 	// Run TestAudioAnalyzer
 	{
 		TestAudioAnalyzer test;
+		if (QTest::qExec(&test, argc, argv) != 0) {
+			result = 1;
+		}
+	}
+
+	// Run TestVideoExtractor
+	{
+		TestVideoExtractor test;
 		if (QTest::qExec(&test, argc, argv) != 0) {
 			result = 1;
 		}

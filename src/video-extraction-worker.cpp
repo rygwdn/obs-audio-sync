@@ -32,18 +32,32 @@ VideoExtractionWorker::~VideoExtractionWorker()
 void VideoExtractionWorker::extractFrames(const QString &filePath, double startTime, double endTime)
 {
 	try {
+		qDebug() << "VideoExtractionWorker::extractFrames: Starting extraction from" << startTime << "to"
+			 << endTime;
 		if (!m_videoExtractor->openFile(filePath)) {
 			emit extractionError("Could not open video from recording.");
 			return;
 		}
 
 		double fps = m_videoExtractor->getFPS();
+		qDebug() << "VideoExtractionWorker::extractFrames: Video FPS:" << fps;
 		QVector<VideoFrame> frames = m_videoExtractor->extractFrames(startTime, endTime);
 
+		if (frames.isEmpty()) {
+			qWarning() << "VideoExtractionWorker::extractFrames: No frames extracted";
+			emit extractionError(QString("No frames extracted from video (time range: %1-%2s)")
+						     .arg(startTime, 0, 'f', 3)
+						     .arg(endTime, 0, 'f', 3));
+			return;
+		}
+
+		qDebug() << "VideoExtractionWorker::extractFrames: Successfully extracted" << frames.size() << "frames";
 		emit framesExtracted(frames, fps);
 	} catch (const std::exception &e) {
+		qWarning() << "VideoExtractionWorker::extractFrames: Exception:" << e.what();
 		emit extractionError(QString("Error extracting frames: %1").arg(e.what()));
 	} catch (...) {
+		qWarning() << "VideoExtractionWorker::extractFrames: Unknown exception";
 		emit extractionError("Unknown error extracting frames");
 	}
 }

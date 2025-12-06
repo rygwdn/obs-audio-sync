@@ -354,21 +354,209 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 {
 	QVector<VideoFrame> frames;
 
-	if (!m_fileOpen || m_fps <= 0.0) {
+	if (!m_fileOpen || m_filePath.isEmpty() || m_fps <= 0.0) {
+		qWarning() << "VideoExtractor::extractFrames: File not open or invalid FPS";
 		return frames;
 	}
 
-	double const FRAME_DURATION = 1.0 / m_fps;
-	double currentTime = startTime;
-
-	while (currentTime <= endTime) {
-		VideoFrame frame = extractFrameAt(currentTime);
-		if (!frame.pixmap.isNull()) {
-			frames.append(frame);
-		}
-		currentTime += FRAME_DURATION;
+	// Setup format context
+	FormatContextData formatData = setupFormatContext(m_filePath);
+	if (formatData.formatContext == nullptr) {
+		qWarning() << "VideoExtractor::extractFrames: Failed to setup format context";
+		return frames;
 	}
 
+	// Setup codec context
+	CodecContextData codecData = setupCodecContext(formatData);
+	if (codecData.codecContext == nullptr) {
+		qWarning() << "VideoExtractor::extractFrames: Failed to setup codec context";
+		cleanupFormatContext(formatData);
+		return frames;
+	}
+
+	// Seek to start time
+	auto seekTarget = (int64_t)(startTime / av_q2d(formatData.videoStream->time_base));
+	int const SEEK_RET =
+		av_seek_frame(formatData.formatContext, formatData.videoStreamIndex, seekTarget, AVSEEK_FLAG_BACKWARD);
+	if (SEEK_RET < 0) {
+		qWarning() << "VideoExtractor::extractFrames: Failed to seek to start time";
+		cleanupCodecContext(codecData);
+		cleanupFormatContext(formatData);
+		return frames;
+	}
+
+	// Flush codec buffers after seek
+	avcodec_flush_buffers(codecData.codecContext);
+
+	double const FRAME_DURATION = 1.0 / m_fps;
+	double const TOLERANCE = FRAME_DURATION * 0.5; // Half a frame duration tolerance
+	int frameNumber = 0;
+
+	// Calculate target frame times
+	QVector<double> targetTimes;
+	for (double t = startTime; t <= endTime + TOLERANCE; t += FRAME_DURATION) {
+		targetTimes.append(t);
+	}
+
+	if (targetTimes.isEmpty()) {
+		cleanupCodecContext(codecData);
+		cleanupFormatContext(formatData);
+		return frames;
+	}
+
+	// Decode frames sequentially and match them to target times
+	int targetIndex = 0;
+	bool eofReached = false;
+	AVFrame *lastDecodedFrame = nullptr;
+	double lastDecodedTime = -1.0;
+
+	while (!eofReached && targetIndex < targetTimes.size()) {
+		double const TARGET_TIME = targetTimes[targetIndex];
+
+		// Check if we can reuse the last decoded frame
+		if (lastDecodedFrame != nullptr && lastDecodedTime >= 0.0) {
+			double timeDiff = qAbs(lastDecodedTime - TARGET_TIME);
+			if (timeDiff < TOLERANCE) {
+				// Reuse last frame
+				VideoFrame frame;
+				frame.timestamp = lastDecodedTime;
+				frame.frameNumber = frameNumber;
+
+				// Convert to QPixmap (copy image data to ensure it persists)
+				QImage image(lastDecodedFrame->data[0], codecData.codecContext->width,
+					     codecData.codecContext->height, lastDecodedFrame->linesize[0],
+					     QImage::Format_RGB888);
+				frame.pixmap = QPixmap::fromImage(image.copy());
+				frames.append(frame);
+
+				frameNumber++;
+				targetIndex++;
+				continue;
+			}
+		}
+
+		// Need to decode more frames
+		AVFrame *bestFrame = nullptr;
+		double bestFrameTime = -1.0;
+		double bestTimeDiff = 1e10;
+
+		while (!eofReached) {
+			int readRet = av_read_frame(formatData.formatContext, codecData.packet);
+			if (readRet < 0) {
+				eofReached = true;
+				// Try to flush remaining frames from decoder
+				avcodec_send_packet(codecData.codecContext, nullptr);
+				break;
+			}
+
+			if (codecData.packet->stream_index == formatData.videoStreamIndex) {
+				int ret = avcodec_send_packet(codecData.codecContext, codecData.packet);
+				if (ret < 0) {
+					av_packet_unref(codecData.packet);
+					continue;
+				}
+
+				while (ret >= 0) {
+					ret = avcodec_receive_frame(codecData.codecContext, codecData.avFrame);
+					if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+						break;
+					}
+					if (ret < 0) {
+						break;
+					}
+
+					// Calculate frame timestamp
+					double const FRAME_TIME =
+						codecData.avFrame->pts * av_q2d(formatData.videoStream->time_base);
+
+					// If we've gone past endTime, we're done
+					if (FRAME_TIME > endTime + TOLERANCE) {
+						eofReached = true;
+						break;
+					}
+
+					// Check if this frame is close to our target
+					double timeDiff = qAbs(FRAME_TIME - TARGET_TIME);
+					if (timeDiff < bestTimeDiff) {
+						bestTimeDiff = timeDiff;
+						bestFrameTime = FRAME_TIME;
+						// Convert to RGB
+						sws_scale(codecData.swsContext,
+							  (const uint8_t *const *)codecData.avFrame->data,
+							  codecData.avFrame->linesize, 0,
+							  codecData.codecContext->height, codecData.rgbFrame->data,
+							  codecData.rgbFrame->linesize);
+
+						// Free previous best frame if exists
+						if (bestFrame != nullptr) {
+							av_frame_free(&bestFrame);
+						}
+						bestFrame = av_frame_clone(codecData.rgbFrame);
+					}
+
+					// Store last decoded frame for potential reuse
+					if (lastDecodedFrame != nullptr) {
+						av_frame_free(&lastDecodedFrame);
+					}
+					sws_scale(codecData.swsContext, (const uint8_t *const *)codecData.avFrame->data,
+						  codecData.avFrame->linesize, 0, codecData.codecContext->height,
+						  codecData.rgbFrame->data, codecData.rgbFrame->linesize);
+					lastDecodedFrame = av_frame_clone(codecData.rgbFrame);
+					lastDecodedTime = FRAME_TIME;
+
+					// If we've passed the target time significantly, we're done with this target
+					if (FRAME_TIME > TARGET_TIME + TOLERANCE) {
+						break;
+					}
+				}
+			}
+			av_packet_unref(codecData.packet);
+
+			// If we found a good frame (within tolerance), use it
+			if (bestTimeDiff < TOLERANCE) {
+				break;
+			}
+
+			// If we've gone too far past the target, break
+			if (bestFrameTime >= 0.0 && bestFrameTime > TARGET_TIME + FRAME_DURATION) {
+				break;
+			}
+		}
+
+		// Convert best frame to VideoFrame if we found one
+		if (bestFrame != nullptr && bestTimeDiff < TOLERANCE * 2 && bestFrameTime >= 0.0) {
+			VideoFrame frame;
+			frame.timestamp = bestFrameTime;
+			frame.frameNumber = frameNumber;
+
+			// Convert to QPixmap (copy image data to ensure it persists)
+			QImage image(bestFrame->data[0], codecData.codecContext->width, codecData.codecContext->height,
+				     bestFrame->linesize[0], QImage::Format_RGB888);
+			frame.pixmap = QPixmap::fromImage(image.copy());
+			frames.append(frame);
+
+			av_frame_free(&bestFrame);
+			frameNumber++;
+		} else if (bestFrame != nullptr) {
+			// Free unused best frame
+			av_frame_free(&bestFrame);
+		}
+
+		// Move to next target time
+		targetIndex++;
+	}
+
+	// Cleanup last decoded frame
+	if (lastDecodedFrame != nullptr) {
+		av_frame_free(&lastDecodedFrame);
+	}
+
+	// Cleanup
+	cleanupCodecContext(codecData);
+	cleanupFormatContext(formatData);
+
+	qDebug() << "VideoExtractor::extractFrames: Extracted" << frames.size() << "frames from" << startTime << "to"
+		 << endTime << "(expected ~" << targetTimes.size() << "frames)";
 	return frames;
 }
 

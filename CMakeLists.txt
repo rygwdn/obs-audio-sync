@@ -242,8 +242,7 @@ if(APPLE)
   if(NOT EXISTS "${AGL_STUB_LIB}")
     file(MAKE_DIRECTORY "${AGL_STUB_DIR}")
     file(
-      WRITE
-      "${AGL_STUB_DIR}/AGL-stub.c"
+      WRITE "${AGL_STUB_DIR}/AGL-stub.c"
       "// Minimal stub for deprecated AGL framework\n__attribute__((visibility(\"default\"))) void AGLStub() {}\n"
     )
     # Get target architectures from CMAKE_OSX_ARCHITECTURES or default to arm64
@@ -438,7 +437,10 @@ if(ENABLE_QT)
       # Link against plugin sources (for testing)
       # Note: recording-scanner.cpp requires obs-frontend-api which may not be available
       # in test environment, so we only test the public isValidVideoFile method
-      target_sources(${target_name} PRIVATE src/recording-scanner.cpp src/timeline-widget.cpp src/audio-analyzer.cpp)
+      target_sources(
+        ${target_name}
+        PRIVATE src/recording-scanner.cpp src/timeline-widget.cpp src/audio-analyzer.cpp src/video-extractor.cpp
+      )
 
       # Link OBS libraries if available (optional for tests)
       # libobs is required for obs.h header (included by obs-frontend-api.h)
@@ -487,6 +489,12 @@ if(ENABLE_QT)
     configure_test_target(${CMAKE_PROJECT_NAME}-test-audio-analyzer)
     add_test(NAME test-audio-analyzer COMMAND ${CMAKE_PROJECT_NAME}-test-audio-analyzer)
 
+    # Test: Video Extractor
+    add_executable(${CMAKE_PROJECT_NAME}-test-video-extractor tests/test-video-extractor.cpp)
+    target_compile_definitions(${CMAKE_PROJECT_NAME}-test-video-extractor PRIVATE STANDALONE_TEST)
+    configure_test_target(${CMAKE_PROJECT_NAME}-test-video-extractor)
+    add_test(NAME test-video-extractor COMMAND ${CMAKE_PROJECT_NAME}-test-video-extractor)
+
     # Also keep the combined test executable for backward compatibility
     # (test-main.cpp runs all tests sequentially)
     add_executable(
@@ -495,6 +503,7 @@ if(ENABLE_QT)
       tests/test-recording-scanner-standalone.cpp
       tests/test-timeline-widget.cpp
       tests/test-audio-analyzer.cpp
+      tests/test-video-extractor.cpp
     )
     configure_test_target(${CMAKE_PROJECT_NAME}-tests)
     add_test(NAME ${CMAKE_PROJECT_NAME}-tests COMMAND ${CMAKE_PROJECT_NAME}-tests)
