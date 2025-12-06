@@ -21,16 +21,45 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <obs-frontend-api.h>
 #include <util/base.h>
 #include "audio-sync-panel.h"
+#include <QtCore/qlogging.h>
+#include <QtCore/qdebug.h>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
 
 namespace {
 AudioSyncPanel *panel = nullptr; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+// Qt message handler to redirect to OBS logging
+void qtMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+{
+	Q_UNUSED(context);
+	int logLevel = LOG_INFO;
+	switch (type) {
+	case QtDebugMsg:
+		// Use LOG_INFO for debug messages (LOG_DEBUG may not be available in all OBS versions)
+		logLevel = LOG_INFO;
+		break;
+	case QtWarningMsg:
+		logLevel = LOG_WARNING;
+		break;
+	case QtCriticalMsg:
+	case QtFatalMsg:
+		logLevel = LOG_ERROR;
+		break;
+	case QtInfoMsg:
+		logLevel = LOG_INFO;
+		break;
+	}
+	obsLog(logLevel, "%s", msg.toUtf8().constData());
 }
+} // namespace
 
 bool obs_module_load(void)
 {
+	// Install Qt message handler to redirect to OBS logging
+	qInstallMessageHandler(qtMessageHandler);
+
 	obsLog(LOG_INFO, "plugin loaded successfully (version %s)", pluginVersion);
 
 	// Create and register the panel
@@ -48,5 +77,7 @@ void obs_module_unload(void)
 		delete panel;
 		panel = nullptr;
 	}
+	// Restore default Qt message handler
+	qInstallMessageHandler(nullptr);
 	obsLog(LOG_INFO, "plugin unloaded");
 }
