@@ -537,6 +537,10 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 							av_frame_free(&bestFrame);
 						}
 						bestFrame = av_frame_clone(codecData.rgbFrame);
+						if (bestFrame == nullptr) {
+							qWarning()
+								<< "VideoExtractor::extractFrames: Failed to clone RGB frame";
+						}
 					}
 
 					// Store last decoded frame for potential reuse
@@ -557,11 +561,21 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 			}
 			av_packet_unref(codecData.packet);
 
-			// If we found a good frame (within tolerance), use it
-			if (bestTimeDiff < TOLERANCE) {
+			// If we found a good frame (within tolerance) AND it was successfully cloned, use it
+			if (bestTimeDiff < TOLERANCE && bestFrame != nullptr) {
 				qDebug() << "VideoExtractor::extractFrames: Found good frame (diff=" << bestTimeDiff
-					 << "<" << TOLERANCE << "), breaking";
+					 << "<" << TOLERANCE
+					 << "), breaking. bestFrame=set bestFrameTime=" << bestFrameTime;
 				break;
+			}
+
+			// If we found a good frame but cloning failed, continue searching
+			if (bestTimeDiff < TOLERANCE && bestFrame == nullptr) {
+				qWarning()
+					<< "VideoExtractor::extractFrames: Found good frame but cloning failed, continuing search";
+				// Reset bestTimeDiff to continue searching
+				bestTimeDiff = 1e10;
+				bestFrameTime = -1.0;
 			}
 
 			// If we've gone too far past the target, break
