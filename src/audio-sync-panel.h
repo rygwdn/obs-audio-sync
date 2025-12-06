@@ -57,6 +57,7 @@ private slots:
 	void onRecordingSelected(QTableWidgetItem *item);
 	void onRefreshClicked();
 	void onSpikePositionChanged(double timestamp);
+	void onVideoFramePositionChanged(double timestamp);
 	void onPrevFrameClicked();
 	void onNextFrameClicked();
 	void onZoomInClicked();

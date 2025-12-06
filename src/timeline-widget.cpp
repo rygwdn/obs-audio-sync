@@ -392,14 +392,20 @@ void TimelineWidget::paintEvent(QPaintEvent *event)
 void TimelineWidget::mousePressEvent(QMouseEvent *event)
 {
 	if (event->button() == Qt::LeftButton) {
-		int const SPIKE_X = xFromTimestamp(m_spikePosition);
 		int mouseX = static_cast<int>(event->position().x());
-		// Check if clicking near spike marker (within 10 pixels)
-		if (qAbs(mouseX - SPIKE_X) < 10) {
+		int const SPIKE_X = xFromTimestamp(m_spikePosition);
+		int const FRAME_X = m_videoFramePosition >= 0.0 ? xFromTimestamp(m_videoFramePosition) : -1000;
+
+		// Check if clicking near video frame marker (within 10 pixels) - prioritize this
+		if (m_videoFramePosition >= 0.0 && qAbs(mouseX - FRAME_X) < 10) {
+			m_draggingVideoFrame = true;
+			m_spikeDragStartX = mouseX;
+		} else if (qAbs(mouseX - SPIKE_X) < 10) {
+			// Check if clicking near spike marker (within 10 pixels)
 			m_draggingSpike = true;
 			m_spikeDragStartX = mouseX;
 		} else {
-			// Click to set spike position
+			// Click to set spike position (default behavior)
 			double newTimestamp = timestampFromX(mouseX);
 			newTimestamp = qMax(m_startTime, qMin(m_endTime, newTimestamp));
 			setSpikePosition(newTimestamp);
@@ -410,7 +416,13 @@ void TimelineWidget::mousePressEvent(QMouseEvent *event)
 
 void TimelineWidget::mouseMoveEvent(QMouseEvent *event)
 {
-	if (m_draggingSpike && (event->buttons() & Qt::LeftButton)) {
+	if (m_draggingVideoFrame && (event->buttons() & Qt::LeftButton)) {
+		int mouseX = static_cast<int>(event->position().x());
+		double newTimestamp = timestampFromX(mouseX);
+		newTimestamp = qMax(m_startTime, qMin(m_endTime, newTimestamp));
+		setVideoFramePosition(newTimestamp);
+		emit videoFramePositionChanged(newTimestamp);
+	} else if (m_draggingSpike && (event->buttons() & Qt::LeftButton)) {
 		int mouseX = static_cast<int>(event->position().x());
 		double newTimestamp = timestampFromX(mouseX);
 		newTimestamp = qMax(m_startTime, qMin(m_endTime, newTimestamp));
@@ -418,6 +430,7 @@ void TimelineWidget::mouseMoveEvent(QMouseEvent *event)
 		emit spikePositionChanged(newTimestamp);
 	} else {
 		m_draggingSpike = false;
+		m_draggingVideoFrame = false;
 	}
 }
 

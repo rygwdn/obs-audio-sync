@@ -53,6 +53,7 @@ public:
 
 signals:
 	void spikePositionChanged(double timestamp);
+	void videoFramePositionChanged(double timestamp);
 
 protected:
 	void paintEvent(QPaintEvent *event) override;
@@ -83,6 +84,7 @@ private:
 	QVector<double> m_videoFrameTimestamps{};
 	int m_spikeDragStartX{};
 	bool m_draggingSpike{};
+	bool m_draggingVideoFrame{};
 	double m_zoomLevel{1.0}; // 1.0 = no zoom, >1.0 = zoomed in
 };
 

@@ -155,7 +155,7 @@ void AudioSyncPanel::setupUI()
 	m_timelineWidget->setVisible(false);
 	m_layout->addWidget(m_timelineWidget);
 
-	// Zoom controls
+	// Zoom and frame navigation controls
 	auto *zoomLayout = new QHBoxLayout();
 	m_zoomInButton = new QPushButton("Zoom In", centralWidget);
 	m_zoomInButton->setVisible(false);
@@ -163,10 +163,18 @@ void AudioSyncPanel::setupUI()
 	m_zoomOutButton->setVisible(false);
 	m_resetZoomButton = new QPushButton("Reset Zoom", centralWidget);
 	m_resetZoomButton->setVisible(false);
+	m_prevFrameButton = new QPushButton("< Prev", centralWidget);
+	m_prevFrameButton->setEnabled(false);
+	m_prevFrameButton->setVisible(false);
+	m_nextFrameButton = new QPushButton("Next >", centralWidget);
+	m_nextFrameButton->setEnabled(false);
+	m_nextFrameButton->setVisible(false);
 	zoomLayout->addWidget(m_zoomInButton);
 	zoomLayout->addWidget(m_zoomOutButton);
 	zoomLayout->addWidget(m_resetZoomButton);
 	zoomLayout->addStretch();
+	zoomLayout->addWidget(m_prevFrameButton);
+	zoomLayout->addWidget(m_nextFrameButton);
 	m_layout->addLayout(zoomLayout);
 
 	// Video frame display
@@ -182,19 +190,6 @@ void AudioSyncPanel::setupUI()
 	m_frameLabel->setScaledContents(false); // Important: don't scale contents automatically
 	m_frameLabel->setVisible(false);
 	m_layout->addWidget(m_frameLabel);
-
-	// Frame navigation
-	auto *navLayout = new QHBoxLayout();
-	m_prevFrameButton = new QPushButton("< Prev", centralWidget);
-	m_prevFrameButton->setEnabled(false);
-	m_prevFrameButton->setVisible(false);
-	m_nextFrameButton = new QPushButton("Next >", centralWidget);
-	m_nextFrameButton->setEnabled(false);
-	m_nextFrameButton->setVisible(false);
-	navLayout->addWidget(m_prevFrameButton);
-	navLayout->addStretch();
-	navLayout->addWidget(m_nextFrameButton);
-	m_layout->addLayout(navLayout);
 
 	// Frame info
 	m_frameInfoLabel = new QLabel("", centralWidget);
@@ -231,6 +226,8 @@ void AudioSyncPanel::setupUI()
 	connect(m_recordingList, &QTableWidget::itemDoubleClicked, this, &AudioSyncPanel::onRecordingSelected);
 	connect(m_refreshButton, &QPushButton::clicked, this, &AudioSyncPanel::onRefreshClicked);
 	connect(m_timelineWidget, &TimelineWidget::spikePositionChanged, this, &AudioSyncPanel::onSpikePositionChanged);
+	connect(m_timelineWidget, &TimelineWidget::videoFramePositionChanged, this,
+		&AudioSyncPanel::onVideoFramePositionChanged);
 	connect(m_prevFrameButton, &QPushButton::clicked, this, &AudioSyncPanel::onPrevFrameClicked);
 	connect(m_nextFrameButton, &QPushButton::clicked, this, &AudioSyncPanel::onNextFrameClicked);
 	connect(m_zoomInButton, &QPushButton::clicked, this, &AudioSyncPanel::onZoomInClicked);
@@ -409,6 +406,19 @@ void AudioSyncPanel::onFramesExtracted(const QVector<VideoFrame> &frames, double
 	}
 	m_timelineWidget->setVideoFrames(frameTimestamps);
 
+	// Find the frame closest to the audio spike
+	double minDiff = 1e10;
+	int bestFrameIndex = 0;
+	for (int i = 0; i < frames.size(); i++) {
+		double diff = qAbs(frames[i].timestamp - m_currentSpike.timestamp);
+		if (diff < minDiff) {
+			minDiff = diff;
+			bestFrameIndex = i;
+		}
+	}
+	m_currentFrameIndex = bestFrameIndex;
+
+	// Set initial video frame position to the closest frame (which will be close to the spike)
 	updateFrameDisplay();
 	updateSyncDisplay();
 
@@ -435,9 +445,13 @@ void AudioSyncPanel::updateFrameDisplay()
 	}
 
 	const VideoFrame &frame = m_frames[m_currentFrameIndex];
-	// Use fixed maximum size instead of label size to prevent growth
-	QSize const MAX_SIZE(800, 400);
-	QPixmap scaledPixmap = frame.pixmap.scaled(MAX_SIZE, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+	// Scale to fit within maximum label bounds while maintaining aspect ratio
+	QSize maxSize = m_frameLabel->maximumSize();
+	if (maxSize.width() <= 0 || maxSize.height() <= 0) {
+		maxSize = QSize(800, 400); // Fallback
+	}
+	// Scale to fit (not fill) - this ensures the entire image is visible
+	QPixmap scaledPixmap = frame.pixmap.scaled(maxSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 	m_frameLabel->setPixmap(scaledPixmap);
 
 	// Update timeline with current video frame position
@@ -485,6 +499,29 @@ void AudioSyncPanel::onSpikePositionChanged(double timestamp)
 {
 	m_currentSpike.timestamp = timestamp;
 	updateSyncDisplay();
+}
+
+void AudioSyncPanel::onVideoFramePositionChanged(double timestamp)
+{
+	// Find the frame closest to the new timestamp
+	if (m_frames.isEmpty()) {
+		return;
+	}
+
+	double minDiff = 1e10;
+	int bestFrameIndex = m_currentFrameIndex;
+	for (int i = 0; i < m_frames.size(); i++) {
+		double diff = qAbs(m_frames[i].timestamp - timestamp);
+		if (diff < minDiff) {
+			minDiff = diff;
+			bestFrameIndex = i;
+		}
+	}
+
+	if (bestFrameIndex != m_currentFrameIndex) {
+		m_currentFrameIndex = bestFrameIndex;
+		updateFrameDisplay();
+	}
 }
 
 void AudioSyncPanel::onPrevFrameClicked()
