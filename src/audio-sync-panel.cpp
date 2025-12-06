@@ -34,6 +34,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qlist.h>
 #include <qprogressbar.h>
 #include <qthread.h>
+#include <qtimer.h>
 
 AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent)
 {
@@ -70,6 +71,12 @@ AudioSyncPanel::~AudioSyncPanel()
 	}
 	if (m_startSyncButton) {
 		disconnect(m_startSyncButton, nullptr, this, nullptr);
+	}
+
+	// Stop refresh timer
+	if (m_refreshTimer) {
+		m_refreshTimer->stop();
+		disconnect(m_refreshTimer, nullptr, this, nullptr);
 	}
 
 	// Stop and cleanup worker threads
@@ -135,12 +142,18 @@ void AudioSyncPanel::setupUI()
 	m_layout->addWidget(m_spinnerLabel);
 
 	// Connect signals
-	connect(m_recordingList, &QListWidget::itemSelectionChanged, this, [this]() {
-		m_startSyncButton->setEnabled(m_recordingList->currentItem() != nullptr);
-	});
+	connect(m_recordingList, &QListWidget::itemSelectionChanged, this,
+		[this]() { m_startSyncButton->setEnabled(m_recordingList->currentItem() != nullptr); });
 	connect(m_recordingList, &QListWidget::itemDoubleClicked, this, &AudioSyncPanel::onRecordingSelected);
 	connect(m_refreshButton, &QPushButton::clicked, this, &AudioSyncPanel::onRefreshClicked);
 	connect(m_startSyncButton, &QPushButton::clicked, this, &AudioSyncPanel::onStartSyncClicked);
+
+	// Setup refresh timer for delayed refresh after recording events
+	// This ensures the file is ready after muxing completes
+	m_refreshTimer = new QTimer(this);
+	m_refreshTimer->setSingleShot(true);
+	m_refreshTimer->setInterval(500); // 500ms delay to ensure file is ready
+	connect(m_refreshTimer, &QTimer::timeout, this, &AudioSyncPanel::refreshRecordings);
 
 	// Setup worker threads
 	setupWorkerThreads();
@@ -243,4 +256,13 @@ void AudioSyncPanel::onStartSyncClicked()
 void AudioSyncPanel::onRefreshClicked()
 {
 	refreshRecordings();
+}
+
+void AudioSyncPanel::scheduleDelayedRefresh()
+{
+	// Restart the timer - if it's already running, this will reset it
+	// This ensures we only refresh once after the last event
+	if (m_refreshTimer) {
+		m_refreshTimer->start();
+	}
 }

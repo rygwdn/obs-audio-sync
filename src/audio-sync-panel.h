@@ -28,6 +28,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QPushButton>
 #include <QProgressBar>
 #include <QThread>
+#include <QTimer>
 #include <qtmetamacros.h>
 #include <qobject.h>
 #include "recording-scanner.h"
@@ -47,7 +48,9 @@ public:
 	AudioSyncPanel(AudioSyncPanel &&) = delete;
 	AudioSyncPanel &operator=(AudioSyncPanel &&) = delete;
 
+public slots:
 	void refreshRecordings();
+	void scheduleDelayedRefresh();
 
 private slots:
 	void onRecordingSelected(QListWidgetItem *item);
@@ -74,6 +77,9 @@ private:
 	// Worker threads
 	QThread *m_scanThread{nullptr};
 	RecordingScannerWorker *m_scanWorker{nullptr};
+
+	// Timer for delayed refresh after recording events
+	QTimer *m_refreshTimer{nullptr};
 };
 
 #endif // AUDIO_SYNC_PANEL_H

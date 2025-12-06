@@ -53,6 +53,29 @@ void qtMessageHandler(QtMsgType type, const QMessageLogContext &context, const Q
 	}
 	obsLog(logLevel, "%s", msg.toUtf8().constData());
 }
+
+// OBS frontend event callback to detect recording end and muxing end
+void onFrontendEvent(enum obs_frontend_event event, void *private_data)
+{
+	Q_UNUSED(private_data);
+
+	// Only refresh if panel exists
+	if (panel == nullptr) {
+		return;
+	}
+
+	switch (event) {
+	case OBS_FRONTEND_EVENT_RECORDING_STOPPED:
+		obsLog(LOG_INFO, "Recording stopped event detected, scheduling delayed refresh");
+		// Recording has stopped - schedule a delayed refresh to ensure file is ready after muxing
+		// Use QMetaObject::invokeMethod to ensure we're on the correct thread
+		QMetaObject::invokeMethod(panel, "scheduleDelayedRefresh", Qt::QueuedConnection);
+		break;
+	default:
+		// Ignore other events
+		break;
+	}
+}
 } // namespace
 
 bool obs_module_load(void)
@@ -66,12 +89,18 @@ bool obs_module_load(void)
 	panel = new AudioSyncPanel();
 	obs_frontend_add_dock_by_id("obs-audio-sync", "Audio Sync", panel);
 
+	// Register event callback for recording events
+	obs_frontend_add_event_callback(onFrontendEvent, nullptr);
+
 	obsLog(LOG_INFO, "Audio Sync panel registered");
 	return true;
 }
 
 void obs_module_unload(void)
 {
+	// Unregister event callback
+	obs_frontend_remove_event_callback(onFrontendEvent, nullptr);
+
 	if (panel != nullptr) {
 		obs_frontend_remove_dock("obs-audio-sync");
 		delete panel;
