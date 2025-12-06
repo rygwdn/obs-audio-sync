@@ -366,9 +366,6 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 {
 	QVector<VideoFrame> frames;
 
-	qDebug() << "VideoExtractor::extractFrames: Called with startTime=" << startTime << "endTime=" << endTime
-		 << "m_fileOpen=" << m_fileOpen << "m_filePath=" << m_filePath << "m_fps=" << m_fps;
-
 	if (!m_fileOpen || m_filePath.isEmpty() || m_fps <= 0.0) {
 		qWarning() << "VideoExtractor::extractFrames: File not open or invalid FPS (m_fileOpen=" << m_fileOpen
 			   << "m_filePath.isEmpty()=" << m_filePath.isEmpty() << "m_fps=" << m_fps << ")";
@@ -381,8 +378,6 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 		qWarning() << "VideoExtractor::extractFrames: Failed to setup format context for" << m_filePath;
 		return frames;
 	}
-	qDebug() << "VideoExtractor::extractFrames: Format context setup successful, videoStreamIndex="
-		 << formatData.videoStreamIndex;
 
 	// Setup codec context
 	CodecContextData codecData = setupCodecContext(formatData);
@@ -391,14 +386,10 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 		cleanupFormatContext(formatData);
 		return frames;
 	}
-	qDebug() << "VideoExtractor::extractFrames: Codec context setup successful, width="
-		 << codecData.codecContext->width << "height=" << codecData.codecContext->height;
 
 	// Seek to start time
 	double const TIME_BASE = av_q2d(formatData.videoStream->time_base);
-	qDebug() << "VideoExtractor::extractFrames: time_base=" << TIME_BASE << "startTime=" << startTime;
 	auto seekTarget = (int64_t)(startTime / TIME_BASE);
-	qDebug() << "VideoExtractor::extractFrames: Seeking to timestamp" << seekTarget;
 	int const SEEK_RET =
 		av_seek_frame(formatData.formatContext, formatData.videoStreamIndex, seekTarget, AVSEEK_FLAG_BACKWARD);
 	if (SEEK_RET < 0) {
@@ -410,7 +401,6 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 		cleanupFormatContext(formatData);
 		return frames;
 	}
-	qDebug() << "VideoExtractor::extractFrames: Seek successful";
 
 	// Flush codec buffers after seek
 	avcodec_flush_buffers(codecData.codecContext);
@@ -424,10 +414,6 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 	for (double t = startTime; t <= endTime + TOLERANCE; t += FRAME_DURATION) {
 		targetTimes.append(t);
 	}
-
-	qDebug() << "VideoExtractor::extractFrames: Calculated" << targetTimes.size() << "target frame times from"
-		 << startTime << "to" << endTime << "(FRAME_DURATION=" << FRAME_DURATION << "TOLERANCE=" << TOLERANCE
-		 << ")";
 
 	if (targetTimes.isEmpty()) {
 		qWarning() << "VideoExtractor::extractFrames: No target times calculated (startTime=" << startTime
@@ -478,11 +464,6 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 		while (!eofReached) {
 			int readRet = av_read_frame(formatData.formatContext, codecData.packet);
 			if (readRet < 0) {
-				char errbuf[AV_ERROR_MAX_STRING_SIZE];
-				av_strerror(readRet, errbuf, AV_ERROR_MAX_STRING_SIZE);
-				qDebug() << "VideoExtractor::extractFrames: av_read_frame returned" << readRet << "("
-					 << errbuf << "), packetsRead=" << packetsRead
-					 << "framesDecoded=" << framesDecoded;
 				eofReached = true;
 				// Try to flush remaining frames from decoder
 				avcodec_send_packet(codecData.codecContext, nullptr);
@@ -520,14 +501,9 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 					}
 
 					double const FRAME_TIME = codecData.avFrame->pts * TIME_BASE;
-					qDebug() << "VideoExtractor::extractFrames: Decoded frame at" << FRAME_TIME
-						 << "s (target=" << TARGET_TIME
-						 << "s, diff=" << qAbs(FRAME_TIME - TARGET_TIME) << "s)";
 
 					// If we've gone past endTime, we're done
 					if (FRAME_TIME > endTime + TOLERANCE) {
-						qDebug() << "VideoExtractor::extractFrames: Frame time" << FRAME_TIME
-							 << "exceeds endTime" << endTime << ", stopping";
 						eofReached = true;
 						break;
 					}
@@ -581,9 +557,6 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 
 			// If we found a good frame (within tolerance) AND it was successfully cloned, use it
 			if (bestTimeDiff < TOLERANCE && bestFrame != nullptr) {
-				qDebug() << "VideoExtractor::extractFrames: Found good frame (diff=" << bestTimeDiff
-					 << "<" << TOLERANCE
-					 << "), breaking. bestFrame=set bestFrameTime=" << bestFrameTime;
 				break;
 			}
 
@@ -598,19 +571,12 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 
 			// If we've gone too far past the target, break
 			if (bestFrameTime >= 0.0 && bestFrameTime > TARGET_TIME + FRAME_DURATION) {
-				qDebug() << "VideoExtractor::extractFrames: Frame time" << bestFrameTime
-					 << "too far past target" << TARGET_TIME << ", breaking";
 				break;
 			}
 		}
-		qDebug() << "VideoExtractor::extractFrames: Finished searching for target" << TARGET_TIME
-			 << "(packetsRead=" << packetsRead << "framesDecoded=" << framesDecoded
-			 << "bestTimeDiff=" << bestTimeDiff << ")";
 
 		// Convert best frame to VideoFrame if we found one
 		if (bestFrame != nullptr && bestTimeDiff < TOLERANCE * 2 && bestFrameTime >= 0.0) {
-			qDebug() << "VideoExtractor::extractFrames: Using best frame for target" << TARGET_TIME
-				 << "(frameTime=" << bestFrameTime << "diff=" << bestTimeDiff << ")";
 			VideoFrame frame;
 			frame.timestamp = bestFrameTime;
 			frame.frameNumber = frameNumber;
@@ -649,8 +615,6 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 	cleanupCodecContext(codecData);
 	cleanupFormatContext(formatData);
 
-	qDebug() << "VideoExtractor::extractFrames: Extracted" << frames.size() << "frames from" << startTime << "to"
-		 << endTime << "(expected ~" << targetTimes.size() << "frames)";
 	return frames;
 }
 

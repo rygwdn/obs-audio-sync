@@ -23,6 +23,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QFileInfo>
 #include <QDirIterator>
 #include <QDebug>
+#include <QElapsedTimer>
 #include <algorithm>
 #include <qcontainerfwd.h>
 #include <qlist.h>
@@ -81,6 +82,8 @@ QList<RecordingInfo> RecordingScanner::scanRecordings(double maxDurationSeconds)
 	QList<RecordingInfo> recordings;
 	QString const RECORDING_PATH = getRecordingPath();
 
+	qInfo() << "RecordingScanner::scanRecordings: Starting scan (maxDuration=" << maxDurationSeconds << "s)";
+
 	if (RECORDING_PATH.isEmpty()) {
 		qWarning() << "No recording path found";
 		return recordings;
@@ -92,8 +95,19 @@ QList<RecordingInfo> RecordingScanner::scanRecordings(double maxDurationSeconds)
 		return recordings;
 	}
 
+	qInfo() << "RecordingScanner::scanRecordings: Scanning directory:" << RECORDING_PATH;
+
 	// Scan for video files
 	QDirIterator dirIterator(RECORDING_PATH, QDirIterator::Subdirectories);
+	int filesChecked = 0;
+	int videoFilesFound = 0;
+	int filesSkippedSize = 0;
+	int filesCheckedDuration = 0;
+	int filesMatched = 0;
+
+	QElapsedTimer timer;
+	timer.start();
+
 	while (dirIterator.hasNext()) {
 		QString filePath = dirIterator.next();
 		QFileInfo const FILE_INFO(filePath);
@@ -102,9 +116,13 @@ QList<RecordingInfo> RecordingScanner::scanRecordings(double maxDurationSeconds)
 			continue;
 		}
 
+		filesChecked++;
+
 		if (!isValidVideoFile(filePath)) {
 			continue;
 		}
+
+		videoFilesFound++;
 
 		// Quick file size check to skip expensive duration checks for large files
 		// Estimate max file size: assume max 100 Mbps bitrate for safety
@@ -112,11 +130,14 @@ QList<RecordingInfo> RecordingScanner::scanRecordings(double maxDurationSeconds)
 		const qint64 MAX_FILE_SIZE_BYTES =
 			static_cast<qint64>(maxDurationSeconds * 100.0 * 1024.0 * 1024.0 / 8.0);
 		if (FILE_INFO.size() > MAX_FILE_SIZE_BYTES) {
+			filesSkippedSize++;
 			continue;
 		}
 
+		filesCheckedDuration++;
 		double const DURATION = getFileDuration(filePath);
 		if (DURATION > 0.0 && DURATION <= maxDurationSeconds) {
+			filesMatched++;
 			RecordingInfo info;
 			info.filePath = filePath;
 			info.duration = DURATION;
@@ -125,9 +146,16 @@ QList<RecordingInfo> RecordingScanner::scanRecordings(double maxDurationSeconds)
 		}
 	}
 
+	qint64 elapsedMs = timer.elapsed();
+
 	// Sort by modification time (newest first)
 	std::sort(recordings.begin(), recordings.end(),
 		  [](const RecordingInfo &a, const RecordingInfo &b) { return a.modifiedTime > b.modifiedTime; });
+
+	qInfo() << "RecordingScanner::scanRecordings: Scan complete in" << elapsedMs << "ms"
+		<< "(filesChecked=" << filesChecked << "videoFilesFound=" << videoFilesFound
+		<< "filesSkippedSize=" << filesSkippedSize << "filesCheckedDuration=" << filesCheckedDuration
+		<< "filesMatched=" << filesMatched << "recordings=" << recordings.size() << ")";
 
 	return recordings;
 }
