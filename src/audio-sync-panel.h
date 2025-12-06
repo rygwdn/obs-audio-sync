@@ -21,7 +21,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include <QWidget>
 #include <QDockWidget>
-#include <QTableWidget>
+#include <QListWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -54,7 +54,7 @@ public:
 	void refreshRecordings();
 
 private slots:
-	void onRecordingSelected(QTableWidgetItem *item);
+	void onRecordingSelected(QListWidgetItem *item);
 	void onRefreshClicked();
 	void onSpikePositionChanged(double timestamp);
 	void onVideoFramePositionChanged(double timestamp);
@@ -80,7 +80,7 @@ private:
 	void showSpinner(const QString &message);
 	void hideSpinner();
 
-	QTableWidget *m_recordingList{nullptr};
+	QListWidget *m_recordingList{nullptr};
 	QLabel *m_statusLabel{nullptr};
 	QPushButton *m_refreshButton{nullptr};
 	QVBoxLayout *m_layout{nullptr};

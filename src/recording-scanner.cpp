@@ -97,8 +97,8 @@ QList<RecordingInfo> RecordingScanner::scanRecordings(double maxDurationSeconds)
 
 	qInfo() << "RecordingScanner::scanRecordings: Scanning directory:" << RECORDING_PATH;
 
-	// Scan for video files
-	QDirIterator dirIterator(RECORDING_PATH, QDirIterator::Subdirectories);
+	// Scan for video files (non-recursive, only in recording folder)
+	QDirIterator dirIterator(RECORDING_PATH);
 	int filesChecked = 0;
 	int videoFilesFound = 0;
 	int filesSkippedSize = 0;

@@ -31,8 +31,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qdockwidget.h>
 #include <qboxlayout.h>
 #include <qfont.h>
-#include <qtablewidget.h>
-#include <qheaderview.h>
+#include <qlistwidget.h>
 #include <qabstractitemview.h>
 #include <qpushbutton.h>
 #include <qnamespace.h>
@@ -131,16 +130,10 @@ void AudioSyncPanel::setupUI()
 	auto *listLabel = new QLabel("Recordings (< 15s):", centralWidget);
 	m_layout->addWidget(listLabel);
 
-	// Recording list (table with columns)
-	m_recordingList = new QTableWidget(centralWidget);
-	m_recordingList->setColumnCount(3);
-	m_recordingList->setHorizontalHeaderLabels(QStringList() << "Date/Time"
-								 << "Length"
-								 << "Name");
+	// Recording list (styled list items)
+	m_recordingList = new QListWidget(centralWidget);
 	m_recordingList->setSelectionMode(QAbstractItemView::SingleSelection);
-	m_recordingList->setSelectionBehavior(QAbstractItemView::SelectRows);
 	m_recordingList->setMaximumHeight(100);
-	m_recordingList->verticalHeader()->setVisible(false);
 	m_recordingList->setEditTriggers(QAbstractItemView::NoEditTriggers);
 	m_layout->addWidget(m_recordingList);
 
@@ -223,7 +216,7 @@ void AudioSyncPanel::setupUI()
 	m_layout->addWidget(m_spinnerLabel);
 
 	// Connect signals
-	connect(m_recordingList, &QTableWidget::itemDoubleClicked, this, &AudioSyncPanel::onRecordingSelected);
+	connect(m_recordingList, &QListWidget::itemDoubleClicked, this, &AudioSyncPanel::onRecordingSelected);
 	connect(m_refreshButton, &QPushButton::clicked, this, &AudioSyncPanel::onRefreshClicked);
 	connect(m_timelineWidget, &TimelineWidget::spikePositionChanged, this, &AudioSyncPanel::onSpikePositionChanged);
 	connect(m_timelineWidget, &TimelineWidget::videoFramePositionChanged, this,
@@ -294,34 +287,27 @@ void AudioSyncPanel::refreshRecordings()
 
 void AudioSyncPanel::onRecordingsScanned(const QList<RecordingInfo> &recordings)
 {
-	m_recordingList->setRowCount(0);
+	m_recordingList->clear();
 
 	for (const RecordingInfo &recording : recordings) {
 		QFileInfo fileInfo(recording.filePath);
-		int const ROW = m_recordingList->rowCount();
-		m_recordingList->insertRow(ROW);
 
-		// Date/Time column
-		auto *dateItem = new QTableWidgetItem(recording.modifiedTime.toString("yyyy-MM-dd hh:mm:ss"));
-		dateItem->setData(Qt::UserRole, recording.filePath);
-		m_recordingList->setItem(ROW, 0, dateItem);
+		// Create styled text with timestamp, length, and filename
+		QString timestamp = recording.modifiedTime.toString("yyyy-MM-dd hh:mm:ss");
+		QString length = QString("%1s").arg(recording.duration, 0, 'f', 2);
+		QString filename = fileInfo.fileName();
 
-		// Length column
-		auto *lengthItem = new QTableWidgetItem(QString("%1s").arg(recording.duration, 0, 'f', 2));
-		lengthItem->setData(Qt::UserRole, recording.filePath);
-		m_recordingList->setItem(ROW, 1, lengthItem);
+		// Format with styling: timestamp (bold), length (gray), filename (normal)
+		QString itemText =
+			QString("<b>%1</b> <span style='color: gray;'>%2</span> %3").arg(timestamp, length, filename);
 
-		// Name column
-		auto *nameItem = new QTableWidgetItem(fileInfo.fileName());
-		nameItem->setData(Qt::UserRole, recording.filePath);
-		m_recordingList->setItem(ROW, 2, nameItem);
+		auto *item = new QListWidgetItem(itemText);
+		item->setData(Qt::UserRole, recording.filePath);
+		m_recordingList->addItem(item);
 	}
 
-	// Resize columns to fit content
-	m_recordingList->resizeColumnsToContents();
-
 	hideSpinner();
-	m_statusLabel->setText(QString("Found %1 recordings").arg(m_recordingList->rowCount()));
+	m_statusLabel->setText(QString("Found %1 recordings").arg(m_recordingList->count()));
 	m_refreshButton->setEnabled(true);
 }
 
@@ -333,8 +319,7 @@ void AudioSyncPanel::onScanError(const QString &error)
 	m_refreshButton->setEnabled(true);
 }
 
-void AudioSyncPanel::onRecordingSelected(
-	QTableWidgetItem *item) // NOLINT(readability-convert-member-functions-to-static)
+void AudioSyncPanel::onRecordingSelected(QListWidgetItem *item) // NOLINT(readability-convert-member-functions-to-static)
 {
 	if (item == nullptr) {
 		return;
