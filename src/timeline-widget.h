@@ -47,6 +47,7 @@ public:
 	void setFPS(double fps);
 	void setVideoFramePosition(double timestamp);
 	void setVideoFrames(const QVector<double> &frameTimestamps);
+	void setFrameDifferences(const QVector<double> &differences);
 	void zoomIn();
 	void zoomOut();
 	void resetZoom();
@@ -71,6 +72,7 @@ private:
 	void drawVideoFrameMarkers(QPainter &painter);
 	void drawVideoFramePosition(QPainter &painter);
 	void drawOffsetLine(QPainter &painter);
+	void drawFrameDifferenceBars(QPainter &painter);
 	void wheelEvent(QWheelEvent *event) override;
 
 	QVector<AudioSample> m_samples{};
@@ -82,6 +84,7 @@ private:
 	double m_fps{};
 	double m_videoFramePosition{-1.0};
 	QVector<double> m_videoFrameTimestamps{};
+	QVector<double> m_frameDifferences{};
 	int m_spikeDragStartX{};
 	bool m_draggingSpike{};
 	bool m_draggingVideoFrame{};

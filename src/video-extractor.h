@@ -36,8 +36,9 @@ struct AVPacket;
 
 struct VideoFrame {
 	QPixmap pixmap{};
-	double timestamp{}; // Time in seconds
-	int frameNumber{};  // Frame index
+	double timestamp{};              // Time in seconds
+	int frameNumber{};               // Frame index
+	double differenceFromPrevious{}; // Frame-to-frame difference (0.0 = no previous frame)
 };
 
 class VideoExtractor {
@@ -100,6 +101,8 @@ private:
 					AVFrame *&currentBestFrame);
 	static bool decodeVideoPackets(const FormatContextData &formatData, const CodecContextData &codecData,
 				       double timestamp, double &bestTimeDiff, AVFrame *&bestFrame);
+	static double calculateFrameDifference(const QPixmap &frame1, const QPixmap &frame2);
+	static void calculateFrameDifferences(QVector<VideoFrame> &frames);
 
 	QString m_filePath{};
 	double m_fps{};

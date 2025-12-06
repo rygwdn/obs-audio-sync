@@ -401,10 +401,13 @@ void AudioSyncPanel::onFramesExtracted(const QVector<VideoFrame> &frames, double
 
 	// Update timeline with video frame data
 	QVector<double> frameTimestamps;
+	QVector<double> frameDifferences;
 	for (const VideoFrame &frame : frames) {
 		frameTimestamps.append(frame.timestamp);
+		frameDifferences.append(frame.differenceFromPrevious);
 	}
 	m_timelineWidget->setVideoFrames(frameTimestamps);
+	m_timelineWidget->setFrameDifferences(frameDifferences);
 
 	// Find the frame closest to the audio spike
 	double minDiff = 1e10;

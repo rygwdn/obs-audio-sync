@@ -362,6 +362,75 @@ VideoFrame VideoExtractor::extractFrameAt(double timestamp) const
 	return frame;
 }
 
+double VideoExtractor::calculateFrameDifference(const QPixmap &frame1, const QPixmap &frame2)
+{
+	if (frame1.isNull() || frame2.isNull()) {
+		return -1.0; // Error: invalid frames
+	}
+
+	// Downsample frames for faster comparison (1/4 size = 16x faster)
+	// Target size: 160x90 (16:9 aspect ratio, ~1/4 of typical 640x360)
+	const int TARGET_WIDTH = 160;
+	const int TARGET_HEIGHT = 90;
+
+	QPixmap scaled1 = frame1.scaled(TARGET_WIDTH, TARGET_HEIGHT, Qt::KeepAspectRatio, Qt::FastTransformation);
+	QPixmap scaled2 = frame2.scaled(TARGET_WIDTH, TARGET_HEIGHT, Qt::KeepAspectRatio, Qt::FastTransformation);
+
+	QImage img1 = scaled1.toImage();
+	QImage img2 = scaled2.toImage();
+
+	// Ensure same size after scaling
+	if (img1.size() != img2.size()) {
+		return -1.0; // Error: size mismatch
+	}
+
+	// Calculate SAD (Sum of Absolute Differences)
+	qint64 totalDiff = 0;
+	int pixelCount = img1.width() * img1.height();
+
+	for (int y = 0; y < img1.height(); y++) {
+		for (int x = 0; x < img1.width(); x++) {
+			QRgb pixel1 = img1.pixel(x, y);
+			QRgb pixel2 = img2.pixel(x, y);
+
+			// Calculate RGB difference
+			int rDiff = qAbs(qRed(pixel1) - qRed(pixel2));
+			int gDiff = qAbs(qGreen(pixel1) - qGreen(pixel2));
+			int bDiff = qAbs(qBlue(pixel1) - qBlue(pixel2));
+
+			totalDiff += (rDiff + gDiff + bDiff);
+		}
+	}
+
+	// Return average difference per pixel (normalized to 0-255 range)
+	return pixelCount > 0 ? (double)totalDiff / pixelCount : 0.0;
+}
+
+void VideoExtractor::calculateFrameDifferences(QVector<VideoFrame> &frames)
+{
+	if (frames.size() < 2) {
+		// First frame has no previous frame
+		if (!frames.isEmpty()) {
+			frames[0].differenceFromPrevious = 0.0;
+		}
+		return;
+	}
+
+	// First frame has no previous frame
+	frames[0].differenceFromPrevious = 0.0;
+
+	// Calculate difference for each subsequent frame
+	for (int i = 1; i < frames.size(); i++) {
+		double diff = calculateFrameDifference(frames[i - 1].pixmap, frames[i].pixmap);
+		if (diff < 0.0) {
+			// Error calculating difference, use 0.0
+			frames[i].differenceFromPrevious = 0.0;
+		} else {
+			frames[i].differenceFromPrevious = diff;
+		}
+	}
+}
+
 QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTime)
 {
 	QVector<VideoFrame> frames;
@@ -614,6 +683,9 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 	// Cleanup
 	cleanupCodecContext(codecData);
 	cleanupFormatContext(formatData);
+
+	// Calculate frame-to-frame differences
+	calculateFrameDifferences(frames);
 
 	return frames;
 }

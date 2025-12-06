@@ -78,6 +78,12 @@ void TimelineWidget::setVideoFrames(const QVector<double> &frameTimestamps)
 	update();
 }
 
+void TimelineWidget::setFrameDifferences(const QVector<double> &differences)
+{
+	m_frameDifferences = differences;
+	update();
+}
+
 void TimelineWidget::zoomIn()
 {
 	if (m_viewEndTime <= m_viewStartTime) {
@@ -370,6 +376,73 @@ void TimelineWidget::drawOffsetLine(QPainter &painter)
 	painter.drawText(TEXT_RECT, Qt::AlignCenter, OFFSET_TEXT);
 }
 
+void TimelineWidget::drawFrameDifferenceBars(QPainter &painter)
+{
+	if (m_frameDifferences.isEmpty() || m_videoFrameTimestamps.isEmpty()) {
+		return;
+	}
+
+	// Ensure we have differences for all frames (or at least matching count)
+	if (m_frameDifferences.size() != m_videoFrameTimestamps.size()) {
+		return;
+	}
+
+	// Find max difference for normalization (only consider visible range)
+	double maxDiff = 0.0;
+	for (int i = 0; i < m_videoFrameTimestamps.size(); i++) {
+		double frameTime = m_videoFrameTimestamps[i];
+		if (frameTime >= m_viewStartTime && frameTime <= m_viewEndTime) {
+			maxDiff = qMax(maxDiff, m_frameDifferences[i]);
+		}
+	}
+
+	if (maxDiff <= 0.0) {
+		return; // No differences to show
+	}
+
+	// Draw bars above frame markers (y=50-60, bars extend upward)
+	const int BAR_BASE_Y = 50;
+	const int MAX_BAR_HEIGHT = 20;
+	const int BAR_WIDTH = 4;
+
+	painter.setPen(Qt::NoPen);
+
+	for (int i = 0; i < m_videoFrameTimestamps.size(); i++) {
+		double frameTime = m_videoFrameTimestamps[i];
+		if (frameTime < m_viewStartTime || frameTime > m_viewEndTime) {
+			continue;
+		}
+
+		int xPos = xFromTimestamp(frameTime);
+		if (xPos < 20 || xPos > width() - 20) {
+			continue;
+		}
+
+		double diff = m_frameDifferences[i];
+		double normalized = diff / maxDiff; // 0.0 to 1.0
+
+		// Bar height (max 20 pixels)
+		int barHeight = (int)(normalized * MAX_BAR_HEIGHT);
+
+		if (barHeight <= 0) {
+			continue; // Skip zero-height bars
+		}
+
+		// Color based on difference intensity
+		QColor barColor;
+		if (normalized < 0.3) {
+			barColor = QColor(0, 255, 0, 200); // Green - low change
+		} else if (normalized < 0.7) {
+			barColor = QColor(255, 255, 0, 200); // Yellow - medium change
+		} else {
+			barColor = QColor(255, 0, 0, 200); // Red - high change
+		}
+
+		painter.setBrush(QBrush(barColor));
+		painter.drawRect(xPos - BAR_WIDTH / 2, BAR_BASE_Y - barHeight, BAR_WIDTH, barHeight);
+	}
+}
+
 void TimelineWidget::paintEvent(QPaintEvent *event)
 {
 	Q_UNUSED(event);
@@ -383,6 +456,7 @@ void TimelineWidget::paintEvent(QPaintEvent *event)
 	drawTimeMarkers(painter);
 	drawWaveform(painter);
 	drawFrameMarkers(painter);
+	drawFrameDifferenceBars(painter);
 	drawVideoFrameMarkers(painter);
 	drawOffsetLine(painter);
 	drawSpikeMarker(painter);
