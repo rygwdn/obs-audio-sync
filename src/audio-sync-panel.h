@@ -35,6 +35,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "recording-scanner-worker.h"
 #include "audio-sync-modal.h"
 #include "source-offset-manager.h"
+#include "realtime-audio-monitor.h"
 #include <QComboBox>
 
 class AudioSyncPanel : public QDockWidget {
@@ -58,12 +59,17 @@ private slots:
 	void onRecordingSelected(QListWidgetItem *item);
 	void onRefreshClicked();
 	void onStartSyncClicked();
+	void onAutoSyncClicked();
 	void onAudioSourceChanged(int index);
 	void onVideoSourceChanged(int index);
 	void onRefreshSourcesClicked();
 	// Worker slots
 	void onRecordingsScanned(const QList<RecordingInfo> &recordings);
 	void onScanError(const QString &error);
+	// Real-time monitoring slots
+	void onSpikeDetected(double timestamp);
+	void onMonitoringError(const QString &error);
+	void onCountdownTick();
 
 private:
 	void setupUI();
@@ -73,11 +79,15 @@ private:
 	void updateOffsetDisplay();
 	void showSpinner(const QString &message);
 	void hideSpinner();
+	void startAutoSyncRecording();
+	void stopAutoSyncRecording();
+	void handleAutoSyncRecordingStopped();
 
 	QListWidget *m_recordingList{nullptr};
 	QLabel *m_statusLabel{nullptr};
 	QPushButton *m_refreshButton{nullptr};
 	QPushButton *m_startSyncButton{nullptr};
+	QPushButton *m_autoSyncButton{nullptr};
 	QVBoxLayout *m_layout{nullptr};
 	QProgressBar *m_spinner{nullptr};
 	QLabel *m_spinnerLabel{nullptr};
@@ -98,6 +108,20 @@ private:
 
 	// Timer for delayed refresh after recording events
 	QTimer *m_refreshTimer{nullptr};
+
+	// Auto-sync recording state
+	enum class AutoSyncState {
+		Idle,
+		Recording,
+		Monitoring, // Spike detected, counting down
+		Stopping
+	};
+	AutoSyncState m_autoSyncState{AutoSyncState::Idle};
+	QString m_autoSyncRecordingPath;
+	RealTimeAudioMonitor *m_audioMonitor{nullptr};
+	QTimer *m_countdownTimer{nullptr};
+	int m_countdownSeconds{3};
+	double m_spikeTimestamp{0.0};
 };
 
 #endif // AUDIO_SYNC_PANEL_H

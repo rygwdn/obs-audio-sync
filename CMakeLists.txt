@@ -282,6 +282,7 @@ target_sources(
     src/video-extractor.cpp
     src/video-extraction-worker.cpp
     src/source-offset-manager.cpp
+    src/realtime-audio-monitor.cpp
 )
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})

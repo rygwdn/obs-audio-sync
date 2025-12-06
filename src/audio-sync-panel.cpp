@@ -21,9 +21,13 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "recording-scanner-worker.h"
 #include "audio-sync-modal.h"
 #include "source-offset-manager.h"
-#include <QFileInfo>
-#include <QDateTime>
+#include "realtime-audio-monitor.h"
+#include <obs-frontend-api.h>
+#include <util/base.h>
 #include <QMessageBox>
+#include <QFileInfo>
+#include <QDir>
+#include <QDateTime>
 #include <qwidget.h>
 #include <qdockwidget.h>
 #include <qboxlayout.h>
@@ -49,6 +53,17 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent)
 
 	// Create source offset manager
 	m_sourceOffsetManager = new SourceOffsetManager(this);
+
+	// Initialize auto-sync state
+	m_autoSyncState = AutoSyncState::Idle;
+	m_audioMonitor = new RealTimeAudioMonitor(this);
+	connect(m_audioMonitor, &RealTimeAudioMonitor::spikeDetected, this, &AudioSyncPanel::onSpikeDetected);
+	connect(m_audioMonitor, &RealTimeAudioMonitor::monitoringError, this, &AudioSyncPanel::onMonitoringError);
+
+	// Setup countdown timer
+	m_countdownTimer = new QTimer(this);
+	m_countdownTimer->setInterval(1000); // 1 second
+	connect(m_countdownTimer, &QTimer::timeout, this, &AudioSyncPanel::onCountdownTick);
 
 	setupUI();
 	refreshRecordings();
@@ -87,6 +102,16 @@ AudioSyncPanel::~AudioSyncPanel()
 	}
 	if (m_refreshSourcesButton) {
 		disconnect(m_refreshSourcesButton, nullptr, this, nullptr);
+	}
+	if (m_autoSyncButton) {
+		disconnect(m_autoSyncButton, nullptr, this, nullptr);
+	}
+	if (m_audioMonitor) {
+		disconnect(m_audioMonitor, nullptr, this, nullptr);
+	}
+	if (m_countdownTimer) {
+		m_countdownTimer->stop();
+		disconnect(m_countdownTimer, nullptr, this, nullptr);
 	}
 
 	// Stop refresh timer
@@ -138,6 +163,9 @@ void AudioSyncPanel::setupUI()
 	m_startSyncButton = new QPushButton("Start Sync", centralWidget);
 	m_startSyncButton->setEnabled(false);
 	buttonLayout->addWidget(m_startSyncButton);
+	m_autoSyncButton = new QPushButton("Auto Sync", centralWidget);
+	m_autoSyncButton->setToolTip("Start recording, detect clap, and automatically analyze");
+	buttonLayout->addWidget(m_autoSyncButton);
 	m_layout->addLayout(buttonLayout);
 
 	// Status label
@@ -163,6 +191,7 @@ void AudioSyncPanel::setupUI()
 	connect(m_recordingList, &QListWidget::itemDoubleClicked, this, &AudioSyncPanel::onRecordingSelected);
 	connect(m_refreshButton, &QPushButton::clicked, this, &AudioSyncPanel::onRefreshClicked);
 	connect(m_startSyncButton, &QPushButton::clicked, this, &AudioSyncPanel::onStartSyncClicked);
+	connect(m_autoSyncButton, &QPushButton::clicked, this, &AudioSyncPanel::onAutoSyncClicked);
 
 	// Setup refresh timer for delayed refresh after recording events
 	// This ensures the file is ready after muxing completes
@@ -413,4 +442,206 @@ void AudioSyncPanel::scheduleDelayedRefresh()
 	if (m_refreshTimer) {
 		m_refreshTimer->start();
 	}
+
+	// If we were doing an auto-sync recording, handle it
+	if (m_autoSyncState == AutoSyncState::Stopping) {
+		handleAutoSyncRecordingStopped();
+	}
+}
+
+void AudioSyncPanel::onAutoSyncClicked()
+{
+	if (m_autoSyncState != AutoSyncState::Idle) {
+		// Cancel if already recording
+		if (m_autoSyncState == AutoSyncState::Recording || m_autoSyncState == AutoSyncState::Monitoring) {
+			stopAutoSyncRecording();
+		}
+		return;
+	}
+
+	startAutoSyncRecording();
+}
+
+void AudioSyncPanel::startAutoSyncRecording()
+{
+	// Check if recording is already active
+	if (obs_frontend_recording_active()) {
+		QMessageBox::warning(this, "Recording Active", "OBS is already recording. Please stop the current recording first.");
+		return;
+	}
+
+	// Get recording directory to predict file path
+	const char *recordingPath = obs_frontend_get_current_record_output_path();
+	if (!recordingPath || strlen(recordingPath) == 0) {
+		QMessageBox::warning(this, "Recording Path Error", "Could not determine recording path. Please check OBS recording settings.");
+		return;
+	}
+
+	QFileInfo pathInfo(recordingPath);
+	QString recordingDir = pathInfo.absolutePath();
+	QString baseName = pathInfo.baseName();
+
+	// Store expected recording path pattern (OBS will create the file)
+	m_autoSyncRecordingPath = recordingDir + "/" + baseName;
+	if (m_autoSyncRecordingPath.isEmpty()) {
+		m_autoSyncRecordingPath = recordingDir;
+	}
+
+	// Start recording
+	obs_frontend_recording_start();
+
+	// Update state
+	m_autoSyncState = AutoSyncState::Recording;
+	m_spikeTimestamp = 0.0;
+	m_countdownSeconds = 3;
+
+	// Update UI
+	m_autoSyncButton->setText("Cancel Auto Sync");
+	m_autoSyncButton->setEnabled(true);
+	m_refreshButton->setEnabled(false);
+	m_startSyncButton->setEnabled(false);
+	m_statusLabel->setText("Recording... (Waiting for clap)");
+	m_statusLabel->setStyleSheet("color: orange;");
+
+	// Start monitoring after a short delay to allow file creation
+	QTimer::singleShot(1000, this, [this]() {
+		if (m_autoSyncState == AutoSyncState::Recording) {
+			// Try to get the actual recording file path
+			const char *currentPath = obs_frontend_get_current_record_output_path();
+			if (currentPath && strlen(currentPath) > 0) {
+				m_autoSyncRecordingPath = QString::fromUtf8(currentPath);
+				m_audioMonitor->startMonitoring(m_autoSyncRecordingPath);
+			} else {
+				// Fallback: try to find the newest file in the directory
+				QFileInfo pathInfo(m_autoSyncRecordingPath);
+				QString dir = pathInfo.absolutePath();
+				QDir directory(dir);
+				QStringList filters = {"*.mkv", "*.mp4", "*.flv", "*.mov", "*.avi", "*.webm"};
+				QFileInfoList files = directory.entryInfoList(filters, QDir::Files, QDir::Time | QDir::Reversed);
+				if (!files.isEmpty()) {
+					m_autoSyncRecordingPath = files.last().absoluteFilePath();
+					m_audioMonitor->startMonitoring(m_autoSyncRecordingPath);
+				}
+			}
+		}
+	});
+
+	// Set timeout (30 seconds)
+	QTimer::singleShot(30000, this, [this]() {
+		if (m_autoSyncState == AutoSyncState::Recording) {
+			// Timeout reached
+			stopAutoSyncRecording();
+			QMessageBox::information(this, "Auto Sync Timeout", "No audio spike detected within 30 seconds. Recording stopped.");
+		}
+	});
+}
+
+void AudioSyncPanel::stopAutoSyncRecording()
+{
+	if (m_autoSyncState == AutoSyncState::Idle) {
+		return;
+	}
+
+	// Stop monitoring
+	m_audioMonitor->stopMonitoring();
+	m_countdownTimer->stop();
+
+	// Stop recording if still active
+	if (obs_frontend_recording_active()) {
+		obs_frontend_recording_stop();
+		m_autoSyncState = AutoSyncState::Stopping;
+	} else {
+		m_autoSyncState = AutoSyncState::Idle;
+	}
+
+	// Update UI
+	m_autoSyncButton->setText("Auto Sync");
+	m_autoSyncButton->setEnabled(true);
+	m_refreshButton->setEnabled(true);
+	m_statusLabel->setText("Stopping recording...");
+	m_statusLabel->setStyleSheet("color: gray;");
+}
+
+void AudioSyncPanel::onSpikeDetected(double timestamp)
+{
+	if (m_autoSyncState != AutoSyncState::Recording) {
+		return;
+	}
+
+	m_spikeTimestamp = timestamp;
+	m_autoSyncState = AutoSyncState::Monitoring;
+	m_countdownSeconds = 3;
+
+	// Update UI
+	m_statusLabel->setText(QString("Spike detected! Stopping in %1s...").arg(m_countdownSeconds));
+	m_statusLabel->setStyleSheet("color: green;");
+
+	// Start countdown
+	m_countdownTimer->start();
+}
+
+void AudioSyncPanel::onCountdownTick()
+{
+	m_countdownSeconds--;
+	if (m_countdownSeconds > 0) {
+		m_statusLabel->setText(QString("Spike detected! Stopping in %1s...").arg(m_countdownSeconds));
+	} else {
+		// Countdown finished, stop recording
+		m_countdownTimer->stop();
+		stopAutoSyncRecording();
+	}
+}
+
+void AudioSyncPanel::onMonitoringError(const QString &error)
+{
+	qWarning() << "RealTimeAudioMonitor error:" << error;
+	// Don't stop recording on monitoring error, just log it
+	// The recording will continue and user can manually stop
+}
+
+void AudioSyncPanel::handleAutoSyncRecordingStopped()
+{
+	if (m_autoSyncState != AutoSyncState::Stopping) {
+		return;
+	}
+
+	m_autoSyncState = AutoSyncState::Idle;
+
+	// Wait a bit for file to be ready, then find and load it
+	QTimer::singleShot(1000, this, [this]() {
+		// Try to get the last recording
+		char *lastRecording = obs_frontend_get_last_recording();
+		QString recordingPath;
+
+		if (lastRecording && strlen(lastRecording) > 0) {
+			recordingPath = QString::fromUtf8(lastRecording);
+			bfree(lastRecording);
+		} else {
+			// Fallback: find newest file in recording directory
+			QFileInfo pathInfo(m_autoSyncRecordingPath);
+			QString dir = pathInfo.absolutePath();
+			QDir directory(dir);
+			QStringList filters = {"*.mkv", "*.mp4", "*.flv", "*.mov", "*.avi", "*.webm"};
+			QFileInfoList files = directory.entryInfoList(filters, QDir::Files, QDir::Time | QDir::Reversed);
+			if (!files.isEmpty()) {
+				recordingPath = files.first().absoluteFilePath();
+			}
+		}
+
+		if (!recordingPath.isEmpty() && QFileInfo(recordingPath).exists()) {
+			// Open the modal automatically
+			auto *modal = new AudioSyncModal(recordingPath, this);
+			modal->exec();
+			delete modal;
+		} else {
+			QMessageBox::warning(this, "Auto Sync", "Recording completed but file not found. Please select it manually.");
+		}
+
+		// Refresh recordings list
+		refreshRecordings();
+
+		// Reset UI
+		m_statusLabel->setText("Ready");
+		m_statusLabel->setStyleSheet("color: gray;");
+	});
 }

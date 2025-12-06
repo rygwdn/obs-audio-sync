@@ -58,12 +58,12 @@ public:
 	// Get file duration in seconds
 	static double getFileDuration(const QString &filePath);
 
+	// Extract all audio samples from file (public for real-time monitoring)
+	static QVector<AudioSample> extractAudioSamples(const QString &filePath);
+
 private:
 	static bool initializeFFmpeg();
 	void cleanupFFmpeg();
-
-	// Extract audio samples from file
-	static QVector<AudioSample> extractAudioSamples(const QString &filePath);
 
 	// Find largest spike in audio samples
 	static AudioSpike findLargestSpike(const QVector<AudioSample> &samples);
