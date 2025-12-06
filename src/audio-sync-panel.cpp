@@ -54,21 +54,60 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent)
 
 AudioSyncPanel::~AudioSyncPanel()
 {
+	// Disconnect all signal/slot connections first to prevent any objects from
+	// emitting signals to destroyed slots. This is critical to prevent crashes
+	// during shutdown. We disconnect in this order:
+	// 1. Worker signals (most critical - cross-thread)
+	// 2. UI widget signals (safety measure)
+	// 3. Keep thread->worker deleteLater connections for proper cleanup
+
+	// Disconnect worker signals (critical - these are cross-thread)
+	if (m_scanWorker) {
+		disconnect(m_scanWorker, nullptr, this, nullptr);
+	}
+	if (m_audioWorker) {
+		disconnect(m_audioWorker, nullptr, this, nullptr);
+	}
+	if (m_videoWorker) {
+		disconnect(m_videoWorker, nullptr, this, nullptr);
+	}
+
+	// Disconnect UI widget signals (safety measure - prevents signals during destruction)
+	if (m_recordingList) {
+		disconnect(m_recordingList, nullptr, this, nullptr);
+	}
+	if (m_refreshButton) {
+		disconnect(m_refreshButton, nullptr, this, nullptr);
+	}
+	if (m_timelineWidget) {
+		disconnect(m_timelineWidget, nullptr, this, nullptr);
+	}
+	if (m_prevFrameButton) {
+		disconnect(m_prevFrameButton, nullptr, this, nullptr);
+	}
+	if (m_nextFrameButton) {
+		disconnect(m_nextFrameButton, nullptr, this, nullptr);
+	}
+
 	// Stop and cleanup worker threads
+	// Workers will be automatically deleted via deleteLater when threads finish
 	if (m_scanThread) {
 		m_scanThread->quit();
 		m_scanThread->wait();
 		delete m_scanThread;
+		m_scanThread = nullptr;
 	}
 	if (m_audioThread) {
 		m_audioThread->quit();
 		m_audioThread->wait();
 		delete m_audioThread;
+		m_audioThread = nullptr;
 	}
 	if (m_videoThread) {
 		m_videoThread->quit();
 		m_videoThread->wait();
 		delete m_videoThread;
+		m_videoThread = nullptr;
 	}
 }
 
