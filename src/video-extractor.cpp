@@ -182,8 +182,20 @@ VideoExtractor::CodecContextData VideoExtractor::setupCodecContext(const FormatC
 	// Allocate buffer for RGB frame
 	int const NUM_BYTES = av_image_get_buffer_size(AV_PIX_FMT_RGB24, codecContext->width, codecContext->height, 1);
 	auto *buffer = (uint8_t *)av_malloc(NUM_BYTES * sizeof(uint8_t));
+	if (buffer == nullptr) {
+		av_frame_free(&rgbFrame);
+		av_frame_free(&avFrame);
+		av_packet_free(&packet);
+		avcodec_free_context(&codecContext);
+		return data;
+	}
 	av_image_fill_arrays(rgbFrame->data, rgbFrame->linesize, buffer, AV_PIX_FMT_RGB24, codecContext->width,
 			     codecContext->height, 1);
+
+	// Set frame properties required for cloning
+	rgbFrame->format = AV_PIX_FMT_RGB24;
+	rgbFrame->width = codecContext->width;
+	rgbFrame->height = codecContext->height;
 
 	// Create sws context for conversion
 	SwsContext *swsContext = sws_getContext(codecContext->width, codecContext->height, codecContext->pix_fmt,
@@ -539,7 +551,13 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 						bestFrame = av_frame_clone(codecData.rgbFrame);
 						if (bestFrame == nullptr) {
 							qWarning()
-								<< "VideoExtractor::extractFrames: Failed to clone RGB frame";
+								<< "VideoExtractor::extractFrames: Failed to clone RGB frame (format="
+								<< codecData.rgbFrame->format
+								<< "width=" << codecData.rgbFrame->width
+								<< "height=" << codecData.rgbFrame->height << "data[0]="
+								<< (codecData.rgbFrame->data[0] != nullptr ? "set"
+													   : "null")
+								<< ")";
 						}
 					}
 
