@@ -274,13 +274,17 @@ void TimelineWidget::drawSpikeMarker(QPainter &painter)
 	triangle << QPointF(X_POS, 0) << QPointF(X_POS - 8, 15) << QPointF(X_POS + 8, 15);
 	painter.drawPolygon(triangle);
 
-	// Draw timestamp label
+	// Draw label and timestamp
+	QString const LABEL_TEXT = "Audio";
 	QString const SPIKE_TEXT = QString::number(m_spikePosition, 'f', 3) + "s";
-	QRect const TEXT_RECT(X_POS - 40, 18, 80, 15);
+	QRect const LABEL_RECT(X_POS - 30, 18, 60, 15);
+	QRect const TIME_RECT(X_POS - 30, 33, 60, 15);
 	painter.setPen(QPen(QColor(255, 255, 255)));
 	painter.setBrush(QBrush(QColor(255, 0, 0)));
-	painter.drawRect(TEXT_RECT);
-	painter.drawText(TEXT_RECT, Qt::AlignCenter, SPIKE_TEXT);
+	painter.drawRect(LABEL_RECT);
+	painter.drawText(LABEL_RECT, Qt::AlignCenter, LABEL_TEXT);
+	painter.drawRect(TIME_RECT);
+	painter.drawText(TIME_RECT, Qt::AlignCenter, SPIKE_TEXT);
 }
 
 void TimelineWidget::drawVideoFrameMarkers(QPainter &painter)
@@ -328,52 +332,48 @@ void TimelineWidget::drawVideoFramePosition(QPainter &painter)
 	triangle << QPointF(X_POS, height) << QPointF(X_POS - 8, height - 15) << QPointF(X_POS + 8, height - 15);
 	painter.drawPolygon(triangle);
 
-	// Draw timestamp label
+	// Draw label and timestamp (use dark text on green background for readability)
+	QString const LABEL_TEXT = "Video";
 	QString const FRAME_TEXT = QString::number(m_videoFramePosition, 'f', 3) + "s";
-	QRect const TEXT_RECT(X_POS - 40, height - 33, 80, 15);
-	painter.setPen(QPen(QColor(255, 255, 255)));
+	QRect const LABEL_RECT(X_POS - 30, height - 48, 60, 15);
+	QRect const TIME_RECT(X_POS - 30, height - 33, 60, 15);
+	painter.setPen(QPen(QColor(0, 0, 0))); // Black text for readability on green
 	painter.setBrush(QBrush(QColor(0, 255, 0)));
-	painter.drawRect(TEXT_RECT);
-	painter.drawText(TEXT_RECT, Qt::AlignCenter, FRAME_TEXT);
+	painter.drawRect(LABEL_RECT);
+	painter.drawText(LABEL_RECT, Qt::AlignCenter, LABEL_TEXT);
+	painter.drawRect(TIME_RECT);
+	painter.drawText(TIME_RECT, Qt::AlignCenter, FRAME_TEXT);
 }
 
-void TimelineWidget::drawOffsetLine(QPainter &painter)
+double TimelineWidget::snapToFrame(double timestamp) const
 {
-	if (m_videoFramePosition < 0.0 || m_spikePosition < 0.0) {
-		return;
+	if (m_fps <= 0.0 || m_videoFrameTimestamps.isEmpty()) {
+		return timestamp;
 	}
 
-	// Draw a line connecting audio spike to video frame position
-	int const SPIKE_X = xFromTimestamp(m_spikePosition);
-	int const FRAME_X = xFromTimestamp(m_videoFramePosition);
-
-	// Only draw if both are visible
-	if ((SPIKE_X < 20 || SPIKE_X > width() - 20) && (FRAME_X < 20 || FRAME_X > width() - 20)) {
-		return;
+	// Find the nearest frame timestamp
+	double minDiff = 1e10;
+	double bestTimestamp = timestamp;
+	for (double frameTime : m_videoFrameTimestamps) {
+		double diff = qAbs(frameTime - timestamp);
+		if (diff < minDiff) {
+			minDiff = diff;
+			bestTimestamp = frameTime;
+		}
 	}
 
-	double const OFFSET = m_videoFramePosition - m_spikePosition;
-	QColor lineColor;
-	if (qAbs(OFFSET) < 0.033) {            // Less than 1 frame at 30fps
-		lineColor = QColor(0, 255, 0); // Green - in sync
-	} else if (qAbs(OFFSET) < 0.1) {
-		lineColor = QColor(255, 255, 0); // Yellow - close
-	} else {
-		lineColor = QColor(255, 0, 0); // Red - out of sync
+	// Also check if we should snap to a theoretical frame position
+	// (in case frames are sparse)
+	double const FRAME_DURATION = 1.0 / m_fps;
+	double frameNumber = qRound((timestamp - m_startTime) * m_fps);
+	double theoreticalFrameTime = m_startTime + (frameNumber * FRAME_DURATION);
+
+	// Use whichever is closer
+	if (qAbs(theoreticalFrameTime - timestamp) < minDiff) {
+		return theoreticalFrameTime;
 	}
 
-	painter.setPen(QPen(lineColor, 2, Qt::DashLine));
-	painter.drawLine(SPIKE_X, 30, FRAME_X, height() - 30);
-
-	// Draw offset text at midpoint
-	int const MID_X = (SPIKE_X + FRAME_X) / 2;
-	int const MID_Y = (30 + (height() - 30)) / 2;
-	QString const OFFSET_TEXT = QString("%1ms").arg(OFFSET * 1000.0, 0, 'f', 1);
-	QRect const TEXT_RECT(MID_X - 40, MID_Y - 10, 80, 20);
-	painter.setPen(QPen(QColor(255, 255, 255)));
-	painter.setBrush(QBrush(lineColor));
-	painter.drawRect(TEXT_RECT);
-	painter.drawText(TEXT_RECT, Qt::AlignCenter, OFFSET_TEXT);
+	return bestTimestamp;
 }
 
 void TimelineWidget::drawFrameDifferenceBars(QPainter &painter)
@@ -458,7 +458,6 @@ void TimelineWidget::paintEvent(QPaintEvent *event)
 	drawFrameMarkers(painter);
 	drawFrameDifferenceBars(painter);
 	drawVideoFrameMarkers(painter);
-	drawOffsetLine(painter);
 	drawSpikeMarker(painter);
 	drawVideoFramePosition(painter);
 }
@@ -479,9 +478,10 @@ void TimelineWidget::mousePressEvent(QMouseEvent *event)
 			m_draggingSpike = true;
 			m_spikeDragStartX = mouseX;
 		} else {
-			// Click to set spike position (default behavior)
+			// Click to set spike position (default behavior) - snap to frame
 			double newTimestamp = timestampFromX(mouseX);
 			newTimestamp = qMax(m_startTime, qMin(m_endTime, newTimestamp));
+			newTimestamp = snapToFrame(newTimestamp);
 			setSpikePosition(newTimestamp);
 			emit spikePositionChanged(newTimestamp);
 		}
@@ -494,12 +494,14 @@ void TimelineWidget::mouseMoveEvent(QMouseEvent *event)
 		int mouseX = static_cast<int>(event->position().x());
 		double newTimestamp = timestampFromX(mouseX);
 		newTimestamp = qMax(m_startTime, qMin(m_endTime, newTimestamp));
+		newTimestamp = snapToFrame(newTimestamp);
 		setVideoFramePosition(newTimestamp);
 		emit videoFramePositionChanged(newTimestamp);
 	} else if (m_draggingSpike && (event->buttons() & Qt::LeftButton)) {
 		int mouseX = static_cast<int>(event->position().x());
 		double newTimestamp = timestampFromX(mouseX);
 		newTimestamp = qMax(m_startTime, qMin(m_endTime, newTimestamp));
+		newTimestamp = snapToFrame(newTimestamp);
 		setSpikePosition(newTimestamp);
 		emit spikePositionChanged(newTimestamp);
 	} else {

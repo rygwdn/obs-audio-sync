@@ -273,6 +273,7 @@ target_sources(
   PRIVATE
     src/plugin-main.cpp
     src/audio-sync-panel.cpp
+    src/audio-sync-modal.cpp
     src/recording-scanner.cpp
     src/recording-scanner-worker.cpp
     src/audio-analyzer.cpp

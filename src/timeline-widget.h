@@ -71,8 +71,8 @@ private:
 	void drawSpikeMarker(QPainter &painter);
 	void drawVideoFrameMarkers(QPainter &painter);
 	void drawVideoFramePosition(QPainter &painter);
-	void drawOffsetLine(QPainter &painter);
 	void drawFrameDifferenceBars(QPainter &painter);
+	[[nodiscard]] double snapToFrame(double timestamp) const;
 	void wheelEvent(QWheelEvent *event) override;
 
 	QVector<AudioSample> m_samples{};

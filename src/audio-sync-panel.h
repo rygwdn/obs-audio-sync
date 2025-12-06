@@ -30,13 +30,9 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QThread>
 #include <qtmetamacros.h>
 #include <qobject.h>
-#include "timeline-widget.h"
-#include "audio-analyzer.h"
 #include "recording-scanner.h"
 #include "recording-scanner-worker.h"
-#include "audio-analysis-worker.h"
-#include "video-extractor.h"
-#include "video-extraction-worker.h"
+#include "audio-sync-modal.h"
 
 class AudioSyncPanel : public QDockWidget {
 	Q_OBJECT
@@ -56,62 +52,28 @@ public:
 private slots:
 	void onRecordingSelected(QListWidgetItem *item);
 	void onRefreshClicked();
-	void onSpikePositionChanged(double timestamp);
-	void onVideoFramePositionChanged(double timestamp);
-	void onPrevFrameClicked();
-	void onNextFrameClicked();
-	void onZoomInClicked();
-	void onZoomOutClicked();
-	void onResetZoomClicked();
+	void onStartSyncClicked();
 	// Worker slots
 	void onRecordingsScanned(const QList<RecordingInfo> &recordings);
 	void onScanError(const QString &error);
-	void onAudioAnalyzed(const AudioSpike &spike, const QVector<AudioSample> &samples);
-	void onAnalysisError(const QString &error);
-	void onFramesExtracted(const QVector<VideoFrame> &frames, double fps);
-	void onExtractionError(const QString &error);
 
 private:
 	void setupUI();
 	void setupWorkerThreads();
-	void loadRecording(const QString &filePath);
-	void updateFrameDisplay();
-	void updateSyncDisplay() const;
 	void showSpinner(const QString &message);
 	void hideSpinner();
 
 	QListWidget *m_recordingList{nullptr};
 	QLabel *m_statusLabel{nullptr};
 	QPushButton *m_refreshButton{nullptr};
+	QPushButton *m_startSyncButton{nullptr};
 	QVBoxLayout *m_layout{nullptr};
 	QProgressBar *m_spinner{nullptr};
 	QLabel *m_spinnerLabel{nullptr};
 
-	// Analysis components
-	TimelineWidget *m_timelineWidget{nullptr};
-	QPushButton *m_zoomInButton{nullptr};
-	QPushButton *m_zoomOutButton{nullptr};
-	QPushButton *m_resetZoomButton{nullptr};
-	QLabel *m_frameLabel{nullptr};
-	QPushButton *m_prevFrameButton{nullptr};
-	QPushButton *m_nextFrameButton{nullptr};
-	QLabel *m_frameInfoLabel{nullptr};
-	QLabel *m_syncOffsetLabel{nullptr};
-
-	// Data
-	QString m_currentRecording{};
-	AudioSpike m_currentSpike{};
-	QVector<VideoFrame> m_frames{};
-	int m_currentFrameIndex{-1};
-	double m_videoFPS{30.0};
-
 	// Worker threads
 	QThread *m_scanThread{nullptr};
 	RecordingScannerWorker *m_scanWorker{nullptr};
-	QThread *m_audioThread{nullptr};
-	AudioAnalysisWorker *m_audioWorker{nullptr};
-	QThread *m_videoThread{nullptr};
-	VideoExtractionWorker *m_videoWorker{nullptr};
 };
 
 #endif // AUDIO_SYNC_PANEL_H
