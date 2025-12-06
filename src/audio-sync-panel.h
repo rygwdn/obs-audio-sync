@@ -59,6 +59,9 @@ private slots:
 	void onSpikePositionChanged(double timestamp);
 	void onPrevFrameClicked();
 	void onNextFrameClicked();
+	void onZoomInClicked();
+	void onZoomOutClicked();
+	void onResetZoomClicked();
 	// Worker slots
 	void onRecordingsScanned(const QList<RecordingInfo> &recordings);
 	void onScanError(const QString &error);
@@ -85,6 +88,9 @@ private:
 
 	// Analysis components
 	TimelineWidget *m_timelineWidget{nullptr};
+	QPushButton *m_zoomInButton{nullptr};
+	QPushButton *m_zoomOutButton{nullptr};
+	QPushButton *m_resetZoomButton{nullptr};
 	QLabel *m_frameLabel{nullptr};
 	QPushButton *m_prevFrameButton{nullptr};
 	QPushButton *m_nextFrameButton{nullptr};

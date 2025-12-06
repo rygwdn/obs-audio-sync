@@ -155,14 +155,31 @@ void AudioSyncPanel::setupUI()
 	m_timelineWidget->setVisible(false);
 	m_layout->addWidget(m_timelineWidget);
 
+	// Zoom controls
+	auto *zoomLayout = new QHBoxLayout();
+	m_zoomInButton = new QPushButton("Zoom In", centralWidget);
+	m_zoomInButton->setVisible(false);
+	m_zoomOutButton = new QPushButton("Zoom Out", centralWidget);
+	m_zoomOutButton->setVisible(false);
+	m_resetZoomButton = new QPushButton("Reset Zoom", centralWidget);
+	m_resetZoomButton->setVisible(false);
+	zoomLayout->addWidget(m_zoomInButton);
+	zoomLayout->addWidget(m_zoomOutButton);
+	zoomLayout->addWidget(m_resetZoomButton);
+	zoomLayout->addStretch();
+	m_layout->addLayout(zoomLayout);
+
 	// Video frame display
 	auto *frameLabel = new QLabel("Video Frame:", centralWidget);
 	m_layout->addWidget(frameLabel);
 	m_frameLabel = new QLabel(centralWidget);
 	m_frameLabel->setMinimumHeight(200);
+	m_frameLabel->setMaximumHeight(400); // Fixed maximum to prevent growth
+	m_frameLabel->setMaximumWidth(800);  // Fixed maximum width
 	m_frameLabel->setAlignment(Qt::AlignCenter);
 	m_frameLabel->setStyleSheet("background-color: black; border: 1px solid gray;");
 	m_frameLabel->setText("No frame loaded");
+	m_frameLabel->setScaledContents(false); // Important: don't scale contents automatically
 	m_frameLabel->setVisible(false);
 	m_layout->addWidget(m_frameLabel);
 
@@ -216,6 +233,9 @@ void AudioSyncPanel::setupUI()
 	connect(m_timelineWidget, &TimelineWidget::spikePositionChanged, this, &AudioSyncPanel::onSpikePositionChanged);
 	connect(m_prevFrameButton, &QPushButton::clicked, this, &AudioSyncPanel::onPrevFrameClicked);
 	connect(m_nextFrameButton, &QPushButton::clicked, this, &AudioSyncPanel::onNextFrameClicked);
+	connect(m_zoomInButton, &QPushButton::clicked, this, &AudioSyncPanel::onZoomInClicked);
+	connect(m_zoomOutButton, &QPushButton::clicked, this, &AudioSyncPanel::onZoomOutClicked);
+	connect(m_resetZoomButton, &QPushButton::clicked, this, &AudioSyncPanel::onResetZoomClicked);
 
 	// Setup worker threads
 	setupWorkerThreads();
@@ -347,6 +367,9 @@ void AudioSyncPanel::onAudioAnalyzed(const AudioSpike &spike, const QVector<Audi
 	m_timelineWidget->setAudioSamples(samples);
 	m_timelineWidget->setSpikePosition(m_currentSpike.timestamp);
 	m_timelineWidget->setVisible(true);
+	m_zoomInButton->setVisible(true);
+	m_zoomOutButton->setVisible(true);
+	m_resetZoomButton->setVisible(true);
 
 	// Start video extraction in background thread
 	showSpinner("Extracting frames...");
@@ -379,6 +402,13 @@ void AudioSyncPanel::onFramesExtracted(const QVector<VideoFrame> &frames, double
 	m_frameInfoLabel->setVisible(true);
 	m_syncOffsetLabel->setVisible(true);
 
+	// Update timeline with video frame data
+	QVector<double> frameTimestamps;
+	for (const VideoFrame &frame : frames) {
+		frameTimestamps.append(frame.timestamp);
+	}
+	m_timelineWidget->setVideoFrames(frameTimestamps);
+
 	updateFrameDisplay();
 	updateSyncDisplay();
 
@@ -405,8 +435,13 @@ void AudioSyncPanel::updateFrameDisplay()
 	}
 
 	const VideoFrame &frame = m_frames[m_currentFrameIndex];
-	QPixmap scaledPixmap = frame.pixmap.scaled(m_frameLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+	// Use fixed maximum size instead of label size to prevent growth
+	QSize const MAX_SIZE(800, 400);
+	QPixmap scaledPixmap = frame.pixmap.scaled(MAX_SIZE, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 	m_frameLabel->setPixmap(scaledPixmap);
+
+	// Update timeline with current video frame position
+	m_timelineWidget->setVideoFramePosition(frame.timestamp);
 
 	m_frameInfoLabel->setText(QString("Frame %1/%2 - Time: %3s")
 					  .arg(m_currentFrameIndex + 1)
@@ -471,4 +506,19 @@ void AudioSyncPanel::onNextFrameClicked()
 void AudioSyncPanel::onRefreshClicked()
 {
 	refreshRecordings();
+}
+
+void AudioSyncPanel::onZoomInClicked()
+{
+	m_timelineWidget->zoomIn();
+}
+
+void AudioSyncPanel::onZoomOutClicked()
+{
+	m_timelineWidget->zoomOut();
+}
+
+void AudioSyncPanel::onResetZoomClicked()
+{
+	m_timelineWidget->resetZoom();
 }

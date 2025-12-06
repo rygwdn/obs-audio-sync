@@ -24,6 +24,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QPaintEvent>
 #include <QMouseEvent>
 #include <QResizeEvent>
+#include <QWheelEvent>
 #include <qtmetamacros.h>
 #include <qicon.h>
 #include "audio-analyzer.h" // For AudioSample definition
@@ -44,6 +45,11 @@ public:
 	void setAudioSamples(const QVector<AudioSample> &samples);
 	void setSpikePosition(double timestamp);
 	void setFPS(double fps);
+	void setVideoFramePosition(double timestamp);
+	void setVideoFrames(const QVector<double> &frameTimestamps);
+	void zoomIn();
+	void zoomOut();
+	void resetZoom();
 
 signals:
 	void spikePositionChanged(double timestamp);
@@ -61,14 +67,23 @@ private:
 	void drawFrameMarkers(QPainter &painter);
 	void drawTimeMarkers(QPainter &painter);
 	void drawSpikeMarker(QPainter &painter);
+	void drawVideoFrameMarkers(QPainter &painter);
+	void drawVideoFramePosition(QPainter &painter);
+	void drawOffsetLine(QPainter &painter);
+	void wheelEvent(QWheelEvent *event) override;
 
 	QVector<AudioSample> m_samples{};
 	double m_spikePosition{};
 	double m_startTime{};
 	double m_endTime{};
+	double m_viewStartTime{}; // Visible time range start (for zoom)
+	double m_viewEndTime{};   // Visible time range end (for zoom)
 	double m_fps{};
+	double m_videoFramePosition{-1.0};
+	QVector<double> m_videoFrameTimestamps{};
 	int m_spikeDragStartX{};
 	bool m_draggingSpike{};
+	double m_zoomLevel{1.0}; // 1.0 = no zoom, >1.0 = zoomed in
 };
 
 #endif // TIMELINE_WIDGET_H
