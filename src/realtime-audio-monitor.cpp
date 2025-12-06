@@ -129,12 +129,11 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 
 	// Remove old samples outside baseline window
 	double currentTime = newSamples.isEmpty() ? 0.0 : newSamples.last().timestamp;
-	m_recentSamples.erase(
-		std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
-			       [currentTime, this](const AudioSample &s) {
-				       return (currentTime - s.timestamp) > m_baselineWindowSeconds;
-			       }),
-		m_recentSamples.end());
+	m_recentSamples.erase(std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
+					     [currentTime, this](const AudioSample &s) {
+						     return (currentTime - s.timestamp) > m_baselineWindowSeconds;
+					     }),
+			      m_recentSamples.end());
 
 	return false;
 }

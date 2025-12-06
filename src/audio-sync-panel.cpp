@@ -466,14 +466,16 @@ void AudioSyncPanel::startAutoSyncRecording()
 {
 	// Check if recording is already active
 	if (obs_frontend_recording_active()) {
-		QMessageBox::warning(this, "Recording Active", "OBS is already recording. Please stop the current recording first.");
+		QMessageBox::warning(this, "Recording Active",
+				     "OBS is already recording. Please stop the current recording first.");
 		return;
 	}
 
 	// Get recording directory to predict file path
 	const char *recordingPath = obs_frontend_get_current_record_output_path();
 	if (!recordingPath || strlen(recordingPath) == 0) {
-		QMessageBox::warning(this, "Recording Path Error", "Could not determine recording path. Please check OBS recording settings.");
+		QMessageBox::warning(this, "Recording Path Error",
+				     "Could not determine recording path. Please check OBS recording settings.");
 		return;
 	}
 
@@ -517,7 +519,8 @@ void AudioSyncPanel::startAutoSyncRecording()
 				QString dir = pathInfo.absolutePath();
 				QDir directory(dir);
 				QStringList filters = {"*.mkv", "*.mp4", "*.flv", "*.mov", "*.avi", "*.webm"};
-				QFileInfoList files = directory.entryInfoList(filters, QDir::Files, QDir::Time | QDir::Reversed);
+				QFileInfoList files =
+					directory.entryInfoList(filters, QDir::Files, QDir::Time | QDir::Reversed);
 				if (!files.isEmpty()) {
 					m_autoSyncRecordingPath = files.last().absoluteFilePath();
 					m_audioMonitor->startMonitoring(m_autoSyncRecordingPath);
@@ -531,7 +534,8 @@ void AudioSyncPanel::startAutoSyncRecording()
 		if (m_autoSyncState == AutoSyncState::Recording) {
 			// Timeout reached
 			stopAutoSyncRecording();
-			QMessageBox::information(this, "Auto Sync Timeout", "No audio spike detected within 30 seconds. Recording stopped.");
+			QMessageBox::information(this, "Auto Sync Timeout",
+						 "No audio spike detected within 30 seconds. Recording stopped.");
 		}
 	});
 }
@@ -622,7 +626,8 @@ void AudioSyncPanel::handleAutoSyncRecordingStopped()
 			QString dir = pathInfo.absolutePath();
 			QDir directory(dir);
 			QStringList filters = {"*.mkv", "*.mp4", "*.flv", "*.mov", "*.avi", "*.webm"};
-			QFileInfoList files = directory.entryInfoList(filters, QDir::Files, QDir::Time | QDir::Reversed);
+			QFileInfoList files =
+				directory.entryInfoList(filters, QDir::Files, QDir::Time | QDir::Reversed);
 			if (!files.isEmpty()) {
 				recordingPath = files.first().absoluteFilePath();
 			}
@@ -634,7 +639,8 @@ void AudioSyncPanel::handleAutoSyncRecordingStopped()
 			modal->exec();
 			delete modal;
 		} else {
-			QMessageBox::warning(this, "Auto Sync", "Recording completed but file not found. Please select it manually.");
+			QMessageBox::warning(this, "Auto Sync",
+					     "Recording completed but file not found. Please select it manually.");
 		}
 
 		// Refresh recordings list
