@@ -281,6 +281,7 @@ target_sources(
     src/timeline-widget.cpp
     src/video-extractor.cpp
     src/video-extraction-worker.cpp
+    src/source-offset-manager.cpp
 )
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})

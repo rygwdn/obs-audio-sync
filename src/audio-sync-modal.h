@@ -34,6 +34,8 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "audio-analysis-worker.h"
 #include "video-extractor.h"
 #include "video-extraction-worker.h"
+#include "source-offset-manager.h"
+#include <QComboBox>
 
 class AudioSyncModal : public QDialog {
 	Q_OBJECT
@@ -56,6 +58,9 @@ private slots:
 	void onZoomInClicked();
 	void onZoomOutClicked();
 	void onResetZoomClicked();
+	void onAudioSourceChanged(int index);
+	void onVideoSourceChanged(int index);
+	void onApplyOffsetClicked();
 	// Worker slots
 	void onAudioAnalyzed(const AudioSpike &spike, const QVector<AudioSample> &samples);
 	void onAnalysisError(const QString &error);
@@ -65,9 +70,12 @@ private slots:
 private:
 	void setupUI();
 	void setupWorkerThreads();
+	void setupSourceSelection();
+	void refreshSourceList();
+	void updateOffsetDisplay();
 	void loadRecording(const QString &filePath);
 	void updateFrameDisplay();
-	void updateSyncDisplay() const;
+	void updateSyncDisplay();
 	void showSpinner(const QString &message);
 	void hideSpinner();
 
@@ -83,12 +91,23 @@ private:
 	QProgressBar *m_spinner{nullptr};
 	QLabel *m_spinnerLabel{nullptr};
 
+	// Source selection UI
+	QComboBox *m_audioSourceCombo{nullptr};
+	QComboBox *m_videoSourceCombo{nullptr};
+	QLabel *m_audioOffsetLabel{nullptr};
+	QLabel *m_videoOffsetLabel{nullptr};
+	QPushButton *m_applyOffsetButton{nullptr};
+
+	// Source offset manager
+	SourceOffsetManager *m_sourceOffsetManager{nullptr};
+
 	// Data
 	QString m_currentRecording{};
 	AudioSpike m_currentSpike{};
 	QVector<VideoFrame> m_frames{};
 	int m_currentFrameIndex{-1};
 	double m_videoFPS{30.0};
+	double m_calculatedOffsetMs{0.0}; // Calculated sync offset in milliseconds
 
 	// Worker threads
 	QThread *m_audioThread{nullptr};

@@ -51,7 +51,9 @@ set(CPACK_SET_DESTDIR ON)
 # Custom install commands to place files in OBS directory structure
 # CPack first installs files to $INSTDIR/${CMAKE_PROJECT_NAME}/bin/64bit/ and data/
 # We then move them to the correct OBS plugin structure
-set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
+set(
+  CPACK_NSIS_EXTRA_INSTALL_COMMANDS
+  "
   ; Move plugin DLL from staging to obs-plugins/64bit/
   IfFileExists \\\"$INSTDIR\\\\${CMAKE_PROJECT_NAME}\\\\bin\\\\64bit\\\\${CMAKE_PROJECT_NAME}.dll\\\" 0 skip_dll
     CreateDirectory \\\"$INSTDIR\\\\obs-plugins\\\\64bit\\\"
@@ -70,15 +72,19 @@ set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
   RMDir \\\"$INSTDIR\\\\${CMAKE_PROJECT_NAME}\\\\bin\\\\64bit\\\"
   RMDir \\\"$INSTDIR\\\\${CMAKE_PROJECT_NAME}\\\\bin\\\"
   RMDir \\\"$INSTDIR\\\\${CMAKE_PROJECT_NAME}\\\"
-")
+"
+)
 
-set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "
+set(
+  CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
+  "
   ; Remove plugin DLL
   Delete \\\"$INSTDIR\\\\obs-plugins\\\\64bit\\\\${CMAKE_PROJECT_NAME}.dll\\\"
   
   ; Remove data files
   RMDir /r \\\"$INSTDIR\\\\data\\\\obs-plugins\\\\${CMAKE_PROJECT_NAME}\\\"
-")
+"
+)
 
 # Source package configuration
 set(CPACK_SOURCE_GENERATOR "ZIP")

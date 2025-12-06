@@ -34,6 +34,8 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "recording-scanner.h"
 #include "recording-scanner-worker.h"
 #include "audio-sync-modal.h"
+#include "source-offset-manager.h"
+#include <QComboBox>
 
 class AudioSyncPanel : public QDockWidget {
 	Q_OBJECT
@@ -56,6 +58,9 @@ private slots:
 	void onRecordingSelected(QListWidgetItem *item);
 	void onRefreshClicked();
 	void onStartSyncClicked();
+	void onAudioSourceChanged(int index);
+	void onVideoSourceChanged(int index);
+	void onRefreshSourcesClicked();
 	// Worker slots
 	void onRecordingsScanned(const QList<RecordingInfo> &recordings);
 	void onScanError(const QString &error);
@@ -63,6 +68,9 @@ private slots:
 private:
 	void setupUI();
 	void setupWorkerThreads();
+	void setupSourceSelection();
+	void refreshSourceList();
+	void updateOffsetDisplay();
 	void showSpinner(const QString &message);
 	void hideSpinner();
 
@@ -73,6 +81,16 @@ private:
 	QVBoxLayout *m_layout{nullptr};
 	QProgressBar *m_spinner{nullptr};
 	QLabel *m_spinnerLabel{nullptr};
+
+	// Source selection UI
+	QComboBox *m_audioSourceCombo{nullptr};
+	QComboBox *m_videoSourceCombo{nullptr};
+	QLabel *m_audioOffsetLabel{nullptr};
+	QLabel *m_videoOffsetLabel{nullptr};
+	QPushButton *m_refreshSourcesButton{nullptr};
+
+	// Source offset manager
+	SourceOffsetManager *m_sourceOffsetManager{nullptr};
 
 	// Worker threads
 	QThread *m_scanThread{nullptr};
