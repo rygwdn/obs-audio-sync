@@ -32,8 +32,10 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qobject.h>
 #include "timeline-widget.h"
 #include "audio-analyzer.h"
+#include "recording-scanner.h"
 #include "recording-scanner-worker.h"
 #include "audio-analysis-worker.h"
+#include "video-extractor.h"
 #include "video-extraction-worker.h"
 
 class AudioSyncPanel : public QDockWidget {
@@ -67,6 +69,7 @@ private slots:
 
 private:
 	void setupUI();
+	void setupWorkerThreads();
 	void loadRecording(const QString &filePath);
 	void updateFrameDisplay();
 	void updateSyncDisplay() const;
