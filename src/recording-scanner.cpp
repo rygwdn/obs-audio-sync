@@ -106,6 +106,15 @@ QList<RecordingInfo> RecordingScanner::scanRecordings(double maxDurationSeconds)
 			continue;
 		}
 
+		// Quick file size check to skip expensive duration checks for large files
+		// Estimate max file size: assume max 100 Mbps bitrate for safety
+		// Formula: maxFileSize = maxDurationSeconds * bitrateMbps * 1024 * 1024 / 8
+		const qint64 MAX_FILE_SIZE_BYTES =
+			static_cast<qint64>(maxDurationSeconds * 100.0 * 1024.0 * 1024.0 / 8.0);
+		if (FILE_INFO.size() > MAX_FILE_SIZE_BYTES) {
+			continue;
+		}
+
 		double const DURATION = getFileDuration(filePath);
 		if (DURATION > 0.0 && DURATION <= maxDurationSeconds) {
 			RecordingInfo info;
