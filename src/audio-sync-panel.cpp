@@ -154,6 +154,7 @@ void AudioSyncPanel::setupUI()
 	m_recordingList->setSelectionMode(QAbstractItemView::SingleSelection);
 	m_recordingList->setMaximumHeight(200);
 	m_recordingList->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	m_recordingList->setItemDelegate(new HtmlListDelegate(m_recordingList));
 	m_layout->addWidget(m_recordingList);
 
 	// Button layout
