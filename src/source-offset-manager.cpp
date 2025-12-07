@@ -106,7 +106,7 @@ QList<SourceInfo> SourceOffsetManager::enumerateSourcesWithAsyncDelay()
 	obs_enum_sources(enumSourceCallback, &data);
 
 	blog(LOG_INFO, "[AudioSync] enumerateSourcesWithAsyncDelay: Found %d sources with Async Delay filter",
-	     sources.size());
+	     static_cast<int>(sources.size()));
 
 	return sources;
 }
@@ -205,7 +205,7 @@ QList<SourceInfo> SourceOffsetManager::getAudioSources()
 		}
 	}
 
-	blog(LOG_INFO, "[AudioSync] getAudioSources: Found %d audio sources", audioSources.size());
+	blog(LOG_INFO, "[AudioSync] getAudioSources: Found %d audio sources", static_cast<int>(audioSources.size()));
 
 	return audioSources;
 }
