@@ -71,18 +71,29 @@ function Package {
             } catch {
                 # CPack failed - output NSIS log if it exists
                 $NSISLogPath = "${BuildDir}/_CPack_Packages/win64/NSIS/NSISOutput.log"
+                Write-Output "::error::CPack failed. Checking for NSIS log..."
                 if (Test-Path $NSISLogPath) {
-                    Write-Error "CPack failed. NSIS output log:"
-                    Write-Error "=========================================="
-                    Get-Content $NSISLogPath | ForEach-Object { Write-Error $_ }
-                    Write-Error "=========================================="
+                    Write-Output "::error::=========================================="
+                    Write-Output "::error::NSIS Output Log:"
+                    Write-Output "::error::=========================================="
+                    # Read and output the entire log file
+                    $logContent = Get-Content $NSISLogPath -Raw
+                    # Output each line with error prefix so it's visible in CI
+                    $logContent -split "`r?`n" | ForEach-Object {
+                        if ($_.Trim().Length -gt 0) {
+                            Write-Output "::error::$($_)"
+                        }
+                    }
+                    Write-Output "::error::=========================================="
                 } else {
-                    Write-Error "CPack failed. NSIS log not found at: ${NSISLogPath}"
+                    Write-Output "::error::NSIS log not found at: ${NSISLogPath}"
                     # Try to find any NSIS-related files for debugging
                     $NSISDir = "${BuildDir}/_CPack_Packages/win64/NSIS"
                     if (Test-Path $NSISDir) {
-                        Write-Error "NSIS directory contents:"
-                        Get-ChildItem -Path $NSISDir | ForEach-Object { Write-Error "  $($_.Name)" }
+                        Write-Output "::error::NSIS directory contents:"
+                        Get-ChildItem -Path $NSISDir | ForEach-Object { Write-Output "::error::  $($_.Name)" }
+                    } else {
+                        Write-Output "::error::NSIS directory not found at: ${NSISDir}"
                     }
                 }
                 throw
