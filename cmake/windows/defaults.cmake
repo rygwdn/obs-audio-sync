@@ -48,6 +48,17 @@ set(CPACK_NSIS_DEFAULT_INSTALL_DIR "$PROGRAMFILES64\\obs-studio")
 # Use DESTDIR for staging (required for proper file paths in NSIS)
 set(CPACK_SET_DESTDIR ON)
 
+# Override CMAKE_INSTALL_PREFIX to a relative path for CPack packaging
+# When CPACK_SET_DESTDIR is ON, CPack uses DESTDIR + CMAKE_INSTALL_PREFIX
+# An absolute path in CMAKE_INSTALL_PREFIX causes path mixing issues
+# Store the original prefix and use a relative path for packaging
+if(CMAKE_INSTALL_PREFIX MATCHES "^[A-Za-z]:")
+  # Original prefix is absolute Windows path, store it
+  set(_ORIGINAL_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}" CACHE INTERNAL "Original install prefix")
+  # Use relative path for CPack staging
+  set(CMAKE_INSTALL_PREFIX "obs-studio/plugins" CACHE STRING "Install prefix for CPack" FORCE)
+endif()
+
 # Custom install commands to place files in OBS directory structure
 # CPack first installs files to $INSTDIR/${CMAKE_PROJECT_NAME}/bin/64bit/ and data/
 # We then move them to the correct OBS plugin structure
