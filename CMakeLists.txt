@@ -242,8 +242,7 @@ if(APPLE)
   if(NOT EXISTS "${AGL_STUB_LIB}")
     file(MAKE_DIRECTORY "${AGL_STUB_DIR}")
     file(
-      WRITE
-      "${AGL_STUB_DIR}/AGL-stub.c"
+      WRITE "${AGL_STUB_DIR}/AGL-stub.c"
       "// Minimal stub for deprecated AGL framework\n__attribute__((visibility(\"default\"))) void AGLStub() {}\n"
     )
     # Get target architectures from CMAKE_OSX_ARCHITECTURES or default to arm64

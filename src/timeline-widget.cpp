@@ -34,7 +34,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 TimelineWidget::TimelineWidget(QWidget *parent) : QWidget(parent)
 {
-	setMinimumHeight(120);
+	setMinimumHeight(160); // Increased to accommodate info labels and adjusted layout
 	setMouseTracking(true);
 	m_viewStartTime = m_startTime;
 	m_viewEndTime = m_endTime;
@@ -156,7 +156,7 @@ void TimelineWidget::drawWaveform(QPainter &painter)
 
 	int const HEIGHT = 60;
 	int const START_X = 20;
-	int const CENTER_Y = 40;
+	int const CENTER_Y = 70; // Moved down to accommodate info labels and time markers
 
 	painter.setPen(QPen(QColor(100, 150, 255), 1));
 	painter.setBrush(QBrush(QColor(100, 150, 255, 100)));
@@ -213,15 +213,7 @@ void TimelineWidget::drawFrameMarkers(QPainter &painter)
 			frameNumber++;
 			continue; // Skip markers outside visible area
 		}
-		painter.drawLine(X_POS, 100, X_POS, 105);
-
-		// Draw frame number every 10 frames or at start/end
-		if (frameNumber % 10 == 0 || currentTime <= m_viewStartTime + FRAME_DURATION ||
-		    currentTime >= m_viewEndTime - FRAME_DURATION) {
-			QString const FRAME_TEXT = QString::number(frameNumber);
-			QRect const TEXT_RECT(X_POS - 20, 107, 40, 15);
-			painter.drawText(TEXT_RECT, Qt::AlignCenter, FRAME_TEXT);
-		}
+		painter.drawLine(X_POS, 130, X_POS, 135); // Moved down to accommodate layout changes
 
 		currentTime += FRAME_DURATION;
 		frameNumber++;
@@ -231,6 +223,10 @@ void TimelineWidget::drawFrameMarkers(QPainter &painter)
 void TimelineWidget::drawTimeMarkers(QPainter &painter)
 {
 	painter.setPen(QPen(QColor(100, 100, 100), 1));
+
+	// Draw time markers below info labels (starting at y=30)
+	const int MARKER_START_Y = 30;
+	const int MARKER_HEIGHT = 15;
 
 	// Draw time markers every 0.5 seconds (adjust based on zoom)
 	double const VISIBLE_RANGE = m_viewEndTime - m_viewStartTime;
@@ -251,10 +247,10 @@ void TimelineWidget::drawTimeMarkers(QPainter &painter)
 		if (X_POS < 20 || X_POS > width() - 20) {
 			continue; // Skip markers outside visible area
 		}
-		painter.drawLine(X_POS, 0, X_POS, 15);
+		painter.drawLine(X_POS, MARKER_START_Y, X_POS, MARKER_START_Y + MARKER_HEIGHT);
 
 		QString const TIME_TEXT = QString::number(TIME_VALUE, 'f', 2) + "s";
-		QRect const TEXT_RECT(X_POS - 25, 0, 50, 15);
+		QRect const TEXT_RECT(X_POS - 25, MARKER_START_Y, 50, MARKER_HEIGHT);
 		painter.drawText(TEXT_RECT, Qt::AlignCenter, TIME_TEXT);
 	}
 }
@@ -273,18 +269,6 @@ void TimelineWidget::drawSpikeMarker(QPainter &painter)
 	QPolygonF triangle;
 	triangle << QPointF(X_POS, 0) << QPointF(X_POS - 8, 15) << QPointF(X_POS + 8, 15);
 	painter.drawPolygon(triangle);
-
-	// Draw label and timestamp
-	QString const LABEL_TEXT = "Audio";
-	QString const SPIKE_TEXT = QString::number(m_spikePosition, 'f', 3) + "s";
-	QRect const LABEL_RECT(X_POS - 30, 18, 60, 15);
-	QRect const TIME_RECT(X_POS - 30, 33, 60, 15);
-	painter.setPen(QPen(QColor(255, 255, 255)));
-	painter.setBrush(QBrush(QColor(255, 0, 0)));
-	painter.drawRect(LABEL_RECT);
-	painter.drawText(LABEL_RECT, Qt::AlignCenter, LABEL_TEXT);
-	painter.drawRect(TIME_RECT);
-	painter.drawText(TIME_RECT, Qt::AlignCenter, SPIKE_TEXT);
 }
 
 void TimelineWidget::drawVideoFrameMarkers(QPainter &painter)
@@ -304,8 +288,8 @@ void TimelineWidget::drawVideoFrameMarkers(QPainter &painter)
 		if (X_POS < 20 || X_POS > width() - 20) {
 			continue;
 		}
-		// Draw small vertical line
-		painter.drawLine(X_POS, 60, X_POS, 65);
+		// Draw small vertical line (moved down to align with new layout)
+		painter.drawLine(X_POS, 90, X_POS, 95);
 	}
 }
 
@@ -331,18 +315,6 @@ void TimelineWidget::drawVideoFramePosition(QPainter &painter)
 	QPolygonF triangle;
 	triangle << QPointF(X_POS, height) << QPointF(X_POS - 8, height - 15) << QPointF(X_POS + 8, height - 15);
 	painter.drawPolygon(triangle);
-
-	// Draw label and timestamp (use dark text on green background for readability)
-	QString const LABEL_TEXT = "Video";
-	QString const FRAME_TEXT = QString::number(m_videoFramePosition, 'f', 3) + "s";
-	QRect const LABEL_RECT(X_POS - 30, height - 48, 60, 15);
-	QRect const TIME_RECT(X_POS - 30, height - 33, 60, 15);
-	painter.setPen(QPen(QColor(0, 0, 0))); // Black text for readability on green
-	painter.setBrush(QBrush(QColor(0, 255, 0)));
-	painter.drawRect(LABEL_RECT);
-	painter.drawText(LABEL_RECT, Qt::AlignCenter, LABEL_TEXT);
-	painter.drawRect(TIME_RECT);
-	painter.drawText(TIME_RECT, Qt::AlignCenter, FRAME_TEXT);
 }
 
 double TimelineWidget::snapToFrame(double timestamp) const
@@ -400,8 +372,8 @@ void TimelineWidget::drawFrameDifferenceBars(QPainter &painter)
 		return; // No differences to show
 	}
 
-	// Draw bars above frame markers (y=50-60, bars extend upward)
-	const int BAR_BASE_Y = 50;
+	// Draw bars below frame markers (y=135-155, bars extend downward)
+	const int BAR_BASE_Y = 135; // Below frame markers at y=130-135
 	const int MAX_BAR_HEIGHT = 20;
 	const int BAR_WIDTH = 4;
 
@@ -439,8 +411,80 @@ void TimelineWidget::drawFrameDifferenceBars(QPainter &painter)
 		}
 
 		painter.setBrush(QBrush(barColor));
-		painter.drawRect(xPos - BAR_WIDTH / 2, BAR_BASE_Y - barHeight, BAR_WIDTH, barHeight);
+		// Draw bars extending downward from BAR_BASE_Y
+		painter.drawRect(xPos - BAR_WIDTH / 2, BAR_BASE_Y, BAR_WIDTH, barHeight);
 	}
+}
+
+void TimelineWidget::drawInfoLabels(QPainter &painter)
+{
+	// Calculate current offset and frame number
+	double offset = 0.0;
+	int frameNumber = -1;
+	bool hasValidData = false;
+
+	if (m_videoFramePosition >= 0.0 && m_spikePosition >= 0.0) {
+		offset = m_videoFramePosition - m_spikePosition;
+		hasValidData = true;
+	}
+
+	if (m_videoFramePosition >= 0.0 && m_fps > 0.0) {
+		frameNumber = static_cast<int>((m_videoFramePosition - m_startTime) * m_fps);
+	}
+
+	if (!hasValidData) {
+		return;
+	}
+
+	// Determine color based on offset magnitude (in milliseconds)
+	double offsetMs = qAbs(offset) * 1000.0;
+	QColor labelColor;
+	if (offsetMs < 16.67) {                   // Less than 1 frame at 60fps
+		labelColor = QColor(0, 255, 0);   // Green - good sync
+	} else if (offsetMs < 50.0) {             // Less than 3 frames at 60fps
+		labelColor = QColor(255, 255, 0); // Yellow - medium offset
+	} else {
+		labelColor = QColor(255, 0, 0); // Red - large offset
+	}
+
+	// Draw labels at the top of the widget
+	const int LABEL_Y = 5;
+	const int LABEL_HEIGHT = 18;
+	const int LABEL_SPACING = 5;
+
+	// Format offset text
+	QString offsetText;
+	if (offset >= 0.0) {
+		offsetText = QString("Offset: +%1 ms").arg(offsetMs, 0, 'f', 1);
+	} else {
+		offsetText = QString("Offset: %1 ms").arg(offsetMs, 0, 'f', 1);
+	}
+
+	// Format frame text
+	QString frameText = QString("Frame: %1").arg(frameNumber);
+
+	// Calculate text widths
+	QFontMetrics fm(painter.font());
+	int offsetWidth = fm.horizontalAdvance(offsetText);
+	int frameWidth = fm.horizontalAdvance(frameText);
+	int totalWidth = offsetWidth + frameWidth + LABEL_SPACING;
+
+	// Center the labels
+	int startX = (width() - totalWidth) / 2;
+
+	// Draw offset label
+	QRect offsetRect(startX, LABEL_Y, offsetWidth + 10, LABEL_HEIGHT);
+	painter.setPen(QPen(QColor(0, 0, 0), 1));
+	painter.setBrush(QBrush(labelColor));
+	painter.drawRect(offsetRect);
+	painter.setPen(QPen(QColor(0, 0, 0)));
+	painter.drawText(offsetRect, Qt::AlignCenter, offsetText);
+
+	// Draw frame label
+	QRect frameRect(startX + offsetWidth + LABEL_SPACING, LABEL_Y, frameWidth + 10, LABEL_HEIGHT);
+	painter.setBrush(QBrush(labelColor));
+	painter.drawRect(frameRect);
+	painter.drawText(frameRect, Qt::AlignCenter, frameText);
 }
 
 void TimelineWidget::paintEvent(QPaintEvent *event)
@@ -453,6 +497,7 @@ void TimelineWidget::paintEvent(QPaintEvent *event)
 	painter.fillRect(rect(), QColor(40, 40, 40));
 
 	// Draw components
+	drawInfoLabels(painter);
 	drawTimeMarkers(painter);
 	drawWaveform(painter);
 	drawFrameMarkers(painter);
