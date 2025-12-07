@@ -596,7 +596,7 @@ void AudioSyncModal::onApplyOffsetClicked()
 	if (appliedSources.isEmpty()) {
 		QMessageBox::warning(
 			this, "Apply Failed",
-			"Failed to apply offset to any sources. Please check that sources have Async Delay filters.");
+			"Failed to apply offset to any sources. Please check that audio sources are available or video sources have Async Delay filters.");
 	} else {
 		QString message = QString("Applied offset of %1ms to:\n%2")
 					  .arg(m_calculatedOffsetMs, 0, 'f', 1)

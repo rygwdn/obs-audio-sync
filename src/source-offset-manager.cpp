@@ -37,7 +37,6 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 		return true; // Continue enumeration
 	}
 
-	// Check if source has async delay filter
 	const char *sourceName = obs_source_get_name(source);
 	if (sourceName == nullptr) {
 		blog(LOG_INFO, "[AudioSync] enumSourceCallback: source name is nullptr, skipping");
@@ -62,32 +61,59 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 		return true; // Continue enumeration
 	}
 
-	// Check if source has async delay filter
-	obs_source_t *filter = obs_source_get_filter_by_name(source, "Async Delay");
-	if (filter == nullptr) {
-		blog(LOG_INFO, "[AudioSync] enumSourceCallback: Source %s skipped - no Async Delay filter",
+	// For audio sources: they have built-in sync offset, always include them
+	if (isAudio) {
+		blog(LOG_INFO, "[AudioSync] enumSourceCallback: Source %s is audio source, adding to list",
 		     sourceNameStr.toUtf8().constData());
-		return true; // Continue enumeration - source doesn't have filter
+
+		// Get current sync offset (in nanoseconds, convert to milliseconds)
+		int64_t syncOffsetNs = obs_source_get_sync_offset(source);
+		int syncOffsetMs = static_cast<int>(syncOffsetNs / 1000000LL);
+
+		// Create source info
+		SourceInfo info;
+		info.name = sourceNameStr;
+		info.id = QString::fromUtf8(obs_source_get_id(source));
+		info.isAudio = true;
+		info.isVideo = false;
+		info.currentOffsetMs = syncOffsetMs;
+		info.hasAsyncDelayFilter = false; // Audio uses built-in sync offset
+
+		data->sources->append(info);
+		return true; // Continue enumeration
 	}
 
-	blog(LOG_INFO, "[AudioSync] enumSourceCallback: Source %s has Async Delay filter, adding to list",
-	     sourceNameStr.toUtf8().constData());
+	// For video sources: check if they have Async Delay filter (even if disabled)
+	if (isVideo) {
+		obs_source_t *filter = obs_source_get_filter_by_name(source, "Async Delay");
+		if (filter == nullptr) {
+			blog(LOG_INFO,
+			     "[AudioSync] enumSourceCallback: Source %s is video but has no Async Delay filter, skipping",
+			     sourceNameStr.toUtf8().constData());
+			return true; // Continue enumeration - video source needs filter
+		}
 
-	// Get current offset from filter
-	obs_data_t *settings = obs_source_get_settings(filter);
-	int delayMs = obs_data_get_int(settings, "delay_ms");
-	obs_data_release(settings);
+		blog(LOG_INFO,
+		     "[AudioSync] enumSourceCallback: Source %s is video with Async Delay filter, adding to list",
+		     sourceNameStr.toUtf8().constData());
 
-	// Create source info
-	SourceInfo info;
-	info.name = sourceNameStr;
-	info.id = QString::fromUtf8(obs_source_get_id(source));
-	info.isAudio = isAudio;
-	info.isVideo = isVideo;
-	info.currentOffsetMs = delayMs;
-	info.hasAsyncDelayFilter = true;
+		// Get current offset from filter
+		obs_data_t *settings = obs_source_get_settings(filter);
+		int delayMs = obs_data_get_int(settings, "delay_ms");
+		obs_data_release(settings);
 
-	data->sources->append(info);
+		// Create source info
+		SourceInfo info;
+		info.name = sourceNameStr;
+		info.id = QString::fromUtf8(obs_source_get_id(source));
+		info.isAudio = false;
+		info.isVideo = true;
+		info.currentOffsetMs = delayMs;
+		info.hasAsyncDelayFilter = true;
+
+		data->sources->append(info);
+		return true; // Continue enumeration
+	}
 
 	return true; // Continue enumeration
 }
@@ -106,7 +132,8 @@ QList<SourceInfo> SourceOffsetManager::enumerateSourcesWithAsyncDelay()
 	obs_enum_sources(enumSourceCallback, &data);
 
 	int const SOURCE_COUNT = static_cast<int>(sources.size());
-	blog(LOG_INFO, "[AudioSync] enumerateSourcesWithAsyncDelay: Found %d sources with Async Delay filter",
+	blog(LOG_INFO,
+	     "[AudioSync] enumerateSourcesWithAsyncDelay: Found %d sources (audio with built-in sync or video with Async Delay filter)",
 	     SOURCE_COUNT);
 
 	return sources;
@@ -131,13 +158,20 @@ SourceInfo SourceOffsetManager::getSourceInfo(const QString &sourceName)
 	info.isVideo = (outputFlags & OBS_SOURCE_VIDEO) != 0;
 	info.id = QString::fromUtf8(obs_source_get_id(source));
 
-	// Check if source has async delay filter
-	obs_source_t *filter = obs_source_get_filter_by_name(source, "Async Delay");
-	if (filter != nullptr) {
-		info.hasAsyncDelayFilter = true;
-		obs_data_t *settings = obs_source_get_settings(filter);
-		info.currentOffsetMs = obs_data_get_int(settings, "delay_ms");
-		obs_data_release(settings);
+	// For audio sources: get built-in sync offset
+	if (info.isAudio) {
+		int64_t syncOffsetNs = obs_source_get_sync_offset(source);
+		info.currentOffsetMs = static_cast<int>(syncOffsetNs / 1000000LL);
+		info.hasAsyncDelayFilter = false;
+	} else if (info.isVideo) {
+		// For video sources: check if source has async delay filter
+		obs_source_t *filter = obs_source_get_filter_by_name(source, "Async Delay");
+		if (filter != nullptr) {
+			info.hasAsyncDelayFilter = true;
+			obs_data_t *settings = obs_source_get_settings(filter);
+			info.currentOffsetMs = obs_data_get_int(settings, "delay_ms");
+			obs_data_release(settings);
+		}
 	}
 
 	obs_source_release(source);
@@ -147,7 +181,7 @@ SourceInfo SourceOffsetManager::getSourceInfo(const QString &sourceName)
 int SourceOffsetManager::getSourceOffset(const QString &sourceName)
 {
 	SourceInfo info = getSourceInfo(sourceName);
-	return info.hasAsyncDelayFilter ? info.currentOffsetMs : 0;
+	return info.currentOffsetMs;
 }
 
 bool SourceOffsetManager::setSourceOffset(const QString &sourceName, int offsetMs, bool asDelta)
@@ -159,40 +193,75 @@ bool SourceOffsetManager::setSourceOffset(const QString &sourceName, int offsetM
 		return false;
 	}
 
-	// Get async delay filter
-	obs_source_t *filter = obs_source_get_filter_by_name(source, "Async Delay");
-	if (filter == nullptr) {
+	// Get source type
+	uint32_t outputFlags = obs_source_get_output_flags(source);
+	bool isAudio = (outputFlags & OBS_SOURCE_AUDIO) != 0;
+	bool isVideo = (outputFlags & OBS_SOURCE_VIDEO) != 0;
+
+	if (isAudio) {
+		// For audio sources: use built-in sync offset (in nanoseconds)
+		int64_t currentOffsetNs = obs_source_get_sync_offset(source);
+		int currentOffsetMs = static_cast<int>(currentOffsetNs / 1000000LL);
+
+		// Calculate new offset
+		int newOffsetMs = asDelta ? (currentOffsetMs + offsetMs) : offsetMs;
+
+		// Clamp to valid range (-20000 to 20000 ms)
+		const int MIN_OFFSET_MS = -20000;
+		const int MAX_OFFSET_MS = 20000;
+		if (newOffsetMs < MIN_OFFSET_MS) {
+			newOffsetMs = MIN_OFFSET_MS;
+			qWarning() << "SourceOffsetManager::setSourceOffset: Clamped offset to minimum:" << MIN_OFFSET_MS;
+		} else if (newOffsetMs > MAX_OFFSET_MS) {
+			newOffsetMs = MAX_OFFSET_MS;
+			qWarning() << "SourceOffsetManager::setSourceOffset: Clamped offset to maximum:" << MAX_OFFSET_MS;
+		}
+
+		// Convert to nanoseconds and set
+		int64_t newOffsetNs = static_cast<int64_t>(newOffsetMs) * 1000000LL;
+		obs_source_set_sync_offset(source, newOffsetNs);
+
 		obs_source_release(source);
-		qWarning() << "SourceOffsetManager::setSourceOffset: Source does not have Async Delay filter:"
-			   << sourceName;
-		return false;
+		return true;
+	} else if (isVideo) {
+		// For video sources: use Async Delay filter
+		obs_source_t *filter = obs_source_get_filter_by_name(source, "Async Delay");
+		if (filter == nullptr) {
+			obs_source_release(source);
+			qWarning() << "SourceOffsetManager::setSourceOffset: Video source does not have Async Delay filter:"
+				   << sourceName;
+			return false;
+		}
+
+		// Get current settings
+		obs_data_t *settings = obs_source_get_settings(filter);
+		int currentOffsetMs = obs_data_get_int(settings, "delay_ms");
+
+		// Calculate new offset
+		int newOffsetMs = asDelta ? (currentOffsetMs + offsetMs) : offsetMs;
+
+		// Clamp to valid range (-20000 to 20000 ms)
+		const int MIN_OFFSET_MS = -20000;
+		const int MAX_OFFSET_MS = 20000;
+		if (newOffsetMs < MIN_OFFSET_MS) {
+			newOffsetMs = MIN_OFFSET_MS;
+			qWarning() << "SourceOffsetManager::setSourceOffset: Clamped offset to minimum:" << MIN_OFFSET_MS;
+		} else if (newOffsetMs > MAX_OFFSET_MS) {
+			newOffsetMs = MAX_OFFSET_MS;
+			qWarning() << "SourceOffsetManager::setSourceOffset: Clamped offset to maximum:" << MAX_OFFSET_MS;
+		}
+
+		// Update settings
+		obs_data_set_int(settings, "delay_ms", newOffsetMs);
+		obs_source_update(filter, settings);
+		obs_data_release(settings);
+
+		obs_source_release(source);
+		return true;
 	}
-
-	// Get current settings
-	obs_data_t *settings = obs_source_get_settings(filter);
-	int currentOffsetMs = obs_data_get_int(settings, "delay_ms");
-
-	// Calculate new offset
-	int newOffsetMs = asDelta ? (currentOffsetMs + offsetMs) : offsetMs;
-
-	// Clamp to valid range (-20000 to 20000 ms)
-	const int MIN_OFFSET_MS = -20000;
-	const int MAX_OFFSET_MS = 20000;
-	if (newOffsetMs < MIN_OFFSET_MS) {
-		newOffsetMs = MIN_OFFSET_MS;
-		qWarning() << "SourceOffsetManager::setSourceOffset: Clamped offset to minimum:" << MIN_OFFSET_MS;
-	} else if (newOffsetMs > MAX_OFFSET_MS) {
-		newOffsetMs = MAX_OFFSET_MS;
-		qWarning() << "SourceOffsetManager::setSourceOffset: Clamped offset to maximum:" << MAX_OFFSET_MS;
-	}
-
-	// Update settings
-	obs_data_set_int(settings, "delay_ms", newOffsetMs);
-	obs_source_update(filter, settings);
-	obs_data_release(settings);
 
 	obs_source_release(source);
-	return true;
+	return false;
 }
 
 QList<SourceInfo> SourceOffsetManager::getAudioSources()
@@ -223,7 +292,8 @@ QList<SourceInfo> SourceOffsetManager::getVideoSources()
 		}
 	}
 
-	blog(LOG_INFO, "[AudioSync] getVideoSources: Found %d video sources", static_cast<int>(videoSources.size()));
+	int const VIDEO_COUNT = static_cast<int>(videoSources.size());
+	blog(LOG_INFO, "[AudioSync] getVideoSources: Found %d video sources", VIDEO_COUNT);
 
 	return videoSources;
 }
