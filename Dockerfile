@@ -73,20 +73,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install clang-format and gersemi for linting
-# Install LLVM 19 for clang-format 19.1.1+ (required by project)
+# Install clang-format@19 from obsproject/tools tap (matching CI setup)
+RUN eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && \
+    brew tap obsproject/tools && \
+    brew install --quiet obsproject/tools/clang-format@19 && \
+    ln -sf /home/linuxbrew/.linuxbrew/opt/clang-format@19/bin/clang-format-19 /usr/local/bin/clang-format-19 && \
+    update-alternatives --install /usr/bin/clang-format clang-format /home/linuxbrew/.linuxbrew/opt/clang-format@19/bin/clang-format-19 100
+
+# Install gersemi via pip
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
-    gnupg \
-    ca-certificates \
-    && wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - \
-    && echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" >> /etc/apt/sources.list.d/llvm.list \
-    && apt-get update && apt-get install -y --no-install-recommends \
-    clang-format-19 \
     python3 \
     python3-pip \
     && pip3 install --no-cache-dir --break-system-packages gersemi \
-    && rm -rf /var/lib/apt/lists/* \
-    && update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-19 100
+    && rm -rf /var/lib/apt/lists/*
 
 # Set up working directory
 WORKDIR /workspace
