@@ -627,7 +627,8 @@ void AudioSyncModal::onApplyOffsetClicked()
 		QString message = QString("Applied offset of %1ms to:\n"
 					  "%2")
 					  .arg(m_calculatedOffsetMs, 0, 'f', 1)
-					  .arg(appliedSources.join("\n"));
+					  .arg(appliedSources.join(
+						  "\n"));
 		QMessageBox::information(this, "Offset Applied", message);
 		// Refresh offset displays
 		updateOffsetDisplay();
