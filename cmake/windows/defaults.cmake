@@ -61,29 +61,34 @@ endif()
 set(CPACK_SET_DESTDIR OFF)
 
 # Custom install commands to place files in OBS directory structure
-# CPack first installs files to $INSTDIR/${CMAKE_PROJECT_NAME}/bin/64bit/ and data/
+# With CPACK_SET_DESTDIR OFF, files are installed directly to CMAKE_INSTALL_PREFIX
+# which matches CPACK_NSIS_DEFAULT_INSTALL_DIR. Files go to:
+# $INSTDIR/${CMAKE_PROJECT_NAME}/bin/64bit/ and $INSTDIR/${CMAKE_PROJECT_NAME}/data/
 # We then move them to the correct OBS plugin structure
+# Note: With CPACK_VERBATIM_VARIABLES YES, we use @ONLY in configure_file style
+# but for NSIS commands, we need proper escaping. Use single quotes for paths
+# or escape properly for NSIS syntax.
 set(
   CPACK_NSIS_EXTRA_INSTALL_COMMANDS
   "
   ; Move plugin DLL from staging to obs-plugins/64bit/
-  IfFileExists \\\"$INSTDIR\\\\${CMAKE_PROJECT_NAME}\\\\bin\\\\64bit\\\\${CMAKE_PROJECT_NAME}.dll\\\" 0 skip_dll
-    CreateDirectory \\\"$INSTDIR\\\\obs-plugins\\\\64bit\\\"
-    CopyFiles /SILENT \\\"$INSTDIR\\\\${CMAKE_PROJECT_NAME}\\\\bin\\\\64bit\\\\${CMAKE_PROJECT_NAME}.dll\\\" \\\"$INSTDIR\\\\obs-plugins\\\\64bit\\\\${CMAKE_PROJECT_NAME}.dll\\\"
-    Delete \\\"$INSTDIR\\\\${CMAKE_PROJECT_NAME}\\\\bin\\\\64bit\\\\${CMAKE_PROJECT_NAME}.dll\\\"
+  IfFileExists \"$INSTDIR\\${CMAKE_PROJECT_NAME}\\bin\\64bit\\${CMAKE_PROJECT_NAME}.dll\" 0 skip_dll
+    CreateDirectory \"$INSTDIR\\obs-plugins\\64bit\"
+    CopyFiles /SILENT \"$INSTDIR\\${CMAKE_PROJECT_NAME}\\bin\\64bit\\${CMAKE_PROJECT_NAME}.dll\" \"$INSTDIR\\obs-plugins\\64bit\\${CMAKE_PROJECT_NAME}.dll\"
+    Delete \"$INSTDIR\\${CMAKE_PROJECT_NAME}\\bin\\64bit\\${CMAKE_PROJECT_NAME}.dll\"
   skip_dll:
   
   ; Move data files from staging to data/obs-plugins/<plugin-name>/
-  IfFileExists \\\"$INSTDIR\\\\${CMAKE_PROJECT_NAME}\\\\data\\\" 0 skip_data
-    CreateDirectory \\\"$INSTDIR\\\\data\\\\obs-plugins\\\\${CMAKE_PROJECT_NAME}\\\"
-    CopyFiles /SILENT \\\"$INSTDIR\\\\${CMAKE_PROJECT_NAME}\\\\data\\\\*\\\" \\\"$INSTDIR\\\\data\\\\obs-plugins\\\\${CMAKE_PROJECT_NAME}\\\"
-    RMDir /r \\\"$INSTDIR\\\\${CMAKE_PROJECT_NAME}\\\\data\\\"
+  IfFileExists \"$INSTDIR\\${CMAKE_PROJECT_NAME}\\data\" 0 skip_data
+    CreateDirectory \"$INSTDIR\\data\\obs-plugins\\${CMAKE_PROJECT_NAME}\"
+    CopyFiles /SILENT \"$INSTDIR\\${CMAKE_PROJECT_NAME}\\data\\*\" \"$INSTDIR\\data\\obs-plugins\\${CMAKE_PROJECT_NAME}\"
+    RMDir /r \"$INSTDIR\\${CMAKE_PROJECT_NAME}\\data\"
   skip_data:
   
   ; Clean up staging directory structure
-  RMDir \\\"$INSTDIR\\\\${CMAKE_PROJECT_NAME}\\\\bin\\\\64bit\\\"
-  RMDir \\\"$INSTDIR\\\\${CMAKE_PROJECT_NAME}\\\\bin\\\"
-  RMDir \\\"$INSTDIR\\\\${CMAKE_PROJECT_NAME}\\\"
+  RMDir \"$INSTDIR\\${CMAKE_PROJECT_NAME}\\bin\\64bit\"
+  RMDir \"$INSTDIR\\${CMAKE_PROJECT_NAME}\\bin\"
+  RMDir \"$INSTDIR\\${CMAKE_PROJECT_NAME}\"
 "
 )
 
@@ -91,10 +96,10 @@ set(
   CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
   "
   ; Remove plugin DLL
-  Delete \\\"$INSTDIR\\\\obs-plugins\\\\64bit\\\\${CMAKE_PROJECT_NAME}.dll\\\"
+  Delete \"$INSTDIR\\obs-plugins\\64bit\\${CMAKE_PROJECT_NAME}.dll\"
   
   ; Remove data files
-  RMDir /r \\\"$INSTDIR\\\\data\\\\obs-plugins\\\\${CMAKE_PROJECT_NAME}\\\"
+  RMDir /r \"$INSTDIR\\data\\obs-plugins\\${CMAKE_PROJECT_NAME}\"
 "
 )
 
