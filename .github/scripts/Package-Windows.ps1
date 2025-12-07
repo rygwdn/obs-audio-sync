@@ -63,7 +63,7 @@ function Package {
         Push-Location $BuildDir
         try {
             $CpackArgs = @(
-                "--config", $Configuration
+                "-C", $Configuration
                 "-G", "NSIS"
             )
             Invoke-External cpack $CpackArgs

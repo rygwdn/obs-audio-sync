@@ -28,7 +28,9 @@ OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
 
 namespace {
-AudioSyncPanel *panel = nullptr; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+AudioSyncPanel *panel = nullptr;      // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+bool eventCallbackRegistered = false; // Track if event callback was registered
+bool dockRegistered = false;          // Track if dock was registered
 
 // Qt message handler to redirect to OBS logging
 void qtMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
@@ -88,9 +90,11 @@ bool obs_module_load(void)
 	// Create and register the panel
 	panel = new AudioSyncPanel();
 	obs_frontend_add_dock_by_id("obs-audio-sync", "Audio Sync", panel);
+	dockRegistered = true;
 
 	// Register event callback for recording events
 	obs_frontend_add_event_callback(onFrontendEvent, nullptr);
+	eventCallbackRegistered = true;
 
 	obsLog(LOG_INFO, "Audio Sync panel registered");
 	return true;
@@ -98,11 +102,18 @@ bool obs_module_load(void)
 
 void obs_module_unload(void)
 {
-	// Unregister event callback
-	obs_frontend_remove_event_callback(onFrontendEvent, nullptr);
+	// Unregister event callback only if it was registered
+	if (eventCallbackRegistered) {
+		obs_frontend_remove_event_callback(onFrontendEvent, nullptr);
+		eventCallbackRegistered = false;
+	}
 
 	if (panel != nullptr) {
-		obs_frontend_remove_dock("obs-audio-sync");
+		// Remove dock only if it was registered
+		if (dockRegistered) {
+			obs_frontend_remove_dock("obs-audio-sync");
+			dockRegistered = false;
+		}
 		delete panel;
 		panel = nullptr;
 	}
