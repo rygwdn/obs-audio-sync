@@ -49,21 +49,11 @@ set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
 # instead of Program Files\obs-audio-sync 1.0.0
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "obs-studio")
 
-# Override CMAKE_INSTALL_PREFIX to match NSIS install directory
-# CPack NSIS generator works best when CMAKE_INSTALL_PREFIX matches the full install path
-# The NSIS installer will use: ${CPACK_NSIS_INSTALL_ROOT}/${CPACK_PACKAGE_INSTALL_DIRECTORY}
-# For CMAKE_INSTALL_PREFIX, we use a typical Windows path (NSIS variables won't work here)
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT OR CMAKE_INSTALL_PREFIX MATCHES "^[A-Za-z]:")
-  # Use a typical Program Files path for CMAKE_INSTALL_PREFIX
-  # NSIS will expand $PROGRAMFILES64 at install time, but CMake needs an actual path
-  set(
-    CMAKE_INSTALL_PREFIX
-    "C:/Program Files/obs-studio"
-    CACHE STRING
-    "Install prefix matching NSIS install directory"
-    FORCE
-  )
-endif()
+# Note: CMAKE_INSTALL_PREFIX is left at its default value ($ENV{ALLUSERSPROFILE}/obs-studio/plugins)
+# CPack will use this for staging files internally when creating the NSIS installer.
+# The NSIS installer's default directory shown to users is controlled by CPACK_NSIS_INSTALL_ROOT
+# and CPACK_PACKAGE_INSTALL_DIRECTORY (set above), which are separate from CMAKE_INSTALL_PREFIX.
+# CPack handles staging automatically when CPACK_SET_DESTDIR is OFF.
 
 # Don't use CPACK_SET_DESTDIR with NSIS - it causes issues and CPack warns against it
 # NSIS generator handles staging internally when CPACK_SET_DESTDIR is OFF
