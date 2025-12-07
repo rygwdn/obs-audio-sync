@@ -73,19 +73,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install clang-format and gersemi for linting
-# Install clang-format@19 from obsproject/tools tap (matching CI setup)
+# Install from obsproject/tools tap (matching CI setup)
 RUN eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && \
     brew tap obsproject/tools && \
-    brew install --quiet obsproject/tools/clang-format@19 && \
+    brew install --quiet obsproject/tools/clang-format@19 obsproject/tools/gersemi && \
     ln -sf /home/linuxbrew/.linuxbrew/opt/clang-format@19/bin/clang-format-19 /usr/local/bin/clang-format-19 && \
     update-alternatives --install /usr/bin/clang-format clang-format /home/linuxbrew/.linuxbrew/opt/clang-format@19/bin/clang-format-19 100
-
-# Install gersemi via pip
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    && pip3 install --no-cache-dir --break-system-packages gersemi \
-    && rm -rf /var/lib/apt/lists/*
 
 # Set up working directory
 WORKDIR /workspace
