@@ -38,6 +38,12 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "realtime-audio-monitor.h"
 #include <QComboBox>
 #include <QStyledItemDelegate>
+#include <QPainter>
+#include <QTextDocument>
+#include <QStyleOptionViewItem>
+#include <QModelIndex>
+#include <QApplication>
+#include <QStyle>
 
 class HtmlListDelegate : public QStyledItemDelegate {
 public:
@@ -48,6 +54,11 @@ public:
 		QStyleOptionViewItem opt = option;
 		initStyleOption(&opt, index);
 
+		// Draw selection/hover background using the style
+		QStyle *style = opt.widget ? opt.widget->style() : QApplication::style();
+		style->drawPrimitive(QStyle::PE_PanelItemViewItem, &opt, painter, opt.widget);
+
+		// Draw HTML text
 		QTextDocument doc;
 		doc.setHtml(opt.text);
 		doc.setTextWidth(opt.rect.width());
@@ -65,7 +76,12 @@ public:
 
 		QTextDocument doc;
 		doc.setHtml(opt.text);
-		doc.setTextWidth(opt.rect.width());
+		// Use a reasonable width for size calculation if rect width is invalid
+		if (opt.rect.width() > 0) {
+			doc.setTextWidth(opt.rect.width());
+		} else {
+			doc.setTextWidth(200); // Default width for calculation
+		}
 
 		return QSize(static_cast<int>(doc.idealWidth()), static_cast<int>(doc.size().height()));
 	}
