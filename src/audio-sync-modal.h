@@ -58,6 +58,7 @@ private slots:
 	void onZoomInClicked();
 	void onZoomOutClicked();
 	void onResetZoomClicked();
+	void onSnapToPeaksToggled();
 	void onSourceSelectionChanged();
 	void onApplyOffsetClicked();
 	// Worker slots
@@ -89,6 +90,7 @@ private:
 	QPushButton *m_nextFrameButton{nullptr};
 	QLabel *m_frameInfoLabel{nullptr};
 	QLabel *m_syncOffsetLabel{nullptr};
+	QPushButton *m_snapToPeaksButton{nullptr};
 	QProgressBar *m_spinner{nullptr};
 	QLabel *m_spinnerLabel{nullptr};
 

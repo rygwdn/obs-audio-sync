@@ -135,6 +135,13 @@ void AudioSyncModal::setupUI()
 	m_syncOffsetLabel->setFont(syncFont);
 	m_syncOffsetLabel->setVisible(false);
 
+	// Snap to peaks toggle button
+	m_snapToPeaksButton = new QPushButton("Snap to Peaks", this);
+	m_snapToPeaksButton->setCheckable(true);
+	m_snapToPeaksButton->setChecked(false);
+	m_snapToPeaksButton->setVisible(false);
+	m_snapToPeaksButton->setToolTip("Enable gentle snapping to waveform peaks when dragging audio cursor");
+
 	m_prevFrameButton = new QPushButton("< Prev", this);
 	m_prevFrameButton->setEnabled(false);
 	m_prevFrameButton->setVisible(false);
@@ -144,6 +151,7 @@ void AudioSyncModal::setupUI()
 	zoomLayout->addWidget(m_zoomInButton);
 	zoomLayout->addWidget(m_zoomOutButton);
 	zoomLayout->addWidget(m_resetZoomButton);
+	zoomLayout->addWidget(m_snapToPeaksButton);
 	zoomLayout->addStretch();
 	zoomLayout->addWidget(m_syncOffsetLabel);
 	zoomLayout->addStretch();
@@ -199,6 +207,7 @@ void AudioSyncModal::setupUI()
 	connect(m_zoomInButton, &QPushButton::clicked, this, &AudioSyncModal::onZoomInClicked);
 	connect(m_zoomOutButton, &QPushButton::clicked, this, &AudioSyncModal::onZoomOutClicked);
 	connect(m_resetZoomButton, &QPushButton::clicked, this, &AudioSyncModal::onResetZoomClicked);
+	connect(m_snapToPeaksButton, &QPushButton::toggled, this, &AudioSyncModal::onSnapToPeaksToggled);
 	connect(m_sourcesList, &QListWidget::itemChanged, this, &AudioSyncModal::onSourceSelectionChanged);
 	connect(m_applyOffsetButton, &QPushButton::clicked, this, &AudioSyncModal::onApplyOffsetClicked);
 }
@@ -285,6 +294,7 @@ void AudioSyncModal::onFramesExtracted(const QVector<VideoFrame> &frames, double
 	m_prevFrameButton->setVisible(true);
 	m_nextFrameButton->setVisible(true);
 	m_syncOffsetLabel->setVisible(true);
+	m_snapToPeaksButton->setVisible(true);
 
 	// Update timeline with video frame data
 	QVector<double> frameTimestamps;
@@ -362,8 +372,14 @@ void AudioSyncModal::updateSyncDisplay()
 	// Store calculated offset in milliseconds
 	m_calculatedOffsetMs = TIME_DIFF * 1000.0;
 
-	QString const SYNC_TEXT =
-		QString("%1 ms (%2 frames)").arg(m_calculatedOffsetMs, 0, 'f', 1).arg(FRAME_DIFF, 0, 'f', 2);
+	// Calculate distance in meters using speed of sound (~343 m/s at room temperature)
+	const double SPEED_OF_SOUND = 343.0; // meters per second
+	double distanceMeters = qAbs(TIME_DIFF) * SPEED_OF_SOUND;
+
+	QString const SYNC_TEXT = QString("%1 ms (%2 frames, %3 m)")
+					  .arg(m_calculatedOffsetMs, 0, 'f', 1)
+					  .arg(FRAME_DIFF, 0, 'f', 2)
+					  .arg(distanceMeters, 0, 'f', 2);
 
 	// Best practice color coding:
 	// Green: < 1 frame difference (perfect sync)
@@ -447,6 +463,12 @@ void AudioSyncModal::onZoomOutClicked()
 void AudioSyncModal::onResetZoomClicked()
 {
 	m_timelineWidget->resetZoom();
+}
+
+void AudioSyncModal::onSnapToPeaksToggled()
+{
+	bool enabled = m_snapToPeaksButton->isChecked();
+	m_timelineWidget->setSnapToPeaks(enabled);
 }
 
 void AudioSyncModal::setupSourceSelection()

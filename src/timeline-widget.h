@@ -48,6 +48,7 @@ public:
 	void setVideoFramePosition(double timestamp);
 	void setVideoFrames(const QVector<double> &frameTimestamps);
 	void setFrameDifferences(const QVector<double> &differences);
+	void setSnapToPeaks(bool enabled);
 	void zoomIn();
 	void zoomOut();
 	void resetZoom();
@@ -73,6 +74,7 @@ private:
 	void drawVideoFramePosition(QPainter &painter);
 	void drawFrameDifferenceBars(QPainter &painter);
 	[[nodiscard]] double snapToFrame(double timestamp) const;
+	[[nodiscard]] double snapToPeak(double timestamp) const;
 	void wheelEvent(QWheelEvent *event) override;
 
 	QVector<AudioSample> m_samples{};
@@ -88,6 +90,7 @@ private:
 	int m_spikeDragStartX{};
 	bool m_draggingSpike{};
 	bool m_draggingVideoFrame{};
+	bool m_snapToPeaks{false};
 	double m_zoomLevel{1.0}; // 1.0 = no zoom, >1.0 = zoomed in
 };
 

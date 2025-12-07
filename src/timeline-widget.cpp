@@ -259,8 +259,8 @@ void TimelineWidget::drawVideoFrameMarkers(QPainter &painter)
 	const int FRAME_BLOCK_HEIGHT = 60; // Same height as audio waveform
 	const int FRAME_BLOCK_TOP = VIDEO_CENTER_Y - FRAME_BLOCK_HEIGHT / 2;
 
-	painter.setPen(Qt::NoPen); // Remove green border
-	painter.setBrush(QBrush(QColor(100, 255, 100, 100)));
+	painter.setPen(QPen(QColor(100, 255, 100), 1)); // Light green border only
+	painter.setBrush(Qt::NoBrush); // No background fill
 
 	// Draw blocks for all video frames in visible range
 	for (double frameTime : m_videoFrameTimestamps) {
@@ -329,6 +329,61 @@ double TimelineWidget::snapToFrame(double timestamp) const
 	}
 
 	return bestTimestamp;
+}
+
+double TimelineWidget::snapToPeak(double timestamp) const
+{
+	if (m_samples.isEmpty()) {
+		return timestamp;
+	}
+
+	// Find peaks in the waveform (local maxima)
+	// A peak is a sample that is higher than its neighbors
+	QVector<double> peakTimestamps;
+	double maxAmplitude = 0.0;
+	for (const AudioSample &sample : m_samples) {
+		maxAmplitude = qMax(maxAmplitude, sample.amplitude);
+	}
+
+	for (int i = 1; i < m_samples.size() - 1; i++) {
+		if (m_samples[i].amplitude > m_samples[i - 1].amplitude &&
+		    m_samples[i].amplitude > m_samples[i + 1].amplitude) {
+			// This is a local maximum - only consider significant peaks
+			// Filter out noise by requiring amplitude to be at least 15% of max
+			if (m_samples[i].amplitude >= maxAmplitude * 0.15) {
+				peakTimestamps.append(m_samples[i].timestamp);
+			}
+		}
+	}
+
+	if (peakTimestamps.isEmpty()) {
+		return timestamp; // No peaks found, return original
+	}
+
+	// Find the nearest peak
+	double minDiff = 1e10;
+	double bestTimestamp = timestamp;
+	for (double peakTime : peakTimestamps) {
+		double diff = qAbs(peakTime - timestamp);
+		if (diff < minDiff) {
+			minDiff = diff;
+			bestTimestamp = peakTime;
+		}
+	}
+
+	// Gentle snapping: only snap if within 30ms (gentle threshold)
+	// This provides subtle assistance without being too aggressive
+	if (minDiff < 0.03) {
+		return bestTimestamp;
+	}
+
+	return timestamp;
+}
+
+void TimelineWidget::setSnapToPeaks(bool enabled)
+{
+	m_snapToPeaks = enabled;
+	update();
 }
 
 void TimelineWidget::drawFrameDifferenceBars(QPainter &painter)
@@ -422,22 +477,39 @@ void TimelineWidget::mousePressEvent(QMouseEvent *event)
 {
 	if (event->button() == Qt::LeftButton) {
 		int mouseX = static_cast<int>(event->position().x());
-		int const SPIKE_X = xFromTimestamp(m_spikePosition);
-		int const FRAME_X = m_videoFramePosition >= 0.0 ? xFromTimestamp(m_videoFramePosition) : -1000;
+		int mouseY = static_cast<int>(event->position().y());
 
-		// Check if clicking near video frame marker (within 10 pixels) - prioritize this
-		if (m_videoFramePosition >= 0.0 && qAbs(mouseX - FRAME_X) < 10) {
+		// Define timeline areas
+		const int AUDIO_CENTER_Y = 70;
+		const int AUDIO_HEIGHT = 60;
+		const int AUDIO_TOP = AUDIO_CENTER_Y - AUDIO_HEIGHT / 2;
+		const int AUDIO_BOTTOM = AUDIO_CENTER_Y + AUDIO_HEIGHT / 2;
+
+		const int VIDEO_CENTER_Y = 140;
+		const int VIDEO_HEIGHT = 60;
+		const int VIDEO_TOP = VIDEO_CENTER_Y - VIDEO_HEIGHT / 2;
+		const int VIDEO_BOTTOM = VIDEO_CENTER_Y + VIDEO_HEIGHT / 2;
+
+		// Check if clicking in video timeline area
+		if (mouseY >= VIDEO_TOP && mouseY <= VIDEO_BOTTOM && m_videoFramePosition >= 0.0) {
 			m_draggingVideoFrame = true;
 			m_spikeDragStartX = mouseX;
-		} else if (qAbs(mouseX - SPIKE_X) < 10) {
-			// Check if clicking near spike marker (within 10 pixels)
-			m_draggingSpike = true;
-			m_spikeDragStartX = mouseX;
-		} else {
-			// Click to set spike position (default behavior) - snap to frame
 			double newTimestamp = timestampFromX(mouseX);
 			newTimestamp = qMax(m_startTime, qMin(m_endTime, newTimestamp));
 			newTimestamp = snapToFrame(newTimestamp);
+			setVideoFramePosition(newTimestamp);
+			emit videoFramePositionChanged(newTimestamp);
+		} else if (mouseY >= AUDIO_TOP && mouseY <= AUDIO_BOTTOM) {
+			// Check if clicking in audio timeline area
+			m_draggingSpike = true;
+			m_spikeDragStartX = mouseX;
+			double newTimestamp = timestampFromX(mouseX);
+			newTimestamp = qMax(m_startTime, qMin(m_endTime, newTimestamp));
+			if (m_snapToPeaks) {
+				newTimestamp = snapToPeak(newTimestamp);
+			} else {
+				newTimestamp = snapToFrame(newTimestamp);
+			}
 			setSpikePosition(newTimestamp);
 			emit spikePositionChanged(newTimestamp);
 		}
@@ -457,7 +529,11 @@ void TimelineWidget::mouseMoveEvent(QMouseEvent *event)
 		int mouseX = static_cast<int>(event->position().x());
 		double newTimestamp = timestampFromX(mouseX);
 		newTimestamp = qMax(m_startTime, qMin(m_endTime, newTimestamp));
-		newTimestamp = snapToFrame(newTimestamp);
+		if (m_snapToPeaks) {
+			newTimestamp = snapToPeak(newTimestamp);
+		} else {
+			newTimestamp = snapToFrame(newTimestamp);
+		}
 		setSpikePosition(newTimestamp);
 		emit spikePositionChanged(newTimestamp);
 	} else {
