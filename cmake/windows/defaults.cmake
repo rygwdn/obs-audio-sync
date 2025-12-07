@@ -44,15 +44,20 @@ set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
 # Users can change this during installation
 set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
 set(CPACK_NSIS_DEFAULT_INSTALL_DIR "$PROGRAMFILES64\\obs-studio")
+# Override the default install directory to prevent CPack from appending package name/version
+# This ensures installation goes directly to the OBS Studio directory
+# The installer will query the registry for OBS Studio's install path, falling back to
+# Program Files\obs-studio if not found (see CPACK_NSIS_EXTRA_INSTALL_COMMANDS below)
+set(CPACK_NSIS_INSTALL_DIRECTORY "$PROGRAMFILES64\\obs-studio")
 
 # Override CMAKE_INSTALL_PREFIX to match NSIS install directory
 # CPack NSIS generator works best when CMAKE_INSTALL_PREFIX matches
-# CPACK_NSIS_DEFAULT_INSTALL_DIR. This avoids path mixing issues.
+# CPACK_NSIS_INSTALL_DIRECTORY. This avoids path mixing issues.
 # Convert backslashes to forward slashes for CMake compatibility.
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT OR CMAKE_INSTALL_PREFIX MATCHES "^[A-Za-z]:")
-  # Use the NSIS default install directory as the install prefix
+  # Use the NSIS install directory as the install prefix
   # Convert backslashes to forward slashes for CMake
-  string(REPLACE "\\" "/" _NSIS_INSTALL_DIR "${CPACK_NSIS_DEFAULT_INSTALL_DIR}")
+  string(REPLACE "\\" "/" _NSIS_INSTALL_DIR "${CPACK_NSIS_INSTALL_DIRECTORY}")
   set(CMAKE_INSTALL_PREFIX "${_NSIS_INSTALL_DIR}" CACHE STRING "Install prefix matching NSIS install directory" FORCE)
 endif()
 
@@ -64,6 +69,20 @@ set(CPACK_SET_DESTDIR OFF)
 # - DLL: obs-plugins/64bit/${CMAKE_PROJECT_NAME}.dll
 # - Data: data/obs-plugins/${CMAKE_PROJECT_NAME}/
 # No extra install commands needed since install destinations match OBS structure
+
+# Query registry for OBS Studio installation path (similar to SceneSwitcher's Inno Setup approach)
+# If found, use it; otherwise fall back to default Program Files\obs-studio
+set(
+  CPACK_NSIS_EXTRA_INSTALL_COMMANDS
+  "
+  ; Try to find OBS Studio installation path from registry
+  ; ReadRegStr reads from the registry view matching the installer architecture (64-bit)
+  ReadRegStr $R0 HKLM \"SOFTWARE\\OBS Studio\" \"\"
+  ; If registry value is not empty, use it as install directory
+  StrCmp $R0 \"\" +2
+    StrCpy $INSTDIR \"$R0\"
+"
+)
 
 set(
   CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
