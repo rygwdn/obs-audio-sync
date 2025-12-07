@@ -305,8 +305,8 @@ void AudioSyncPanel::updateOffsetDisplay()
 
 	if (totalSelected > 0) {
 		QString status = QString("%1 audio, %2 video source(s) selected")
-					.arg(audioSources.size())
-					.arg(videoSources.size());
+					 .arg(audioSources.size())
+					 .arg(videoSources.size());
 		// Don't update status label here - it's used for other messages
 		// Could add a separate label if needed
 	}

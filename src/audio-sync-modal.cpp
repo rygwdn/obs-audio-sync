@@ -432,7 +432,7 @@ void AudioSyncModal::updateSyncDisplay()
 	// Enable apply button if we have a calculated offset and at least one source selected
 	QStringList audioSources = getSelectedAudioSources();
 	QStringList videoSources = getSelectedVideoSources();
-	bool canApply = qAbs(m_calculatedOffsetMs) > 0.01 && // Non-zero offset
+	bool canApply = qAbs(m_calculatedOffsetMs) > 0.01 &&                  // Non-zero offset
 			(!audioSources.isEmpty() || !videoSources.isEmpty()); // At least one source selected
 	m_applyOffsetButton->setEnabled(canApply);
 }
@@ -602,7 +602,8 @@ void AudioSyncModal::onApplyOffsetClicked()
 	QStringList videoSources = getSelectedVideoSources();
 
 	if (audioSources.isEmpty() && videoSources.isEmpty()) {
-		QMessageBox::warning(this, "Apply Failed", "No sources selected. Please select at least one source to sync.");
+		QMessageBox::warning(this, "Apply Failed",
+				     "No sources selected. Please select at least one source to sync.");
 		return;
 	}
 
@@ -623,7 +624,9 @@ void AudioSyncModal::onApplyOffsetClicked()
 	}
 
 	if (appliedSources.isEmpty()) {
-		QMessageBox::warning(this, "Apply Failed", "Failed to apply offset to any sources. Please check that sources have Async Delay filters.");
+		QMessageBox::warning(
+			this, "Apply Failed",
+			"Failed to apply offset to any sources. Please check that sources have Async Delay filters.");
 	} else {
 		QMessageBox::information(this, "Offset Applied",
 					 QString("Applied offset of %1ms to:\n%2")
