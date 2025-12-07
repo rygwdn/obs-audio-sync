@@ -227,7 +227,19 @@ invoke_formatter() {
       local check_output_file="${temp_output}.check"
       if [[ -f ${check_output_file} ]] && [[ -s ${check_output_file} ]]; then
         local line_count=$(wc -l < ${check_output_file} 2>/dev/null || echo 0)
-        if (( line_count > 0 && line_count <= 20 )); then
+        # In CI, always show diffs for failed files
+        if (( ${+GITHUB_ACTIONS} )) && (( check_result != 0 )); then
+          # Show diff for each file that failed
+          for file (${source_files}) {
+            if [[ -f ${file} ]]; then
+              local file_output=$(${formatter} -style=file -fallback-style=none "${file}" 2>&1)
+              if ! echo ${file_output} | diff -q "${file}" - &> /dev/null; then
+                log_error "Diff for ${file}:"
+                echo ${file_output} | diff -u "${file}" - || true
+              fi
+            fi
+          }
+        elif (( line_count > 0 && line_count <= 20 )); then
           # Show detailed output for small files
           cat ${check_output_file}
         elif (( line_count > 20 )); then
