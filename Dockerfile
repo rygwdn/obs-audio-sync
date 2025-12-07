@@ -74,11 +74,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install clang-format and gersemi for linting
 # Install from obsproject/tools tap (matching CI setup)
-RUN eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && \
-    brew tap obsproject/tools && \
-    brew install --quiet obsproject/tools/clang-format@19 obsproject/tools/gersemi && \
-    ln -sf /home/linuxbrew/.linuxbrew/opt/clang-format@19/bin/clang-format-19 /usr/local/bin/clang-format-19 && \
-    update-alternatives --install /usr/bin/clang-format clang-format /home/linuxbrew/.linuxbrew/opt/clang-format@19/bin/clang-format-19 100
+# Use full path to brew and test if it exists first
+RUN if [ -f /home/linuxbrew/.linuxbrew/bin/brew ]; then \
+        /home/linuxbrew/.linuxbrew/bin/brew tap obsproject/tools && \
+        /home/linuxbrew/.linuxbrew/bin/brew install --quiet obsproject/tools/clang-format@19 obsproject/tools/gersemi && \
+        ln -sf /home/linuxbrew/.linuxbrew/opt/clang-format@19/bin/clang-format-19 /usr/local/bin/clang-format-19 && \
+        update-alternatives --install /usr/bin/clang-format clang-format /home/linuxbrew/.linuxbrew/opt/clang-format@19/bin/clang-format-19 100; \
+    else \
+        echo "Warning: Homebrew not available, falling back to apt packages" && \
+        apt-get update && apt-get install -y --no-install-recommends \
+            wget gnupg ca-certificates && \
+        wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - && \
+        echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" >> /etc/apt/sources.list.d/llvm.list && \
+        apt-get update && apt-get install -y --no-install-recommends \
+            clang-format-19 python3 python3-pip && \
+        pip3 install --no-cache-dir --break-system-packages gersemi && \
+        update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-19 100 && \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Set up working directory
 WORKDIR /workspace
