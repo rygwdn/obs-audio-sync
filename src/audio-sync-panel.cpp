@@ -479,8 +479,25 @@ void AudioSyncPanel::startAutoSyncRecording()
 		return;
 	}
 
-	QFileInfo pathInfo(recordingPath);
-	QString recordingDir = pathInfo.absolutePath();
+	QString path = QString::fromUtf8(recordingPath);
+
+	// Expand ~ to home directory
+	if (path.startsWith("~/")) {
+		path = QDir::homePath() + path.mid(1);
+	} else if (path == "~") {
+		path = QDir::homePath();
+	}
+
+	// Normalize the path
+	path = QDir::cleanPath(path);
+
+	QFileInfo pathInfo(path);
+	QString recordingDir;
+	if (pathInfo.isDir()) {
+		recordingDir = pathInfo.absoluteFilePath();
+	} else {
+		recordingDir = pathInfo.absolutePath();
+	}
 	QString baseName = pathInfo.baseName();
 
 	// Store expected recording path pattern (OBS will create the file)
@@ -511,7 +528,19 @@ void AudioSyncPanel::startAutoSyncRecording()
 			// Try to get the actual recording file path
 			const char *currentPath = obs_frontend_get_current_record_output_path();
 			if (currentPath && strlen(currentPath) > 0) {
-				m_autoSyncRecordingPath = QString::fromUtf8(currentPath);
+				QString path = QString::fromUtf8(currentPath);
+
+				// Expand ~ to home directory
+				if (path.startsWith("~/")) {
+					path = QDir::homePath() + path.mid(1);
+				} else if (path == "~") {
+					path = QDir::homePath();
+				}
+
+				// Normalize the path
+				path = QDir::cleanPath(path);
+
+				m_autoSyncRecordingPath = path;
 				m_audioMonitor->startMonitoring(m_autoSyncRecordingPath);
 			} else {
 				// Fallback: try to find the newest file in the directory

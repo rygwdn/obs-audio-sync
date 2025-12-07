@@ -37,6 +37,39 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "source-offset-manager.h"
 #include "realtime-audio-monitor.h"
 #include <QComboBox>
+#include <QStyledItemDelegate>
+
+class HtmlListDelegate : public QStyledItemDelegate {
+public:
+	explicit HtmlListDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
+
+	void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+	{
+		QStyleOptionViewItem opt = option;
+		initStyleOption(&opt, index);
+
+		QTextDocument doc;
+		doc.setHtml(opt.text);
+		doc.setTextWidth(opt.rect.width());
+
+		painter->save();
+		painter->translate(opt.rect.topLeft());
+		doc.drawContents(painter);
+		painter->restore();
+	}
+
+	QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override
+	{
+		QStyleOptionViewItem opt = option;
+		initStyleOption(&opt, index);
+
+		QTextDocument doc;
+		doc.setHtml(opt.text);
+		doc.setTextWidth(opt.rect.width());
+
+		return QSize(static_cast<int>(doc.idealWidth()), static_cast<int>(doc.size().height()));
+	}
+};
 
 class AudioSyncPanel : public QDockWidget {
 	Q_OBJECT

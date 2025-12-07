@@ -36,8 +36,26 @@ QString RecordingScanner::getRecordingPath()
 	// Try to get recording path from OBS frontend API
 	const char *recordingPath = obs_frontend_get_current_record_output_path();
 	if (recordingPath && strlen(recordingPath) > 0) {
-		QFileInfo const PATH_INFO(recordingPath);
-		return PATH_INFO.absolutePath();
+		QString path = QString::fromUtf8(recordingPath);
+
+		// Expand ~ to home directory
+		if (path.startsWith("~/")) {
+			path = QDir::homePath() + path.mid(1);
+		} else if (path == "~") {
+			path = QDir::homePath();
+		}
+
+		// Normalize the path
+		path = QDir::cleanPath(path);
+
+		QFileInfo const PATH_INFO(path);
+
+		// If it's a directory, use it directly; otherwise extract directory from file path
+		if (PATH_INFO.isDir()) {
+			return PATH_INFO.absoluteFilePath();
+		} else {
+			return PATH_INFO.absolutePath();
+		}
 	}
 
 	// Fallback: try common OBS recording locations
