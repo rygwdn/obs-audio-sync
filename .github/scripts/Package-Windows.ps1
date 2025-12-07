@@ -66,7 +66,27 @@ function Package {
                 "-C", $Configuration
                 "-G", "NSIS"
             )
-            Invoke-External cpack $CpackArgs
+            try {
+                Invoke-External cpack $CpackArgs
+            } catch {
+                # CPack failed - output NSIS log if it exists
+                $NSISLogPath = "${BuildDir}/_CPack_Packages/win64/NSIS/NSISOutput.log"
+                if (Test-Path $NSISLogPath) {
+                    Write-Error "CPack failed. NSIS output log:"
+                    Write-Error "=========================================="
+                    Get-Content $NSISLogPath | ForEach-Object { Write-Error $_ }
+                    Write-Error "=========================================="
+                } else {
+                    Write-Error "CPack failed. NSIS log not found at: ${NSISLogPath}"
+                    # Try to find any NSIS-related files for debugging
+                    $NSISDir = "${BuildDir}/_CPack_Packages/win64/NSIS"
+                    if (Test-Path $NSISDir) {
+                        Write-Error "NSIS directory contents:"
+                        Get-ChildItem -Path $NSISDir | ForEach-Object { Write-Error "  $($_.Name)" }
+                    }
+                }
+                throw
+            }
 
             # Find and move installer to release directory with proper name
             # CPack outputs to the directory specified by CPACK_OUTPUT_FILE_PREFIX (release/)
