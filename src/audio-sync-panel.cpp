@@ -20,7 +20,6 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "recording-scanner.h"
 #include "recording-scanner-worker.h"
 #include "audio-sync-modal.h"
-#include "source-offset-manager.h"
 #include "realtime-audio-monitor.h"
 #include <obs-frontend-api.h>
 #include <util/base.h>
@@ -50,9 +49,6 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent)
 	QWidget *centralWidget = new QWidget(this); // NOLINT(cppcoreguidelines-init-variables)
 	setWidget(centralWidget);
 
-	// Create source offset manager
-	m_sourceOffsetManager = new SourceOffsetManager(this);
-
 	// Initialize auto-sync state
 	m_autoSyncState = AutoSyncState::Idle;
 	m_audioMonitor = new RealTimeAudioMonitor(this);
@@ -66,7 +62,6 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent)
 
 	setupUI();
 	refreshRecordings();
-	setupSourceSelection();
 }
 
 AudioSyncPanel::~AudioSyncPanel()
@@ -92,15 +87,6 @@ AudioSyncPanel::~AudioSyncPanel()
 	}
 	if (m_startSyncButton) {
 		disconnect(m_startSyncButton, nullptr, this, nullptr);
-	}
-	if (m_audioSourcesList) {
-		disconnect(m_audioSourcesList, nullptr, this, nullptr);
-	}
-	if (m_videoSourcesList) {
-		disconnect(m_videoSourcesList, nullptr, this, nullptr);
-	}
-	if (m_refreshSourcesButton) {
-		disconnect(m_refreshSourcesButton, nullptr, this, nullptr);
 	}
 	if (m_autoSyncButton) {
 		disconnect(m_autoSyncButton, nullptr, this, nullptr);
@@ -202,154 +188,6 @@ void AudioSyncPanel::setupUI()
 
 	// Setup worker threads
 	setupWorkerThreads();
-}
-
-void AudioSyncPanel::setupSourceSelection()
-{
-	QWidget *centralWidget = widget();
-
-	// Section label
-	auto *sourceSectionLabel = new QLabel("Source Configuration:", centralWidget);
-	QFont sectionFont = sourceSectionLabel->font();
-	sectionFont.setBold(true);
-	sourceSectionLabel->setFont(sectionFont);
-	m_layout->addWidget(sourceSectionLabel);
-
-	// Audio sources to sync
-	auto *audioLabel = new QLabel("Audio Sources to Sync:", centralWidget);
-	m_layout->addWidget(audioLabel);
-	m_audioSourcesList = new QListWidget(centralWidget);
-	m_audioSourcesList->setSelectionMode(QAbstractItemView::NoSelection);
-	m_audioSourcesList->setMaximumHeight(150);
-	m_audioSourcesList->setToolTip("Select audio sources to sync to match the recording");
-	m_layout->addWidget(m_audioSourcesList);
-
-	// Video sources to sync
-	auto *videoLabel = new QLabel("Video Sources to Sync:", centralWidget);
-	m_layout->addWidget(videoLabel);
-	m_videoSourcesList = new QListWidget(centralWidget);
-	m_videoSourcesList->setSelectionMode(QAbstractItemView::NoSelection);
-	m_videoSourcesList->setMaximumHeight(150);
-	m_videoSourcesList->setToolTip("Select video sources to sync to match the recording");
-	m_layout->addWidget(m_videoSourcesList);
-
-	// Refresh sources button
-	m_refreshSourcesButton = new QPushButton("Refresh Sources", centralWidget);
-	m_refreshSourcesButton->setToolTip("Refresh the list of available sources");
-	m_layout->addWidget(m_refreshSourcesButton);
-
-	// Connect signals
-	connect(m_audioSourcesList, &QListWidget::itemChanged, this, &AudioSyncPanel::onSourceSelectionChanged);
-	connect(m_videoSourcesList, &QListWidget::itemChanged, this, &AudioSyncPanel::onSourceSelectionChanged);
-	connect(m_refreshSourcesButton, &QPushButton::clicked, this, &AudioSyncPanel::onRefreshSourcesClicked);
-
-	// Initial refresh
-	refreshSourceList();
-}
-
-void AudioSyncPanel::refreshSourceList()
-{
-	if (!m_sourceOffsetManager) {
-		return;
-	}
-
-	// Store current selections (checked items)
-	QStringList checkedAudioSources;
-	for (int i = 0; i < m_audioSourcesList->count(); ++i) {
-		QListWidgetItem *item = m_audioSourcesList->item(i);
-		if (item && item->checkState() == Qt::Checked) {
-			checkedAudioSources.append(item->data(Qt::UserRole).toString());
-		}
-	}
-
-	QStringList checkedVideoSources;
-	for (int i = 0; i < m_videoSourcesList->count(); ++i) {
-		QListWidgetItem *item = m_videoSourcesList->item(i);
-		if (item && item->checkState() == Qt::Checked) {
-			checkedVideoSources.append(item->data(Qt::UserRole).toString());
-		}
-	}
-
-	// Clear and repopulate audio sources
-	m_audioSourcesList->clear();
-	QList<SourceInfo> audioSources = m_sourceOffsetManager->getAudioSources();
-	for (const SourceInfo &info : audioSources) {
-		QListWidgetItem *item = new QListWidgetItem(info.name);
-		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-		item->setCheckState(checkedAudioSources.contains(info.name) ? Qt::Checked : Qt::Unchecked);
-		item->setData(Qt::UserRole, info.name);
-		m_audioSourcesList->addItem(item);
-	}
-
-	// Clear and repopulate video sources
-	m_videoSourcesList->clear();
-	QList<SourceInfo> videoSources = m_sourceOffsetManager->getVideoSources();
-	for (const SourceInfo &info : videoSources) {
-		QListWidgetItem *item = new QListWidgetItem(info.name);
-		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-		item->setCheckState(checkedVideoSources.contains(info.name) ? Qt::Checked : Qt::Unchecked);
-		item->setData(Qt::UserRole, info.name);
-		m_videoSourcesList->addItem(item);
-	}
-
-	// Update display
-	updateOffsetDisplay();
-}
-
-void AudioSyncPanel::updateOffsetDisplay()
-{
-	// Update status to show selection count
-	QStringList audioSources = getSelectedAudioSources();
-	QStringList videoSources = getSelectedVideoSources();
-	int totalSelected = audioSources.size() + videoSources.size();
-
-	if (totalSelected > 0) {
-		QString status = QString("%1 audio, %2 video source(s) selected")
-					 .arg(audioSources.size())
-					 .arg(videoSources.size());
-		// Don't update status label here - it's used for other messages
-		// Could add a separate label if needed
-	}
-}
-
-void AudioSyncPanel::onSourceSelectionChanged()
-{
-	updateOffsetDisplay();
-}
-
-QStringList AudioSyncPanel::getSelectedAudioSources() const
-{
-	QStringList selected;
-	if (!m_audioSourcesList) {
-		return selected;
-	}
-	for (int i = 0; i < m_audioSourcesList->count(); ++i) {
-		QListWidgetItem *item = m_audioSourcesList->item(i);
-		if (item && item->checkState() == Qt::Checked) {
-			selected.append(item->data(Qt::UserRole).toString());
-		}
-	}
-	return selected;
-}
-
-QStringList AudioSyncPanel::getSelectedVideoSources() const
-{
-	QStringList selected;
-	if (!m_videoSourcesList) {
-		return selected;
-	}
-	for (int i = 0; i < m_videoSourcesList->count(); ++i) {
-		QListWidgetItem *item = m_videoSourcesList->item(i);
-		if (item && item->checkState() == Qt::Checked) {
-			selected.append(item->data(Qt::UserRole).toString());
-		}
-	}
-	return selected;
-}
-
-void AudioSyncPanel::onRefreshSourcesClicked()
-{
-	refreshSourceList();
 }
 
 void AudioSyncPanel::setupWorkerThreads()

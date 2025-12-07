@@ -37,6 +37,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qlistwidget.h>
 #include <qabstractitemview.h>
 #include <qlabel.h>
+#include <qset.h>
 
 AudioSyncModal::AudioSyncModal(const QString &filePath, QWidget *parent) : QDialog(parent)
 {
@@ -83,11 +84,8 @@ AudioSyncModal::~AudioSyncModal()
 	if (m_nextFrameButton) {
 		disconnect(m_nextFrameButton, nullptr, this, nullptr);
 	}
-	if (m_audioSourcesList) {
-		disconnect(m_audioSourcesList, nullptr, this, nullptr);
-	}
-	if (m_videoSourcesList) {
-		disconnect(m_videoSourcesList, nullptr, this, nullptr);
+	if (m_sourcesList) {
+		disconnect(m_sourcesList, nullptr, this, nullptr);
 	}
 	if (m_applyOffsetButton) {
 		disconnect(m_applyOffsetButton, nullptr, this, nullptr);
@@ -115,17 +113,7 @@ void AudioSyncModal::setupUI()
 	mainLayout->setContentsMargins(10, 10, 10, 10);
 	mainLayout->setSpacing(10);
 
-	// Title
-	auto *titleLabel = new QLabel("Audio Sync", this);
-	QFont titleFont = titleLabel->font();
-	titleFont.setPointSize(14);
-	titleFont.setBold(true);
-	titleLabel->setFont(titleFont);
-	mainLayout->addWidget(titleLabel);
-
 	// Timeline widget
-	auto *timelineLabel = new QLabel("Timeline:", this);
-	mainLayout->addWidget(timelineLabel);
 	m_timelineWidget = new TimelineWidget(this);
 	m_timelineWidget->setVisible(false);
 	mainLayout->addWidget(m_timelineWidget);
@@ -138,6 +126,15 @@ void AudioSyncModal::setupUI()
 	m_zoomOutButton->setVisible(false);
 	m_resetZoomButton = new QPushButton("Reset Zoom", this);
 	m_resetZoomButton->setVisible(false);
+
+	// Offset label between zoom and navigation buttons
+	m_syncOffsetLabel = new QLabel("", this);
+	QFont syncFont = m_syncOffsetLabel->font();
+	syncFont.setPointSize(12);
+	syncFont.setBold(true);
+	m_syncOffsetLabel->setFont(syncFont);
+	m_syncOffsetLabel->setVisible(false);
+
 	m_prevFrameButton = new QPushButton("< Prev", this);
 	m_prevFrameButton->setEnabled(false);
 	m_prevFrameButton->setVisible(false);
@@ -148,13 +145,13 @@ void AudioSyncModal::setupUI()
 	zoomLayout->addWidget(m_zoomOutButton);
 	zoomLayout->addWidget(m_resetZoomButton);
 	zoomLayout->addStretch();
+	zoomLayout->addWidget(m_syncOffsetLabel);
+	zoomLayout->addStretch();
 	zoomLayout->addWidget(m_prevFrameButton);
 	zoomLayout->addWidget(m_nextFrameButton);
 	mainLayout->addLayout(zoomLayout);
 
 	// Video frame display
-	auto *frameLabel = new QLabel("Video Frame:", this);
-	mainLayout->addWidget(frameLabel);
 	m_frameLabel = new QLabel(this);
 	m_frameLabel->setMinimumHeight(200);
 	m_frameLabel->setMaximumHeight(400); // Fixed maximum to prevent growth
@@ -162,54 +159,24 @@ void AudioSyncModal::setupUI()
 	m_frameLabel->setAlignment(Qt::AlignCenter);
 	m_frameLabel->setStyleSheet("background-color: black; border: 1px solid gray;");
 	m_frameLabel->setText("No frame loaded");
-	m_frameLabel->setScaledContents(false); // Important: don't scale contents automatically
+	m_frameLabel->setScaledContents(true); // Scale to fit within bounds
 	m_frameLabel->setVisible(false);
 	mainLayout->addWidget(m_frameLabel);
 
-	// Frame info
-	m_frameInfoLabel = new QLabel("", this);
-	m_frameInfoLabel->setVisible(false);
-	mainLayout->addWidget(m_frameInfoLabel);
+	// Source selection section with combined list and apply button
+	auto *sourceLayout = new QHBoxLayout();
+	m_sourcesList = new QListWidget(this);
+	m_sourcesList->setSelectionMode(QAbstractItemView::NoSelection);
+	m_sourcesList->setMaximumHeight(150);
+	m_sourcesList->setToolTip("Select audio and video sources to sync to match the recording");
+	sourceLayout->addWidget(m_sourcesList);
 
-	// Sync offset display
-	m_syncOffsetLabel = new QLabel("", this);
-	QFont syncFont = m_syncOffsetLabel->font();
-	syncFont.setPointSize(12);
-	syncFont.setBold(true);
-	m_syncOffsetLabel->setFont(syncFont);
-	m_syncOffsetLabel->setVisible(false);
-	mainLayout->addWidget(m_syncOffsetLabel);
-
-	// Source selection section
-	auto *sourceSectionLabel = new QLabel("Source Selection:", this);
-	QFont sectionFont = sourceSectionLabel->font();
-	sectionFont.setBold(true);
-	sourceSectionLabel->setFont(sectionFont);
-	mainLayout->addWidget(sourceSectionLabel);
-
-	// Audio sources to sync
-	auto *audioLabel = new QLabel("Audio Sources to Sync:", this);
-	mainLayout->addWidget(audioLabel);
-	m_audioSourcesList = new QListWidget(this);
-	m_audioSourcesList->setSelectionMode(QAbstractItemView::NoSelection);
-	m_audioSourcesList->setMaximumHeight(150);
-	m_audioSourcesList->setToolTip("Select audio sources to sync to match the recording");
-	mainLayout->addWidget(m_audioSourcesList);
-
-	// Video sources to sync
-	auto *videoLabel = new QLabel("Video Sources to Sync:", this);
-	mainLayout->addWidget(videoLabel);
-	m_videoSourcesList = new QListWidget(this);
-	m_videoSourcesList->setSelectionMode(QAbstractItemView::NoSelection);
-	m_videoSourcesList->setMaximumHeight(150);
-	m_videoSourcesList->setToolTip("Select video sources to sync to match the recording");
-	mainLayout->addWidget(m_videoSourcesList);
-
-	// Apply offset button
+	// Apply offset button to the right
 	m_applyOffsetButton = new QPushButton("Apply Offset", this);
 	m_applyOffsetButton->setToolTip("Apply the calculated sync offset as a delta to the selected source");
 	m_applyOffsetButton->setEnabled(false);
-	mainLayout->addWidget(m_applyOffsetButton);
+	sourceLayout->addWidget(m_applyOffsetButton);
+	mainLayout->addLayout(sourceLayout);
 
 	// Spinner (initially hidden)
 	m_spinner = new QProgressBar(this);
@@ -223,14 +190,6 @@ void AudioSyncModal::setupUI()
 	m_spinnerLabel->setVisible(false);
 	mainLayout->addWidget(m_spinnerLabel);
 
-	// Close button
-	auto *buttonLayout = new QHBoxLayout();
-	buttonLayout->addStretch();
-	auto *closeButton = new QPushButton("Close", this);
-	connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
-	buttonLayout->addWidget(closeButton);
-	mainLayout->addLayout(buttonLayout);
-
 	// Connect signals
 	connect(m_timelineWidget, &TimelineWidget::spikePositionChanged, this, &AudioSyncModal::onSpikePositionChanged);
 	connect(m_timelineWidget, &TimelineWidget::videoFramePositionChanged, this,
@@ -240,8 +199,7 @@ void AudioSyncModal::setupUI()
 	connect(m_zoomInButton, &QPushButton::clicked, this, &AudioSyncModal::onZoomInClicked);
 	connect(m_zoomOutButton, &QPushButton::clicked, this, &AudioSyncModal::onZoomOutClicked);
 	connect(m_resetZoomButton, &QPushButton::clicked, this, &AudioSyncModal::onResetZoomClicked);
-	connect(m_audioSourcesList, &QListWidget::itemChanged, this, &AudioSyncModal::onSourceSelectionChanged);
-	connect(m_videoSourcesList, &QListWidget::itemChanged, this, &AudioSyncModal::onSourceSelectionChanged);
+	connect(m_sourcesList, &QListWidget::itemChanged, this, &AudioSyncModal::onSourceSelectionChanged);
 	connect(m_applyOffsetButton, &QPushButton::clicked, this, &AudioSyncModal::onApplyOffsetClicked);
 }
 
@@ -326,7 +284,6 @@ void AudioSyncModal::onFramesExtracted(const QVector<VideoFrame> &frames, double
 	m_frameLabel->setVisible(true);
 	m_prevFrameButton->setVisible(true);
 	m_nextFrameButton->setVisible(true);
-	m_frameInfoLabel->setVisible(true);
 	m_syncOffsetLabel->setVisible(true);
 
 	// Update timeline with video frame data
@@ -386,11 +343,6 @@ void AudioSyncModal::updateFrameDisplay()
 	// Update timeline with current video frame position
 	m_timelineWidget->setVideoFramePosition(frame.timestamp);
 
-	m_frameInfoLabel->setText(QString("Frame %1/%2 - Time: %3s")
-					  .arg(m_currentFrameIndex + 1)
-					  .arg(m_frames.size())
-					  .arg(frame.timestamp, 0, 'f', 3));
-
 	m_prevFrameButton->setEnabled(m_currentFrameIndex > 0);
 	m_nextFrameButton->setEnabled(m_currentFrameIndex < m_frames.size() - 1);
 
@@ -411,7 +363,7 @@ void AudioSyncModal::updateSyncDisplay()
 	m_calculatedOffsetMs = TIME_DIFF * 1000.0;
 
 	QString const SYNC_TEXT =
-		QString("Sync Offset: %1ms (%2 frames)").arg(m_calculatedOffsetMs, 0, 'f', 1).arg(FRAME_DIFF, 0, 'f', 2);
+		QString("%1 ms (%2 frames)").arg(m_calculatedOffsetMs, 0, 'f', 1).arg(FRAME_DIFF, 0, 'f', 2);
 
 	// Best practice color coding:
 	// Green: < 1 frame difference (perfect sync)
@@ -508,43 +460,46 @@ void AudioSyncModal::refreshSourceList()
 		return;
 	}
 
-	// Store current selections (checked items)
-	QStringList checkedAudioSources;
-	for (int i = 0; i < m_audioSourcesList->count(); ++i) {
-		QListWidgetItem *item = m_audioSourcesList->item(i);
+	// Store current selections (checked items) with their types
+	// Use a key that combines name and type to handle cases where same name might exist in both lists
+	QSet<QString> checkedSources; // Format: "name:audio" or "name:video"
+	for (int i = 0; i < m_sourcesList->count(); ++i) {
+		QListWidgetItem *item = m_sourcesList->item(i);
 		if (item && item->checkState() == Qt::Checked) {
-			checkedAudioSources.append(item->data(Qt::UserRole).toString());
+			QString sourceName = item->data(Qt::UserRole).toString();
+			bool isAudio = item->data(Qt::UserRole + 1).toBool();
+			QString key = QString("%1:%2").arg(sourceName, isAudio ? "audio" : "video");
+			checkedSources.insert(key);
 		}
 	}
 
-	QStringList checkedVideoSources;
-	for (int i = 0; i < m_videoSourcesList->count(); ++i) {
-		QListWidgetItem *item = m_videoSourcesList->item(i);
-		if (item && item->checkState() == Qt::Checked) {
-			checkedVideoSources.append(item->data(Qt::UserRole).toString());
-		}
-	}
+	// Clear and repopulate combined list
+	m_sourcesList->clear();
 
-	// Clear and repopulate audio sources
-	m_audioSourcesList->clear();
+	// Add audio sources
 	QList<SourceInfo> audioSources = m_sourceOffsetManager->getAudioSources();
 	for (const SourceInfo &info : audioSources) {
-		QListWidgetItem *item = new QListWidgetItem(info.name);
+		QListWidgetItem *item = new QListWidgetItem(QString("[Audio] %1").arg(info.name));
 		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-		item->setCheckState(checkedAudioSources.contains(info.name) ? Qt::Checked : Qt::Unchecked);
+		QString key = QString("%1:audio").arg(info.name);
+		bool wasChecked = checkedSources.contains(key);
+		item->setCheckState(wasChecked ? Qt::Checked : Qt::Unchecked);
 		item->setData(Qt::UserRole, info.name);
-		m_audioSourcesList->addItem(item);
+		item->setData(Qt::UserRole + 1, true); // Mark as audio source
+		m_sourcesList->addItem(item);
 	}
 
-	// Clear and repopulate video sources
-	m_videoSourcesList->clear();
+	// Add video sources
 	QList<SourceInfo> videoSources = m_sourceOffsetManager->getVideoSources();
 	for (const SourceInfo &info : videoSources) {
-		QListWidgetItem *item = new QListWidgetItem(info.name);
+		QListWidgetItem *item = new QListWidgetItem(QString("[Video] %1").arg(info.name));
 		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-		item->setCheckState(checkedVideoSources.contains(info.name) ? Qt::Checked : Qt::Unchecked);
+		QString key = QString("%1:video").arg(info.name);
+		bool wasChecked = checkedSources.contains(key);
+		item->setCheckState(wasChecked ? Qt::Checked : Qt::Unchecked);
 		item->setData(Qt::UserRole, info.name);
-		m_videoSourcesList->addItem(item);
+		item->setData(Qt::UserRole + 1, false); // Mark as video source
+		m_sourcesList->addItem(item);
 	}
 
 	// Update offset displays
@@ -565,13 +520,16 @@ void AudioSyncModal::onSourceSelectionChanged()
 QStringList AudioSyncModal::getSelectedAudioSources() const
 {
 	QStringList selected;
-	if (!m_audioSourcesList) {
+	if (!m_sourcesList) {
 		return selected;
 	}
-	for (int i = 0; i < m_audioSourcesList->count(); ++i) {
-		QListWidgetItem *item = m_audioSourcesList->item(i);
+	for (int i = 0; i < m_sourcesList->count(); ++i) {
+		QListWidgetItem *item = m_sourcesList->item(i);
 		if (item && item->checkState() == Qt::Checked) {
-			selected.append(item->data(Qt::UserRole).toString());
+			bool isAudio = item->data(Qt::UserRole + 1).toBool();
+			if (isAudio) {
+				selected.append(item->data(Qt::UserRole).toString());
+			}
 		}
 	}
 	return selected;
@@ -580,13 +538,16 @@ QStringList AudioSyncModal::getSelectedAudioSources() const
 QStringList AudioSyncModal::getSelectedVideoSources() const
 {
 	QStringList selected;
-	if (!m_videoSourcesList) {
+	if (!m_sourcesList) {
 		return selected;
 	}
-	for (int i = 0; i < m_videoSourcesList->count(); ++i) {
-		QListWidgetItem *item = m_videoSourcesList->item(i);
+	for (int i = 0; i < m_sourcesList->count(); ++i) {
+		QListWidgetItem *item = m_sourcesList->item(i);
 		if (item && item->checkState() == Qt::Checked) {
-			selected.append(item->data(Qt::UserRole).toString());
+			bool isAudio = item->data(Qt::UserRole + 1).toBool();
+			if (!isAudio) {
+				selected.append(item->data(Qt::UserRole).toString());
+			}
 		}
 	}
 	return selected;

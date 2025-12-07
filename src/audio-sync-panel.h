@@ -82,7 +82,13 @@ public:
 			doc.setTextWidth(200); // Default width for calculation
 		}
 
-		return QSize(static_cast<int>(doc.idealWidth()), static_cast<int>(doc.size().height()));
+		// Calculate height based on font metrics for a single line, with minimal padding
+		QFontMetrics fm(opt.font);
+		int lineHeight = fm.height();
+		// Add small padding (2px top + 2px bottom) instead of using document height
+		int itemHeight = lineHeight + 4;
+
+		return QSize(static_cast<int>(doc.idealWidth()), itemHeight);
 	}
 };
 
@@ -108,8 +114,6 @@ private slots:
 	void onRefreshClicked();
 	void onStartSyncClicked();
 	void onAutoSyncClicked();
-	void onSourceSelectionChanged();
-	void onRefreshSourcesClicked();
 	// Worker slots
 	void onRecordingsScanned(const QList<RecordingInfo> &recordings);
 	void onScanError(const QString &error);
@@ -121,11 +125,6 @@ private slots:
 private:
 	void setupUI();
 	void setupWorkerThreads();
-	void setupSourceSelection();
-	void refreshSourceList();
-	void updateOffsetDisplay();
-	QStringList getSelectedAudioSources() const;
-	QStringList getSelectedVideoSources() const;
 	void showSpinner(const QString &message);
 	void hideSpinner();
 	void startAutoSyncRecording();
@@ -140,14 +139,6 @@ private:
 	QVBoxLayout *m_layout{nullptr};
 	QProgressBar *m_spinner{nullptr};
 	QLabel *m_spinnerLabel{nullptr};
-
-	// Source selection UI
-	QListWidget *m_audioSourcesList{nullptr};
-	QListWidget *m_videoSourcesList{nullptr};
-	QPushButton *m_refreshSourcesButton{nullptr};
-
-	// Source offset manager
-	SourceOffsetManager *m_sourceOffsetManager{nullptr};
 
 	// Worker threads
 	QThread *m_scanThread{nullptr};

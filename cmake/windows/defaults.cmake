@@ -56,7 +56,13 @@ set(CPACK_PACKAGE_INSTALL_DIRECTORY "obs-studio")
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT OR CMAKE_INSTALL_PREFIX MATCHES "^[A-Za-z]:")
   # Use a typical Program Files path for CMAKE_INSTALL_PREFIX
   # NSIS will expand $PROGRAMFILES64 at install time, but CMake needs an actual path
-  set(CMAKE_INSTALL_PREFIX "C:/Program Files/obs-studio" CACHE STRING "Install prefix matching NSIS install directory" FORCE)
+  set(
+    CMAKE_INSTALL_PREFIX
+    "C:/Program Files/obs-studio"
+    CACHE STRING
+    "Install prefix matching NSIS install directory"
+    FORCE
+  )
 endif()
 
 # Don't use CPACK_SET_DESTDIR with NSIS - it causes issues and CPack warns against it

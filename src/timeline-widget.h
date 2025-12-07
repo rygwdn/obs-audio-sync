@@ -72,7 +72,6 @@ private:
 	void drawVideoFrameMarkers(QPainter &painter);
 	void drawVideoFramePosition(QPainter &painter);
 	void drawFrameDifferenceBars(QPainter &painter);
-	void drawInfoLabels(QPainter &painter);
 	[[nodiscard]] double snapToFrame(double timestamp) const;
 	void wheelEvent(QWheelEvent *event) override;
 

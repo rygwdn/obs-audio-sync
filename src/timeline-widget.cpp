@@ -194,30 +194,8 @@ void TimelineWidget::drawWaveform(QPainter &painter)
 
 void TimelineWidget::drawFrameMarkers(QPainter &painter)
 {
-	if (m_fps <= 0.0) {
-		return;
-	}
-
-	double const FRAME_DURATION = 1.0 / m_fps;
-
-	painter.setPen(QPen(QColor(150, 150, 150), 1));
-
-	// Start from view start time, but calculate frame number from overall start
-	double currentTime = m_viewStartTime;
-	int frameNumber = static_cast<int>((m_viewStartTime - m_startTime) * m_fps);
-
-	while (currentTime <= m_viewEndTime) {
-		int const X_POS = xFromTimestamp(currentTime);
-		if (X_POS < 20 || X_POS > width() - 20) {
-			currentTime += FRAME_DURATION;
-			frameNumber++;
-			continue; // Skip markers outside visible area
-		}
-		painter.drawLine(X_POS, 130, X_POS, 135); // Moved down to accommodate layout changes
-
-		currentTime += FRAME_DURATION;
-		frameNumber++;
-	}
+	Q_UNUSED(painter);
+	// Frame markers removed - no longer drawing them on the timestamp row
 }
 
 void TimelineWidget::drawTimeMarkers(QPainter &painter)
@@ -258,17 +236,16 @@ void TimelineWidget::drawTimeMarkers(QPainter &painter)
 void TimelineWidget::drawSpikeMarker(QPainter &painter)
 {
 	int const X_POS = xFromTimestamp(m_spikePosition);
-	int height = this->height();
 
-	// Draw vertical line
+	// Draw vertical line (I-shaped cursor) only over the audio waveform area
+	// Waveform is centered at CENTER_Y = 70, with HEIGHT = 60
+	const int AUDIO_CENTER_Y = 70;
+	const int AUDIO_HEIGHT = 60;
+	const int AUDIO_TOP = AUDIO_CENTER_Y - AUDIO_HEIGHT / 2;
+	const int AUDIO_BOTTOM = AUDIO_CENTER_Y + AUDIO_HEIGHT / 2;
+
 	painter.setPen(QPen(QColor(255, 0, 0), 2));
-	painter.drawLine(X_POS, 0, X_POS, height);
-
-	// Draw spike indicator
-	painter.setBrush(QBrush(QColor(255, 0, 0)));
-	QPolygonF triangle;
-	triangle << QPointF(X_POS, 0) << QPointF(X_POS - 8, 15) << QPointF(X_POS + 8, 15);
-	painter.drawPolygon(triangle);
+	painter.drawLine(X_POS, AUDIO_TOP, X_POS, AUDIO_BOTTOM);
 }
 
 void TimelineWidget::drawVideoFrameMarkers(QPainter &painter)
@@ -277,9 +254,15 @@ void TimelineWidget::drawVideoFrameMarkers(QPainter &painter)
 		return;
 	}
 
-	painter.setPen(QPen(QColor(100, 255, 100), 1));
+	// Draw video frame blocks centered like the waveform
+	const int VIDEO_CENTER_Y = 100; // Below audio waveform
+	const int FRAME_BLOCK_HEIGHT = 20;
+	const int FRAME_BLOCK_TOP = VIDEO_CENTER_Y - FRAME_BLOCK_HEIGHT / 2;
 
-	// Draw markers for all video frames in visible range
+	painter.setPen(QPen(QColor(100, 255, 100), 1));
+	painter.setBrush(QBrush(QColor(100, 255, 100, 100)));
+
+	// Draw blocks for all video frames in visible range
 	for (double frameTime : m_videoFrameTimestamps) {
 		if (frameTime < m_viewStartTime || frameTime > m_viewEndTime) {
 			continue;
@@ -288,8 +271,9 @@ void TimelineWidget::drawVideoFrameMarkers(QPainter &painter)
 		if (X_POS < 20 || X_POS > width() - 20) {
 			continue;
 		}
-		// Draw small vertical line (moved down to align with new layout)
-		painter.drawLine(X_POS, 90, X_POS, 95);
+		// Draw centered block
+		const int BLOCK_WIDTH = 4;
+		painter.drawRect(X_POS - BLOCK_WIDTH / 2, FRAME_BLOCK_TOP, BLOCK_WIDTH, FRAME_BLOCK_HEIGHT);
 	}
 }
 
@@ -304,17 +288,16 @@ void TimelineWidget::drawVideoFramePosition(QPainter &painter)
 	}
 
 	int const X_POS = xFromTimestamp(m_videoFramePosition);
-	int height = this->height();
 
-	// Draw vertical line for current video frame
+	// Draw vertical line (I-shaped cursor) only over the video timeline area
+	// Video timeline is centered at VIDEO_CENTER_Y = 100, with HEIGHT = 20
+	const int VIDEO_CENTER_Y = 100;
+	const int VIDEO_HEIGHT = 20;
+	const int VIDEO_TOP = VIDEO_CENTER_Y - VIDEO_HEIGHT / 2;
+	const int VIDEO_BOTTOM = VIDEO_CENTER_Y + VIDEO_HEIGHT / 2;
+
 	painter.setPen(QPen(QColor(0, 255, 0), 2));
-	painter.drawLine(X_POS, 0, X_POS, height);
-
-	// Draw frame indicator
-	painter.setBrush(QBrush(QColor(0, 255, 0)));
-	QPolygonF triangle;
-	triangle << QPointF(X_POS, height) << QPointF(X_POS - 8, height - 15) << QPointF(X_POS + 8, height - 15);
-	painter.drawPolygon(triangle);
+	painter.drawLine(X_POS, VIDEO_TOP, X_POS, VIDEO_BOTTOM);
 }
 
 double TimelineWidget::snapToFrame(double timestamp) const
@@ -372,8 +355,8 @@ void TimelineWidget::drawFrameDifferenceBars(QPainter &painter)
 		return; // No differences to show
 	}
 
-	// Draw bars below frame markers (y=135-155, bars extend downward)
-	const int BAR_BASE_Y = 135; // Below frame markers at y=130-135
+	// Draw bars centered on video timeline (same area as video frame markers)
+	const int VIDEO_CENTER_Y = 100;
 	const int MAX_BAR_HEIGHT = 20;
 	const int BAR_WIDTH = 4;
 
@@ -393,7 +376,7 @@ void TimelineWidget::drawFrameDifferenceBars(QPainter &painter)
 		double diff = m_frameDifferences[i];
 		double normalized = diff / maxDiff; // 0.0 to 1.0
 
-		// Bar height (max 20 pixels)
+		// Bar height (max 20 pixels, centered)
 		int barHeight = (int)(normalized * MAX_BAR_HEIGHT);
 
 		if (barHeight <= 0) {
@@ -411,80 +394,10 @@ void TimelineWidget::drawFrameDifferenceBars(QPainter &painter)
 		}
 
 		painter.setBrush(QBrush(barColor));
-		// Draw bars extending downward from BAR_BASE_Y
-		painter.drawRect(xPos - BAR_WIDTH / 2, BAR_BASE_Y, BAR_WIDTH, barHeight);
+		// Draw bars centered vertically
+		int barTop = VIDEO_CENTER_Y - barHeight / 2;
+		painter.drawRect(xPos - BAR_WIDTH / 2, barTop, BAR_WIDTH, barHeight);
 	}
-}
-
-void TimelineWidget::drawInfoLabels(QPainter &painter)
-{
-	// Calculate current offset and frame number
-	double offset = 0.0;
-	int frameNumber = -1;
-	bool hasValidData = false;
-
-	if (m_videoFramePosition >= 0.0 && m_spikePosition >= 0.0) {
-		offset = m_videoFramePosition - m_spikePosition;
-		hasValidData = true;
-	}
-
-	if (m_videoFramePosition >= 0.0 && m_fps > 0.0) {
-		frameNumber = static_cast<int>((m_videoFramePosition - m_startTime) * m_fps);
-	}
-
-	if (!hasValidData) {
-		return;
-	}
-
-	// Determine color based on offset magnitude (in milliseconds)
-	double offsetMs = qAbs(offset) * 1000.0;
-	QColor labelColor;
-	if (offsetMs < 16.67) {                   // Less than 1 frame at 60fps
-		labelColor = QColor(0, 255, 0);   // Green - good sync
-	} else if (offsetMs < 50.0) {             // Less than 3 frames at 60fps
-		labelColor = QColor(255, 255, 0); // Yellow - medium offset
-	} else {
-		labelColor = QColor(255, 0, 0); // Red - large offset
-	}
-
-	// Draw labels at the top of the widget
-	const int LABEL_Y = 5;
-	const int LABEL_HEIGHT = 18;
-	const int LABEL_SPACING = 5;
-
-	// Format offset text
-	QString offsetText;
-	if (offset >= 0.0) {
-		offsetText = QString("Offset: +%1 ms").arg(offsetMs, 0, 'f', 1);
-	} else {
-		offsetText = QString("Offset: %1 ms").arg(offsetMs, 0, 'f', 1);
-	}
-
-	// Format frame text
-	QString frameText = QString("Frame: %1").arg(frameNumber);
-
-	// Calculate text widths
-	QFontMetrics fm(painter.font());
-	int offsetWidth = fm.horizontalAdvance(offsetText);
-	int frameWidth = fm.horizontalAdvance(frameText);
-	int totalWidth = offsetWidth + frameWidth + LABEL_SPACING;
-
-	// Center the labels
-	int startX = (width() - totalWidth) / 2;
-
-	// Draw offset label
-	QRect offsetRect(startX, LABEL_Y, offsetWidth + 10, LABEL_HEIGHT);
-	painter.setPen(QPen(QColor(0, 0, 0), 1));
-	painter.setBrush(QBrush(labelColor));
-	painter.drawRect(offsetRect);
-	painter.setPen(QPen(QColor(0, 0, 0)));
-	painter.drawText(offsetRect, Qt::AlignCenter, offsetText);
-
-	// Draw frame label
-	QRect frameRect(startX + offsetWidth + LABEL_SPACING, LABEL_Y, frameWidth + 10, LABEL_HEIGHT);
-	painter.setBrush(QBrush(labelColor));
-	painter.drawRect(frameRect);
-	painter.drawText(frameRect, Qt::AlignCenter, frameText);
 }
 
 void TimelineWidget::paintEvent(QPaintEvent *event)
@@ -497,10 +410,8 @@ void TimelineWidget::paintEvent(QPaintEvent *event)
 	painter.fillRect(rect(), QColor(40, 40, 40));
 
 	// Draw components
-	drawInfoLabels(painter);
 	drawTimeMarkers(painter);
 	drawWaveform(painter);
-	drawFrameMarkers(painter);
 	drawFrameDifferenceBars(painter);
 	drawVideoFrameMarkers(painter);
 	drawSpikeMarker(painter);

@@ -93,8 +93,7 @@ private:
 	QLabel *m_spinnerLabel{nullptr};
 
 	// Source selection UI
-	QListWidget *m_audioSourcesList{nullptr};
-	QListWidget *m_videoSourcesList{nullptr};
+	QListWidget *m_sourcesList{nullptr};
 	QPushButton *m_applyOffsetButton{nullptr};
 
 	// Source offset manager
