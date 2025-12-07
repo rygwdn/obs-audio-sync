@@ -54,6 +54,8 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent)
 	m_audioMonitor = new RealTimeAudioMonitor(this);
 	connect(m_audioMonitor, &RealTimeAudioMonitor::spikeDetected, this, &AudioSyncPanel::onSpikeDetected);
 	connect(m_audioMonitor, &RealTimeAudioMonitor::recordingComplete, this, &AudioSyncPanel::onRecordingComplete);
+	connect(m_audioMonitor, &RealTimeAudioMonitor::volumeLevelsUpdated, this,
+		&AudioSyncPanel::onVolumeLevelsUpdated);
 	connect(m_audioMonitor, &RealTimeAudioMonitor::monitoringError, this, &AudioSyncPanel::onMonitoringError);
 
 	setupUI();
@@ -150,6 +152,12 @@ void AudioSyncPanel::setupUI()
 	m_statusLabel = new QLabel("Ready", centralWidget);
 	m_statusLabel->setStyleSheet("color: gray;");
 	m_layout->addWidget(m_statusLabel);
+
+	// Volume levels label (initially hidden)
+	m_volumeLevelsLabel = new QLabel("", centralWidget);
+	m_volumeLevelsLabel->setStyleSheet("color: blue; font-family: monospace;");
+	m_volumeLevelsLabel->setVisible(false);
+	m_layout->addWidget(m_volumeLevelsLabel);
 
 	// Spinner (initially hidden)
 	m_spinner = new QProgressBar(centralWidget);
@@ -326,6 +334,8 @@ void AudioSyncPanel::startAutoSyncRecording()
 	}
 
 	QString path = QString::fromUtf8(recordingPath);
+	blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Initial recording path from OBS: %s",
+	     path.toUtf8().constData());
 
 	// Expand ~ to home directory
 	if (path.startsWith("~/")) {
@@ -336,21 +346,29 @@ void AudioSyncPanel::startAutoSyncRecording()
 
 	// Normalize the path
 	path = QDir::cleanPath(path);
+	blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Normalized path: %s", path.toUtf8().constData());
 
 	QFileInfo pathInfo(path);
 	QString recordingDir;
 	if (pathInfo.isDir()) {
 		recordingDir = pathInfo.absoluteFilePath();
+		blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Path is a directory: %s",
+		     recordingDir.toUtf8().constData());
+		// When it's a directory, we'll need to find the actual file after recording starts
+		m_autoSyncRecordingPath = recordingDir;
 	} else {
 		recordingDir = pathInfo.absolutePath();
+		QString baseName = pathInfo.baseName();
+		blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Path is a file, dir: %s, baseName: %s",
+		     recordingDir.toUtf8().constData(), baseName.toUtf8().constData());
+		// Store expected recording path pattern (OBS will create the file)
+		m_autoSyncRecordingPath = recordingDir + "/" + baseName;
+		if (m_autoSyncRecordingPath.isEmpty()) {
+			m_autoSyncRecordingPath = recordingDir;
+		}
 	}
-	QString baseName = pathInfo.baseName();
-
-	// Store expected recording path pattern (OBS will create the file)
-	m_autoSyncRecordingPath = recordingDir + "/" + baseName;
-	if (m_autoSyncRecordingPath.isEmpty()) {
-		m_autoSyncRecordingPath = recordingDir;
-	}
+	blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Stored recording path: %s",
+	     m_autoSyncRecordingPath.toUtf8().constData());
 
 	// Start recording
 	obs_frontend_recording_start();
@@ -366,27 +384,63 @@ void AudioSyncPanel::startAutoSyncRecording()
 	m_startSyncButton->setEnabled(false);
 	m_statusLabel->setText("Recording... (Collecting baseline)");
 	m_statusLabel->setStyleSheet("color: orange;");
+	m_volumeLevelsLabel->setVisible(true);
+	m_volumeLevelsLabel->setText("Volume: -- | Baseline: -- | Threshold: --");
 
 	// Start monitoring after a short delay to allow file creation
 	QTimer::singleShot(1000, this, [this]() {
 		if (m_autoSyncState == AutoSyncState::Recording) {
+			blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Attempting to find recording file...");
+			
 			// Try to get the actual recording file path
 			const char *currentPath = obs_frontend_get_current_record_output_path();
+			QString pathToCheck;
+			
 			if (currentPath && strlen(currentPath) > 0) {
-				QString path = QString::fromUtf8(currentPath);
+				pathToCheck = QString::fromUtf8(currentPath);
+				blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: OBS returned path: %s",
+				     pathToCheck.toUtf8().constData());
 
 				// Expand ~ to home directory
-				if (path.startsWith("~/")) {
-					path = QDir::homePath() + path.mid(1);
-				} else if (path == "~") {
-					path = QDir::homePath();
+				if (pathToCheck.startsWith("~/")) {
+					pathToCheck = QDir::homePath() + pathToCheck.mid(1);
+				} else if (pathToCheck == "~") {
+					pathToCheck = QDir::homePath();
 				}
 
 				// Normalize the path
-				path = QDir::cleanPath(path);
+				pathToCheck = QDir::cleanPath(pathToCheck);
+			}
 
-				m_autoSyncRecordingPath = path;
+			QFileInfo pathInfo(pathToCheck.isEmpty() ? m_autoSyncRecordingPath : pathToCheck);
+			QString dir = pathInfo.isDir() ? pathInfo.absoluteFilePath() : pathInfo.absolutePath();
+			blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Checking directory: %s",
+			     dir.toUtf8().constData());
+
+			// Always try to find the newest file in the directory (most reliable)
+			QDir directory(dir);
+			if (!directory.exists()) {
+				blog(LOG_WARNING, "[AudioSync] startAutoSyncRecording: Directory does not exist: %s",
+				     dir.toUtf8().constData());
+				return;
+			}
+
+			QStringList filters = {"*.mkv", "*.mp4", "*.flv", "*.mov", "*.avi", "*.webm"};
+			QFileInfoList files =
+				directory.entryInfoList(filters, QDir::Files, QDir::Time | QDir::Reversed);
+			
+			blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Found %d video files in directory",
+			     files.size());
+			
+			if (!files.isEmpty()) {
+				// Get the newest file (first in list when sorted by time reversed)
+				QString newestFile = files.first().absoluteFilePath();
+				blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Using newest file: %s",
+				     newestFile.toUtf8().constData());
+				
+				m_autoSyncRecordingPath = newestFile;
 				m_audioMonitor->startMonitoring(m_autoSyncRecordingPath);
+				blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Started monitoring file");
 				
 				// Update UI after monitoring starts (baseline collection phase)
 				QTimer::singleShot(2100, this, [this]() {
@@ -395,17 +449,26 @@ void AudioSyncPanel::startAutoSyncRecording()
 					}
 				});
 			} else {
-				// Fallback: try to find the newest file in the directory
-				QFileInfo pathInfo(m_autoSyncRecordingPath);
-				QString dir = pathInfo.absolutePath();
-				QDir directory(dir);
-				QStringList filters = {"*.mkv", "*.mp4", "*.flv", "*.mov", "*.avi", "*.webm"};
-				QFileInfoList files =
-					directory.entryInfoList(filters, QDir::Files, QDir::Time | QDir::Reversed);
-				if (!files.isEmpty()) {
-					m_autoSyncRecordingPath = files.last().absoluteFilePath();
-					m_audioMonitor->startMonitoring(m_autoSyncRecordingPath);
-				}
+				blog(LOG_WARNING,
+				     "[AudioSync] startAutoSyncRecording: No video files found in directory, will retry");
+				// Retry after another second
+				QTimer::singleShot(1000, this, [this]() {
+					if (m_autoSyncState == AutoSyncState::Recording) {
+						// Retry finding the file
+						QFileInfo pathInfo(m_autoSyncRecordingPath);
+						QString dir = pathInfo.isDir() ? pathInfo.absoluteFilePath() : pathInfo.absolutePath();
+						QDir directory(dir);
+						QStringList filters = {"*.mkv", "*.mp4", "*.flv", "*.mov", "*.avi", "*.webm"};
+						QFileInfoList files =
+							directory.entryInfoList(filters, QDir::Files, QDir::Time | QDir::Reversed);
+						if (!files.isEmpty()) {
+							m_autoSyncRecordingPath = files.first().absoluteFilePath();
+							blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Retry found file: %s",
+							     m_autoSyncRecordingPath.toUtf8().constData());
+							m_audioMonitor->startMonitoring(m_autoSyncRecordingPath);
+						}
+					}
+				});
 			}
 		}
 	});
@@ -444,6 +507,7 @@ void AudioSyncPanel::stopAutoSyncRecording()
 	m_refreshButton->setEnabled(true);
 	m_statusLabel->setText("Stopping recording...");
 	m_statusLabel->setStyleSheet("color: gray;");
+	m_volumeLevelsLabel->setVisible(false);
 }
 
 void AudioSyncPanel::onSpikeDetected(double timestamp)
@@ -470,6 +534,29 @@ void AudioSyncPanel::onRecordingComplete(double spikeTimestamp)
 
 	// Stop recording immediately
 	stopAutoSyncRecording();
+}
+
+void AudioSyncPanel::onVolumeLevelsUpdated(double baseline, double current, double threshold)
+{
+	if (m_autoSyncState != AutoSyncState::Recording && m_autoSyncState != AutoSyncState::PostSpike) {
+		return;
+	}
+
+	QString text;
+	if (baseline > 0.0) {
+		// Baseline collected, show all values
+		double currentPercent = threshold > 0.0 ? (current / threshold * 100.0) : 0.0;
+		text = QString("Volume: %1 (%.1f%%) | Baseline: %2 | Threshold: %3")
+			      .arg(current, 0, 'f', 6)
+			      .arg(currentPercent)
+			      .arg(baseline, 0, 'f', 6)
+			      .arg(threshold, 0, 'f', 6);
+	} else {
+		// Still collecting baseline
+		text = QString("Volume: %1 | Baseline: collecting... | Threshold: --")
+			      .arg(current, 0, 'f', 6);
+	}
+	m_volumeLevelsLabel->setText(text);
 }
 
 void AudioSyncPanel::onMonitoringError(const QString &error)

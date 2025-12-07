@@ -29,6 +29,21 @@ struct EnumData {
 	SourceOffsetManager *manager;
 };
 
+static bool enumFilterCallback(void *param, obs_source_t *filter)
+{
+	if (filter == nullptr) {
+		return true;
+	}
+	const char *sourceName = static_cast<const char *>(param);
+	const char *filterName = obs_source_get_name(filter);
+	const char *filterId = obs_source_get_id(filter);
+	bool enabled = obs_source_enabled(filter);
+	blog(LOG_INFO, "[AudioSync] enumFilterCallback: Source %s - Filter: %s (id: %s, enabled: %d)",
+	     sourceName ? sourceName : "(null)", filterName ? filterName : "(null)",
+	     filterId ? filterId : "(null)", enabled);
+	return true;
+}
+
 static bool enumSourceCallback(void *param, obs_source_t *source)
 {
 	auto *data = static_cast<EnumData *>(param);
@@ -85,6 +100,14 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 
 	// For video sources: check if they have Async Delay filter (even if disabled)
 	if (isVideo) {
+		// Enumerate all filters to log them
+		blog(LOG_INFO, "[AudioSync] enumSourceCallback: Video source found: %s",
+		     sourceNameStr.toUtf8().constData());
+		
+		// List all filters on this source
+		QByteArray sourceNameBytes = sourceNameStr.toUtf8();
+		obs_source_enum_filters(source, enumFilterCallback, sourceNameBytes.constData());
+		
 		obs_source_t *filter = obs_source_get_filter_by_name(source, "Async Delay");
 		if (filter == nullptr) {
 			blog(LOG_INFO,
@@ -93,14 +116,14 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 			return true; // Continue enumeration - video source needs filter
 		}
 
-		blog(LOG_INFO,
-		     "[AudioSync] enumSourceCallback: Source %s is video with Async Delay filter, adding to list",
-		     sourceNameStr.toUtf8().constData());
-
 		// Get current offset from filter
 		obs_data_t *settings = obs_source_get_settings(filter);
 		int delayMs = obs_data_get_int(settings, "delay_ms");
 		obs_data_release(settings);
+
+		blog(LOG_INFO,
+		     "[AudioSync] enumSourceCallback: Source %s is video with Async Delay filter (offset: %d ms), adding to list",
+		     sourceNameStr.toUtf8().constData(), delayMs);
 
 		// Create source info
 		SourceInfo info;

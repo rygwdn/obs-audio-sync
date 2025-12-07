@@ -120,6 +120,7 @@ private slots:
 	// Real-time monitoring slots
 	void onSpikeDetected(double timestamp);
 	void onRecordingComplete(double spikeTimestamp);
+	void onVolumeLevelsUpdated(double baseline, double current, double threshold);
 	void onMonitoringError(const QString &error);
 
 private:
@@ -133,6 +134,7 @@ private:
 
 	QListWidget *m_recordingList{nullptr};
 	QLabel *m_statusLabel{nullptr};
+	QLabel *m_volumeLevelsLabel{nullptr}; // Volume levels display during auto sync
 	QPushButton *m_refreshButton{nullptr};
 	QPushButton *m_startSyncButton{nullptr};
 	QPushButton *m_autoSyncButton{nullptr};

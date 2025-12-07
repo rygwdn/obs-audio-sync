@@ -506,7 +506,10 @@ void AudioSyncModal::refreshSourceList()
 	qInfo() << "AudioSyncModal::refreshSourceList: Adding" << audioSources.size() << "audio sources";
 	for (const SourceInfo &info : audioSources) {
 		qInfo() << "AudioSyncModal::refreshSourceList: Adding audio source:" << info.name;
-		QListWidgetItem *item = new QListWidgetItem(QString("[Audio] %1").arg(info.name));
+		QString offsetText = info.currentOffsetMs != 0
+					     ? QString(" (offset: %1 ms)").arg(info.currentOffsetMs)
+					     : "";
+		QListWidgetItem *item = new QListWidgetItem(QString("[Audio] %1%2").arg(info.name, offsetText));
 		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
 		QString key = QString("%1:audio").arg(info.name);
 		bool wasChecked = checkedSources.contains(key);
@@ -521,7 +524,10 @@ void AudioSyncModal::refreshSourceList()
 	qInfo() << "AudioSyncModal::refreshSourceList: Adding" << videoSources.size() << "video sources";
 	for (const SourceInfo &info : videoSources) {
 		qInfo() << "AudioSyncModal::refreshSourceList: Adding video source:" << info.name;
-		QListWidgetItem *item = new QListWidgetItem(QString("[Video] %1").arg(info.name));
+		QString offsetText = info.currentOffsetMs != 0
+					     ? QString(" (offset: %1 ms)").arg(info.currentOffsetMs)
+					     : "";
+		QListWidgetItem *item = new QListWidgetItem(QString("[Video] %1%2").arg(info.name, offsetText));
 		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
 		QString key = QString("%1:video").arg(info.name);
 		bool wasChecked = checkedSources.contains(key);

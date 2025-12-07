@@ -18,6 +18,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include "realtime-audio-monitor.h"
 #include "audio-analyzer.h"
+#include <obs-module.h>
 #include <QDebug>
 #include <QFileInfo>
 #include <algorithm>
@@ -38,14 +39,21 @@ RealTimeAudioMonitor::~RealTimeAudioMonitor()
 bool RealTimeAudioMonitor::startMonitoring(const QString &filePath)
 {
 	if (m_monitoring) {
-		qWarning() << "RealTimeAudioMonitor: Already monitoring";
+		blog(LOG_WARNING, "[AudioSync] RealTimeAudioMonitor: Already monitoring");
 		return false;
 	}
+
+	blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: Starting monitoring for file: %s",
+	     filePath.toUtf8().constData());
 
 	QFileInfo fileInfo(filePath);
 	if (!fileInfo.exists()) {
 		// File might not exist yet - that's okay, we'll retry
-		qInfo() << "RealTimeAudioMonitor: File does not exist yet, will retry:" << filePath;
+		blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: File does not exist yet, will retry: %s",
+		     filePath.toUtf8().constData());
+	} else {
+		blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: File exists, size: %lld bytes",
+		     fileInfo.size());
 	}
 
 	m_filePath = filePath;
@@ -62,6 +70,7 @@ bool RealTimeAudioMonitor::startMonitoring(const QString &filePath)
 	// Start checking after a short delay to allow file to be created
 	QTimer::singleShot(500, this, [this]() {
 		if (m_monitoring) {
+			blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: Starting check timer");
 			m_checkTimer->start();
 		}
 	});
@@ -121,8 +130,17 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 		if (!m_recentSamples.isEmpty()) {
 			double currentTime = m_recentSamples.last().timestamp;
 			double firstTime = m_recentSamples.first().timestamp;
-			if (currentTime - firstTime >= m_baselineWindowSeconds) {
+			double elapsed = currentTime - firstTime;
+			if (elapsed >= m_baselineWindowSeconds) {
 				m_baselineCollected = true;
+				double baseline = calculateBaselineAverage();
+				blog(LOG_INFO,
+				     "[AudioSync] RealTimeAudioMonitor: Baseline collected (%.2fs), average: %.6f, threshold: %.6f",
+				     elapsed, baseline, baseline * m_spikeThreshold);
+			} else {
+				blog(LOG_DEBUG,
+				     "[AudioSync] RealTimeAudioMonitor: Collecting baseline: %.2fs / %.2fs, samples: %d",
+				     elapsed, m_baselineWindowSeconds, m_recentSamples.size());
 			}
 		}
 		// Remove old samples outside baseline window
@@ -174,6 +192,21 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 					m_spikeDetected = true;
 					m_spikeTimestamp = m_spikeStartTime;
 					m_spikeInProgress = false;
+					
+					// Find peak amplitude for logging
+					double peakAmplitude = 0.0;
+					for (const AudioSample &s : newSamples) {
+						if (s.timestamp >= m_spikeStartTime && s.timestamp <= sample.timestamp) {
+							if (s.amplitude > peakAmplitude) {
+								peakAmplitude = s.amplitude;
+							}
+						}
+					}
+					
+					blog(LOG_INFO,
+					     "[AudioSync] RealTimeAudioMonitor: Valid clap detected! Time: %.3fs, Duration: %.3fs, Peak: %.6f (%.1fx baseline)",
+					     m_spikeTimestamp, spikeDuration, peakAmplitude, peakAmplitude / baseline);
+					
 					// Add samples to recent for baseline maintenance
 					m_recentSamples.append(newSamples);
 					// Remove old samples outside baseline window
@@ -236,8 +269,12 @@ void RealTimeAudioMonitor::checkForSpike()
 
 		if (allSamples.isEmpty()) {
 			// No samples yet, file might still be initializing
+			blog(LOG_DEBUG, "[AudioSync] RealTimeAudioMonitor: No audio samples yet, file may still be initializing");
 			return;
 		}
+		
+		blog(LOG_DEBUG, "[AudioSync] RealTimeAudioMonitor: Extracted %d audio samples, last timestamp: %.3fs",
+		     allSamples.size(), allSamples.isEmpty() ? 0.0 : allSamples.last().timestamp);
 
 		// Get new samples since last check
 		QVector<AudioSample> newSamples;
@@ -251,11 +288,39 @@ void RealTimeAudioMonitor::checkForSpike()
 			// Update last check position
 			double currentTime = newSamples.last().timestamp;
 
+			// Calculate and emit volume levels for UI display
+			double baseline = 0.0;
+			double current = 0.0;
+			double threshold = 0.0;
+			
+			if (m_baselineCollected) {
+				baseline = calculateBaselineAverage();
+				threshold = baseline * m_spikeThreshold;
+				// Get current level from most recent sample
+				if (!newSamples.isEmpty()) {
+					current = newSamples.last().amplitude;
+				} else if (!m_recentSamples.isEmpty()) {
+					current = m_recentSamples.last().amplitude;
+				}
+			} else {
+				// During baseline collection, show current level
+				if (!newSamples.isEmpty()) {
+					current = newSamples.last().amplitude;
+				} else if (!m_recentSamples.isEmpty()) {
+					current = m_recentSamples.last().amplitude;
+				}
+			}
+			
+			emit volumeLevelsUpdated(baseline, current, threshold);
+
 			if (m_spikeDetected) {
 				// Spike already detected, check if 2 seconds have passed
 				double elapsedSinceSpike = currentTime - m_spikeTimestamp;
 				if (elapsedSinceSpike >= m_postSpikeDuration) {
 					// 2 seconds have passed, stop monitoring
+					blog(LOG_INFO,
+					     "[AudioSync] RealTimeAudioMonitor: Post-spike period complete (%.2fs), stopping monitoring",
+					     elapsedSinceSpike);
 					emit recordingComplete(m_spikeTimestamp);
 					stopMonitoring();
 					return;

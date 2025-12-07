@@ -52,6 +52,7 @@ public:
 signals:
 	void spikeDetected(double timestamp); // Spike detected at timestamp
 	void recordingComplete(double spikeTimestamp); // Recording complete (2s after spike)
+	void volumeLevelsUpdated(double baseline, double current, double threshold); // Volume levels for UI display
 	void monitoringError(const QString &error);
 
 private slots:
