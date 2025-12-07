@@ -39,8 +39,8 @@ static bool enumFilterCallback(void *param, obs_source_t *filter)
 	const char *filterId = obs_source_get_id(filter);
 	bool enabled = obs_source_enabled(filter);
 	blog(LOG_INFO, "[AudioSync] enumFilterCallback: Source %s - Filter: %s (id: %s, enabled: %d)",
-	     sourceName ? sourceName : "(null)", filterName ? filterName : "(null)",
-	     filterId ? filterId : "(null)", enabled);
+	     sourceName ? sourceName : "(null)", filterName ? filterName : "(null)", filterId ? filterId : "(null)",
+	     enabled);
 	return true;
 }
 
@@ -103,11 +103,11 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 		// Enumerate all filters to log them
 		blog(LOG_INFO, "[AudioSync] enumSourceCallback: Video source found: %s",
 		     sourceNameStr.toUtf8().constData());
-		
+
 		// List all filters on this source
 		QByteArray sourceNameBytes = sourceNameStr.toUtf8();
 		obs_source_enum_filters(source, enumFilterCallback, sourceNameBytes.constData());
-		
+
 		obs_source_t *filter = obs_source_get_filter_by_name(source, "Async Delay");
 		if (filter == nullptr) {
 			blog(LOG_INFO,

@@ -260,7 +260,7 @@ void TimelineWidget::drawVideoFrameMarkers(QPainter &painter)
 	const int FRAME_BLOCK_TOP = VIDEO_CENTER_Y - FRAME_BLOCK_HEIGHT / 2;
 
 	painter.setPen(QPen(QColor(100, 255, 100), 1)); // Light green border only
-	painter.setBrush(Qt::NoBrush); // No background fill
+	painter.setBrush(Qt::NoBrush);                  // No background fill
 
 	// Draw blocks for all video frames in visible range
 	for (double frameTime : m_videoFrameTimestamps) {

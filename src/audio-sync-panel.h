@@ -152,8 +152,8 @@ private:
 	// Auto-sync recording state
 	enum class AutoSyncState {
 		Idle,
-		Recording,  // Baseline collection + spike detection
-		PostSpike,  // After spike detected, waiting 2 seconds
+		Recording, // Baseline collection + spike detection
+		PostSpike, // After spike detected, waiting 2 seconds
 		Stopping
 	};
 	AutoSyncState m_autoSyncState{AutoSyncState::Idle};

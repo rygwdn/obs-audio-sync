@@ -50,7 +50,7 @@ public:
 	bool isMonitoring() const { return m_monitoring; }
 
 signals:
-	void spikeDetected(double timestamp); // Spike detected at timestamp
+	void spikeDetected(double timestamp);          // Spike detected at timestamp
 	void recordingComplete(double spikeTimestamp); // Recording complete (2s after spike)
 	void volumeLevelsUpdated(double baseline, double current, double threshold); // Volume levels for UI display
 	void monitoringError(const QString &error);
@@ -63,17 +63,17 @@ private:
 	QString m_filePath;
 	QVector<AudioSample> m_recentSamples; // Keep recent samples for threshold
 	double m_spikeThreshold{4.0};         // Threshold multiplier (4x average)
-	double m_baselineWindowSeconds{2.0};   // Window for baseline calculation (2 seconds)
+	double m_baselineWindowSeconds{2.0};  // Window for baseline calculation (2 seconds)
 	double m_minSpikeDuration{0.05};      // Minimum spike duration (50ms)
 	double m_maxSpikeDuration{0.2};       // Maximum duration for valid clap (200ms)
 	double m_spikeEndThreshold{1.5};      // Threshold multiplier for spike end detection
-	double m_postSpikeDuration{2.0};     // Seconds to record after spike
+	double m_postSpikeDuration{2.0};      // Seconds to record after spike
 	bool m_monitoring{false};
-	bool m_baselineCollected{false};      // True after 2 seconds of baseline collected
-	bool m_spikeDetected{false};         // True when spike has been detected
-	bool m_spikeInProgress{false};        // True when currently tracking a spike
-	double m_spikeTimestamp{0.0};         // Timestamp when spike was detected
-	double m_spikeStartTime{0.0};         // Timestamp when current spike started
+	bool m_baselineCollected{false}; // True after 2 seconds of baseline collected
+	bool m_spikeDetected{false};     // True when spike has been detected
+	bool m_spikeInProgress{false};   // True when currently tracking a spike
+	double m_spikeTimestamp{0.0};    // Timestamp when spike was detected
+	double m_spikeStartTime{0.0};    // Timestamp when current spike started
 	QElapsedTimer m_recordingStartTime;
 	double m_lastCheckPosition{0.0}; // Last audio position checked
 

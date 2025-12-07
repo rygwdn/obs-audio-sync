@@ -52,8 +52,7 @@ bool RealTimeAudioMonitor::startMonitoring(const QString &filePath)
 		blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: File does not exist yet, will retry: %s",
 		     filePath.toUtf8().constData());
 	} else {
-		blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: File exists, size: %lld bytes",
-		     fileInfo.size());
+		blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: File exists, size: %lld bytes", fileInfo.size());
 	}
 
 	m_filePath = filePath;
@@ -147,7 +146,8 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 		double currentTime = newSamples.isEmpty() ? 0.0 : newSamples.last().timestamp;
 		m_recentSamples.erase(std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
 						     [currentTime, this](const AudioSample &s) {
-							     return (currentTime - s.timestamp) > m_baselineWindowSeconds;
+							     return (currentTime - s.timestamp) >
+								    m_baselineWindowSeconds;
 						     }),
 				      m_recentSamples.end());
 		return false;
@@ -192,30 +192,33 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 					m_spikeDetected = true;
 					m_spikeTimestamp = m_spikeStartTime;
 					m_spikeInProgress = false;
-					
+
 					// Find peak amplitude for logging
 					double peakAmplitude = 0.0;
 					for (const AudioSample &s : newSamples) {
-						if (s.timestamp >= m_spikeStartTime && s.timestamp <= sample.timestamp) {
+						if (s.timestamp >= m_spikeStartTime &&
+						    s.timestamp <= sample.timestamp) {
 							if (s.amplitude > peakAmplitude) {
 								peakAmplitude = s.amplitude;
 							}
 						}
 					}
-					
+
 					blog(LOG_INFO,
 					     "[AudioSync] RealTimeAudioMonitor: Valid clap detected! Time: %.3fs, Duration: %.3fs, Peak: %.6f (%.1fx baseline)",
 					     m_spikeTimestamp, spikeDuration, peakAmplitude, peakAmplitude / baseline);
-					
+
 					// Add samples to recent for baseline maintenance
 					m_recentSamples.append(newSamples);
 					// Remove old samples outside baseline window
 					double currentTime = newSamples.isEmpty() ? 0.0 : newSamples.last().timestamp;
-					m_recentSamples.erase(std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
-									     [currentTime, this](const AudioSample &s) {
-										     return (currentTime - s.timestamp) > m_baselineWindowSeconds;
-									     }),
-							      m_recentSamples.end());
+					m_recentSamples.erase(
+						std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
+							       [currentTime, this](const AudioSample &s) {
+								       return (currentTime - s.timestamp) >
+									      m_baselineWindowSeconds;
+							       }),
+						m_recentSamples.end());
 					return true;
 				} else {
 					// Spike too short or too long, not a valid clap
@@ -269,10 +272,11 @@ void RealTimeAudioMonitor::checkForSpike()
 
 		if (allSamples.isEmpty()) {
 			// No samples yet, file might still be initializing
-			blog(LOG_DEBUG, "[AudioSync] RealTimeAudioMonitor: No audio samples yet, file may still be initializing");
+			blog(LOG_DEBUG,
+			     "[AudioSync] RealTimeAudioMonitor: No audio samples yet, file may still be initializing");
 			return;
 		}
-		
+
 		blog(LOG_DEBUG, "[AudioSync] RealTimeAudioMonitor: Extracted %d audio samples, last timestamp: %.3fs",
 		     allSamples.size(), allSamples.isEmpty() ? 0.0 : allSamples.last().timestamp);
 
@@ -292,7 +296,7 @@ void RealTimeAudioMonitor::checkForSpike()
 			double baseline = 0.0;
 			double current = 0.0;
 			double threshold = 0.0;
-			
+
 			if (m_baselineCollected) {
 				baseline = calculateBaselineAverage();
 				threshold = baseline * m_spikeThreshold;
@@ -310,7 +314,7 @@ void RealTimeAudioMonitor::checkForSpike()
 					current = m_recentSamples.last().amplitude;
 				}
 			}
-			
+
 			emit volumeLevelsUpdated(baseline, current, threshold);
 
 			if (m_spikeDetected) {
