@@ -53,12 +53,8 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent)
 	m_autoSyncState = AutoSyncState::Idle;
 	m_audioMonitor = new RealTimeAudioMonitor(this);
 	connect(m_audioMonitor, &RealTimeAudioMonitor::spikeDetected, this, &AudioSyncPanel::onSpikeDetected);
+	connect(m_audioMonitor, &RealTimeAudioMonitor::recordingComplete, this, &AudioSyncPanel::onRecordingComplete);
 	connect(m_audioMonitor, &RealTimeAudioMonitor::monitoringError, this, &AudioSyncPanel::onMonitoringError);
-
-	// Setup countdown timer
-	m_countdownTimer = new QTimer(this);
-	m_countdownTimer->setInterval(1000); // 1 second
-	connect(m_countdownTimer, &QTimer::timeout, this, &AudioSyncPanel::onCountdownTick);
 
 	setupUI();
 	refreshRecordings();
@@ -93,10 +89,6 @@ AudioSyncPanel::~AudioSyncPanel()
 	}
 	if (m_audioMonitor) {
 		disconnect(m_audioMonitor, nullptr, this, nullptr);
-	}
-	if (m_countdownTimer) {
-		m_countdownTimer->stop();
-		disconnect(m_countdownTimer, nullptr, this, nullptr);
 	}
 
 	// Stop refresh timer
@@ -307,7 +299,7 @@ void AudioSyncPanel::onAutoSyncClicked()
 {
 	if (m_autoSyncState != AutoSyncState::Idle) {
 		// Cancel if already recording
-		if (m_autoSyncState == AutoSyncState::Recording || m_autoSyncState == AutoSyncState::Monitoring) {
+		if (m_autoSyncState == AutoSyncState::Recording || m_autoSyncState == AutoSyncState::PostSpike) {
 			stopAutoSyncRecording();
 		}
 		return;
@@ -366,14 +358,13 @@ void AudioSyncPanel::startAutoSyncRecording()
 	// Update state
 	m_autoSyncState = AutoSyncState::Recording;
 	m_spikeTimestamp = 0.0;
-	m_countdownSeconds = 3;
 
 	// Update UI
 	m_autoSyncButton->setText("Cancel Auto Sync");
 	m_autoSyncButton->setEnabled(true);
 	m_refreshButton->setEnabled(false);
 	m_startSyncButton->setEnabled(false);
-	m_statusLabel->setText("Recording... (Waiting for clap)");
+	m_statusLabel->setText("Recording... (Collecting baseline)");
 	m_statusLabel->setStyleSheet("color: orange;");
 
 	// Start monitoring after a short delay to allow file creation
@@ -396,6 +387,13 @@ void AudioSyncPanel::startAutoSyncRecording()
 
 				m_autoSyncRecordingPath = path;
 				m_audioMonitor->startMonitoring(m_autoSyncRecordingPath);
+				
+				// Update UI after monitoring starts (baseline collection phase)
+				QTimer::singleShot(2100, this, [this]() {
+					if (m_autoSyncState == AutoSyncState::Recording) {
+						m_statusLabel->setText("Recording... (Waiting for clap)");
+					}
+				});
 			} else {
 				// Fallback: try to find the newest file in the directory
 				QFileInfo pathInfo(m_autoSyncRecordingPath);
@@ -431,7 +429,6 @@ void AudioSyncPanel::stopAutoSyncRecording()
 
 	// Stop monitoring
 	m_audioMonitor->stopMonitoring();
-	m_countdownTimer->stop();
 
 	// Stop recording if still active
 	if (obs_frontend_recording_active()) {
@@ -456,27 +453,23 @@ void AudioSyncPanel::onSpikeDetected(double timestamp)
 	}
 
 	m_spikeTimestamp = timestamp;
-	m_autoSyncState = AutoSyncState::Monitoring;
-	m_countdownSeconds = 3;
+	m_autoSyncState = AutoSyncState::PostSpike;
 
 	// Update UI
-	m_statusLabel->setText(QString("Spike detected! Stopping in %1s...").arg(m_countdownSeconds));
+	m_statusLabel->setText("Clap detected! Recording 2 more seconds...");
 	m_statusLabel->setStyleSheet("color: green;");
-
-	// Start countdown
-	m_countdownTimer->start();
 }
 
-void AudioSyncPanel::onCountdownTick()
+void AudioSyncPanel::onRecordingComplete(double spikeTimestamp)
 {
-	m_countdownSeconds--;
-	if (m_countdownSeconds > 0) {
-		m_statusLabel->setText(QString("Spike detected! Stopping in %1s...").arg(m_countdownSeconds));
-	} else {
-		// Countdown finished, stop recording
-		m_countdownTimer->stop();
-		stopAutoSyncRecording();
+	if (m_autoSyncState != AutoSyncState::PostSpike) {
+		return;
 	}
+
+	m_spikeTimestamp = spikeTimestamp;
+
+	// Stop recording immediately
+	stopAutoSyncRecording();
 }
 
 void AudioSyncPanel::onMonitoringError(const QString &error)

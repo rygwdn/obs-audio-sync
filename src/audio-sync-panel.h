@@ -119,8 +119,8 @@ private slots:
 	void onScanError(const QString &error);
 	// Real-time monitoring slots
 	void onSpikeDetected(double timestamp);
+	void onRecordingComplete(double spikeTimestamp);
 	void onMonitoringError(const QString &error);
-	void onCountdownTick();
 
 private:
 	void setupUI();
@@ -150,15 +150,13 @@ private:
 	// Auto-sync recording state
 	enum class AutoSyncState {
 		Idle,
-		Recording,
-		Monitoring, // Spike detected, counting down
+		Recording,  // Baseline collection + spike detection
+		PostSpike,  // After spike detected, waiting 2 seconds
 		Stopping
 	};
 	AutoSyncState m_autoSyncState{AutoSyncState::Idle};
 	QString m_autoSyncRecordingPath;
 	RealTimeAudioMonitor *m_audioMonitor{nullptr};
-	QTimer *m_countdownTimer{nullptr};
-	int m_countdownSeconds{3};
 	double m_spikeTimestamp{0.0};
 };
 

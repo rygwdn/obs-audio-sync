@@ -52,6 +52,11 @@ bool RealTimeAudioMonitor::startMonitoring(const QString &filePath)
 	m_recentSamples.clear();
 	m_lastCheckPosition = 0.0;
 	m_monitoring = true;
+	m_baselineCollected = false;
+	m_spikeDetected = false;
+	m_spikeInProgress = false;
+	m_spikeTimestamp = 0.0;
+	m_spikeStartTime = 0.0;
 	m_recordingStartTime.start();
 
 	// Start checking after a short delay to allow file to be created
@@ -74,6 +79,11 @@ void RealTimeAudioMonitor::stopMonitoring()
 	m_checkTimer->stop();
 	m_recentSamples.clear();
 	m_filePath.clear();
+	m_baselineCollected = false;
+	m_spikeDetected = false;
+	m_spikeInProgress = false;
+	m_spikeTimestamp = 0.0;
+	m_spikeStartTime = 0.0;
 }
 
 double RealTimeAudioMonitor::calculateBaselineAverage() const
@@ -104,27 +114,86 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 		return false;
 	}
 
-	// Calculate baseline average from recent samples
+	// Check if baseline has been collected (2 seconds of data)
+	if (!m_baselineCollected) {
+		// Still collecting baseline - add samples and check if we have 2 seconds
+		m_recentSamples.append(newSamples);
+		if (!m_recentSamples.isEmpty()) {
+			double currentTime = m_recentSamples.last().timestamp;
+			double firstTime = m_recentSamples.first().timestamp;
+			if (currentTime - firstTime >= m_baselineWindowSeconds) {
+				m_baselineCollected = true;
+			}
+		}
+		// Remove old samples outside baseline window
+		double currentTime = newSamples.isEmpty() ? 0.0 : newSamples.last().timestamp;
+		m_recentSamples.erase(std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
+						     [currentTime, this](const AudioSample &s) {
+							     return (currentTime - s.timestamp) > m_baselineWindowSeconds;
+						     }),
+				      m_recentSamples.end());
+		return false;
+	}
+
+	// Baseline collected, now detect spikes
 	double baseline = calculateBaselineAverage();
 	if (baseline <= 0.0) {
-		// Not enough data yet, add samples to recent and return
+		// Should not happen if baseline is collected, but handle gracefully
 		m_recentSamples.append(newSamples);
 		return false;
 	}
 
 	double threshold = baseline * m_spikeThreshold;
+	double spikeEndThreshold = baseline * m_spikeEndThreshold;
 
 	// Check new samples for spike
 	for (const AudioSample &sample : newSamples) {
+		if (m_spikeInProgress) {
+			// Check if spike has exceeded maximum duration
+			double spikeDuration = sample.timestamp - m_spikeStartTime;
+			if (spikeDuration > m_maxSpikeDuration) {
+				// Spike too long, not a valid clap - reject it
+				m_spikeInProgress = false;
+			}
+		}
+
 		if (sample.amplitude > threshold) {
-			// Potential spike detected - check duration
-			// For now, if amplitude exceeds threshold, consider it a spike
-			// In a more sophisticated implementation, we'd track spike duration
-			return true;
+			// Potential spike start
+			if (!m_spikeInProgress) {
+				m_spikeStartTime = sample.timestamp;
+				m_spikeInProgress = true;
+			}
+		} else if (m_spikeInProgress) {
+			// Amplitude dropped below threshold - spike may have ended
+			// Check if amplitude is below end threshold (spike definitely ended)
+			if (sample.amplitude < spikeEndThreshold) {
+				// Spike ended - check if it's a valid short spike (clap)
+				double spikeDuration = sample.timestamp - m_spikeStartTime;
+				if (spikeDuration >= m_minSpikeDuration && spikeDuration <= m_maxSpikeDuration) {
+					// Valid short spike (clap) detected
+					m_spikeDetected = true;
+					m_spikeTimestamp = m_spikeStartTime;
+					m_spikeInProgress = false;
+					// Add samples to recent for baseline maintenance
+					m_recentSamples.append(newSamples);
+					// Remove old samples outside baseline window
+					double currentTime = newSamples.isEmpty() ? 0.0 : newSamples.last().timestamp;
+					m_recentSamples.erase(std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
+									     [currentTime, this](const AudioSample &s) {
+										     return (currentTime - s.timestamp) > m_baselineWindowSeconds;
+									     }),
+							      m_recentSamples.end());
+					return true;
+				} else {
+					// Spike too short or too long, not a valid clap
+					m_spikeInProgress = false;
+				}
+			}
+			// If amplitude is between threshold and endThreshold, spike might still be ongoing
 		}
 	}
 
-	// No spike, add samples to recent (maintaining window)
+	// No spike detected, add samples to recent (maintaining window)
 	m_recentSamples.append(newSamples);
 
 	// Remove old samples outside baseline window
@@ -142,12 +211,6 @@ void RealTimeAudioMonitor::checkForSpike()
 {
 	if (!m_monitoring || m_filePath.isEmpty()) {
 		return;
-	}
-
-	// Check minimum recording duration
-	double elapsedSeconds = m_recordingStartTime.elapsed() / 1000.0;
-	if (elapsedSeconds < m_minRecordingDuration) {
-		return; // Too early to check
 	}
 
 	QFileInfo fileInfo(m_filePath);
@@ -186,26 +249,26 @@ void RealTimeAudioMonitor::checkForSpike()
 
 		if (!newSamples.isEmpty()) {
 			// Update last check position
-			m_lastCheckPosition = newSamples.last().timestamp;
+			double currentTime = newSamples.last().timestamp;
 
-			// Check for spike
-			if (detectSpike(newSamples)) {
-				// Spike detected - find the timestamp of the spike
-				double spikeTimestamp = 0.0;
-				double maxAmplitude = 0.0;
-				double baseline = calculateBaselineAverage();
-				double threshold = baseline * m_spikeThreshold;
-
-				for (const AudioSample &sample : newSamples) {
-					if (sample.amplitude > threshold && sample.amplitude > maxAmplitude) {
-						maxAmplitude = sample.amplitude;
-						spikeTimestamp = sample.timestamp;
-					}
-				}
-
-				if (spikeTimestamp > 0.0) {
-					emit spikeDetected(spikeTimestamp);
+			if (m_spikeDetected) {
+				// Spike already detected, check if 2 seconds have passed
+				double elapsedSinceSpike = currentTime - m_spikeTimestamp;
+				if (elapsedSinceSpike >= m_postSpikeDuration) {
+					// 2 seconds have passed, stop monitoring
+					emit recordingComplete(m_spikeTimestamp);
 					stopMonitoring();
+					return;
+				}
+				// Continue monitoring, but don't check for new spikes
+			} else {
+				// Check for spike
+				if (detectSpike(newSamples)) {
+					// Valid spike (clap) detected
+					if (m_spikeTimestamp > 0.0) {
+						emit spikeDetected(m_spikeTimestamp);
+						// Continue monitoring for 2 more seconds
+					}
 				}
 			}
 		}
