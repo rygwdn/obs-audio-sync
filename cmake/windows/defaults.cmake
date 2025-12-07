@@ -45,26 +45,20 @@ set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
 set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
 set(CPACK_NSIS_DEFAULT_INSTALL_DIR "$PROGRAMFILES64\\obs-studio")
 
-# Use DESTDIR for staging (required for proper file paths in NSIS)
-# Note: CPack warns about using CPACK_SET_DESTDIR with NSIS, but it's needed
-# for proper staging. The actual install location is controlled by
-# CPACK_NSIS_DEFAULT_INSTALL_DIR, not CMAKE_INSTALL_PREFIX.
-set(CPACK_SET_DESTDIR ON)
-
-# Override CMAKE_INSTALL_PREFIX to avoid path mixing issues with CPack
-# When CPACK_SET_DESTDIR is ON, CPack uses DESTDIR + CMAKE_INSTALL_PREFIX
-# An absolute Windows path (e.g., C:\ProgramData\...) causes path mixing.
-# Use empty string to make installs relative to DESTDIR root.
-# Files will be staged at DESTDIR/${CMAKE_PROJECT_NAME}/bin/64bit/ which
-# matches what NSIS expects. The actual install location is controlled by
-# CPACK_NSIS_DEFAULT_INSTALL_DIR, not CMAKE_INSTALL_PREFIX.
-if(CMAKE_INSTALL_PREFIX MATCHES "^[A-Za-z]:")
-  # Original prefix is absolute Windows path, store it for reference
-  set(_ORIGINAL_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}" CACHE INTERNAL "Original install prefix")
-  # Use empty string to make installs relative to DESTDIR root
-  # This ensures files go to DESTDIR/${CMAKE_PROJECT_NAME}/bin/64bit/
-  set(CMAKE_INSTALL_PREFIX "" CACHE STRING "Install prefix for CPack staging" FORCE)
+# Override CMAKE_INSTALL_PREFIX to match NSIS install directory
+# CPack NSIS generator works best when CMAKE_INSTALL_PREFIX matches
+# CPACK_NSIS_DEFAULT_INSTALL_DIR. This avoids path mixing issues.
+# Convert backslashes to forward slashes for CMake compatibility.
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT OR CMAKE_INSTALL_PREFIX MATCHES "^[A-Za-z]:")
+  # Use the NSIS default install directory as the install prefix
+  # Convert backslashes to forward slashes for CMake
+  string(REPLACE "\\" "/" _NSIS_INSTALL_DIR "${CPACK_NSIS_DEFAULT_INSTALL_DIR}")
+  set(CMAKE_INSTALL_PREFIX "${_NSIS_INSTALL_DIR}" CACHE STRING "Install prefix matching NSIS install directory" FORCE)
 endif()
+
+# Don't use CPACK_SET_DESTDIR with NSIS - it causes issues and CPack warns against it
+# NSIS generator handles staging internally when CPACK_SET_DESTDIR is OFF
+set(CPACK_SET_DESTDIR OFF)
 
 # Custom install commands to place files in OBS directory structure
 # CPack first installs files to $INSTDIR/${CMAKE_PROJECT_NAME}/bin/64bit/ and data/
