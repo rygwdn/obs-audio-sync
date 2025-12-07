@@ -56,5 +56,23 @@ runs:
 
         print ::group::Run clang-format-19
         local -a changes=(${(s:,:)CHANGED_FILES//[\[\]\'\"]/})
-        ./build-aux/run-clang-format --fail-${{ inputs.failCondition }} --check ${changes}
+        local check_result=0
+        ./build-aux/run-clang-format --fail-${{ inputs.failCondition }} --check ${changes} || check_result=$?
+        
+        # If check failed, show the diff for each file
+        if (( check_result != 0 )); then
+          print ::endgroup::
+          print ::group::Show formatting differences
+          for file (${changes}) {
+            if [[ -f ${file} ]]; then
+              local formatted_output=$(clang-format-19 -style=file -fallback-style=none "${file}" 2>/dev/null)
+              if ! echo ${formatted_output} | diff -q "${file}" - &> /dev/null; then
+                print "::error file=${file}::${file} requires formatting changes. Showing diff:"
+                echo ${formatted_output} | diff -u "${file}" - || true
+              fi
+            fi
+          }
+          print ::endgroup::
+          exit ${check_result}
+        fi
         print ::endgroup::
