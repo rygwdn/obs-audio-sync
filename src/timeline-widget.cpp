@@ -255,7 +255,7 @@ void TimelineWidget::drawVideoFrameMarkers(QPainter &painter)
 	}
 
 	// Draw video frame blocks centered like the waveform
-	const int VIDEO_CENTER_Y = 140; // Below audio waveform (moved down)
+	const int VIDEO_CENTER_Y = 140;    // Below audio waveform (moved down)
 	const int FRAME_BLOCK_HEIGHT = 60; // Same height as audio waveform
 	const int FRAME_BLOCK_TOP = VIDEO_CENTER_Y - FRAME_BLOCK_HEIGHT / 2;
 
