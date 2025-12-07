@@ -1,26 +1,3 @@
-# Exclude everything
-/*
-
-# Except for default project files
-!/.github
-!/build-aux
-!/cmake
-!/data
-!/src
-!/tests
-!.clang-format
-!.gersemirc
-!.gitignore
-!buildspec.json
-!CMakeLists.txt
-!CMakePresets.json
-!LICENSE
-!README.md
-!CONTRIBUTING.md
-
-# Exclude lock files
-*.lock.json
-
 # Exclude macOS legacy resource forks
 .DS_Store
 
@@ -33,3 +10,7 @@ build_lint/
 
 # Exclude build-aux temp files
 .tmp/
+.deps
+build*/
+history/*
+release/*
