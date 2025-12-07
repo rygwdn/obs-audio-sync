@@ -36,7 +36,6 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "audio-sync-modal.h"
 #include "source-offset-manager.h"
 #include "realtime-audio-monitor.h"
-#include <QComboBox>
 #include <QStyledItemDelegate>
 #include <QPainter>
 #include <QTextDocument>
@@ -109,8 +108,7 @@ private slots:
 	void onRefreshClicked();
 	void onStartSyncClicked();
 	void onAutoSyncClicked();
-	void onAudioSourceChanged(int index);
-	void onVideoSourceChanged(int index);
+	void onSourceSelectionChanged();
 	void onRefreshSourcesClicked();
 	// Worker slots
 	void onRecordingsScanned(const QList<RecordingInfo> &recordings);
@@ -126,6 +124,8 @@ private:
 	void setupSourceSelection();
 	void refreshSourceList();
 	void updateOffsetDisplay();
+	QStringList getSelectedAudioSources() const;
+	QStringList getSelectedVideoSources() const;
 	void showSpinner(const QString &message);
 	void hideSpinner();
 	void startAutoSyncRecording();
@@ -142,10 +142,8 @@ private:
 	QLabel *m_spinnerLabel{nullptr};
 
 	// Source selection UI
-	QComboBox *m_audioSourceCombo{nullptr};
-	QComboBox *m_videoSourceCombo{nullptr};
-	QLabel *m_audioOffsetLabel{nullptr};
-	QLabel *m_videoOffsetLabel{nullptr};
+	QListWidget *m_audioSourcesList{nullptr};
+	QListWidget *m_videoSourcesList{nullptr};
 	QPushButton *m_refreshSourcesButton{nullptr};
 
 	// Source offset manager

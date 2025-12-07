@@ -35,7 +35,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "video-extractor.h"
 #include "video-extraction-worker.h"
 #include "source-offset-manager.h"
-#include <QComboBox>
+#include <QListWidget>
 
 class AudioSyncModal : public QDialog {
 	Q_OBJECT
@@ -58,8 +58,7 @@ private slots:
 	void onZoomInClicked();
 	void onZoomOutClicked();
 	void onResetZoomClicked();
-	void onAudioSourceChanged(int index);
-	void onVideoSourceChanged(int index);
+	void onSourceSelectionChanged();
 	void onApplyOffsetClicked();
 	// Worker slots
 	void onAudioAnalyzed(const AudioSpike &spike, const QVector<AudioSample> &samples);
@@ -73,6 +72,8 @@ private:
 	void setupSourceSelection();
 	void refreshSourceList();
 	void updateOffsetDisplay();
+	QStringList getSelectedAudioSources() const;
+	QStringList getSelectedVideoSources() const;
 	void loadRecording(const QString &filePath);
 	void updateFrameDisplay();
 	void updateSyncDisplay();
@@ -92,10 +93,8 @@ private:
 	QLabel *m_spinnerLabel{nullptr};
 
 	// Source selection UI
-	QComboBox *m_audioSourceCombo{nullptr};
-	QComboBox *m_videoSourceCombo{nullptr};
-	QLabel *m_audioOffsetLabel{nullptr};
-	QLabel *m_videoOffsetLabel{nullptr};
+	QListWidget *m_audioSourcesList{nullptr};
+	QListWidget *m_videoSourcesList{nullptr};
 	QPushButton *m_applyOffsetButton{nullptr};
 
 	// Source offset manager

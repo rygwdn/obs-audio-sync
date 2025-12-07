@@ -34,7 +34,8 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qpixmap.h>
 #include <qprogressbar.h>
 #include <qthread.h>
-#include <qcombobox.h>
+#include <qlistwidget.h>
+#include <qabstractitemview.h>
 #include <qlabel.h>
 
 AudioSyncModal::AudioSyncModal(const QString &filePath, QWidget *parent) : QDialog(parent)
@@ -82,11 +83,11 @@ AudioSyncModal::~AudioSyncModal()
 	if (m_nextFrameButton) {
 		disconnect(m_nextFrameButton, nullptr, this, nullptr);
 	}
-	if (m_audioSourceCombo) {
-		disconnect(m_audioSourceCombo, nullptr, this, nullptr);
+	if (m_audioSourcesList) {
+		disconnect(m_audioSourcesList, nullptr, this, nullptr);
 	}
-	if (m_videoSourceCombo) {
-		disconnect(m_videoSourceCombo, nullptr, this, nullptr);
+	if (m_videoSourcesList) {
+		disconnect(m_videoSourcesList, nullptr, this, nullptr);
 	}
 	if (m_applyOffsetButton) {
 		disconnect(m_applyOffsetButton, nullptr, this, nullptr);
@@ -186,31 +187,23 @@ void AudioSyncModal::setupUI()
 	sourceSectionLabel->setFont(sectionFont);
 	mainLayout->addWidget(sourceSectionLabel);
 
-	// Audio source selection
-	auto *audioSourceLayout = new QHBoxLayout();
-	auto *audioLabel = new QLabel("Audio Source:", this);
-	audioSourceLayout->addWidget(audioLabel);
-	m_audioSourceCombo = new QComboBox(this);
-	m_audioSourceCombo->setToolTip("Select an audio source with Async Delay filter");
-	audioSourceLayout->addWidget(m_audioSourceCombo);
-	m_audioOffsetLabel = new QLabel("", this);
-	m_audioOffsetLabel->setStyleSheet("color: gray;");
-	m_audioOffsetLabel->setMinimumWidth(120);
-	audioSourceLayout->addWidget(m_audioOffsetLabel);
-	mainLayout->addLayout(audioSourceLayout);
+	// Audio sources to sync
+	auto *audioLabel = new QLabel("Audio Sources to Sync:", this);
+	mainLayout->addWidget(audioLabel);
+	m_audioSourcesList = new QListWidget(this);
+	m_audioSourcesList->setSelectionMode(QAbstractItemView::NoSelection);
+	m_audioSourcesList->setMaximumHeight(150);
+	m_audioSourcesList->setToolTip("Select audio sources to sync to match the recording");
+	mainLayout->addWidget(m_audioSourcesList);
 
-	// Video source selection
-	auto *videoSourceLayout = new QHBoxLayout();
-	auto *videoLabel = new QLabel("Video Source:", this);
-	videoSourceLayout->addWidget(videoLabel);
-	m_videoSourceCombo = new QComboBox(this);
-	m_videoSourceCombo->setToolTip("Select a video source with Async Delay filter");
-	videoSourceLayout->addWidget(m_videoSourceCombo);
-	m_videoOffsetLabel = new QLabel("", this);
-	m_videoOffsetLabel->setStyleSheet("color: gray;");
-	m_videoOffsetLabel->setMinimumWidth(120);
-	videoSourceLayout->addWidget(m_videoOffsetLabel);
-	mainLayout->addLayout(videoSourceLayout);
+	// Video sources to sync
+	auto *videoLabel = new QLabel("Video Sources to Sync:", this);
+	mainLayout->addWidget(videoLabel);
+	m_videoSourcesList = new QListWidget(this);
+	m_videoSourcesList->setSelectionMode(QAbstractItemView::NoSelection);
+	m_videoSourcesList->setMaximumHeight(150);
+	m_videoSourcesList->setToolTip("Select video sources to sync to match the recording");
+	mainLayout->addWidget(m_videoSourcesList);
 
 	// Apply offset button
 	m_applyOffsetButton = new QPushButton("Apply Offset", this);
@@ -247,10 +240,8 @@ void AudioSyncModal::setupUI()
 	connect(m_zoomInButton, &QPushButton::clicked, this, &AudioSyncModal::onZoomInClicked);
 	connect(m_zoomOutButton, &QPushButton::clicked, this, &AudioSyncModal::onZoomOutClicked);
 	connect(m_resetZoomButton, &QPushButton::clicked, this, &AudioSyncModal::onResetZoomClicked);
-	connect(m_audioSourceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-		&AudioSyncModal::onAudioSourceChanged);
-	connect(m_videoSourceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-		&AudioSyncModal::onVideoSourceChanged);
+	connect(m_audioSourcesList, &QListWidget::itemChanged, this, &AudioSyncModal::onSourceSelectionChanged);
+	connect(m_videoSourcesList, &QListWidget::itemChanged, this, &AudioSyncModal::onSourceSelectionChanged);
 	connect(m_applyOffsetButton, &QPushButton::clicked, this, &AudioSyncModal::onApplyOffsetClicked);
 }
 
@@ -438,9 +429,11 @@ void AudioSyncModal::updateSyncDisplay()
 	m_syncOffsetLabel->setText(SYNC_TEXT);
 	m_syncOffsetLabel->setStyleSheet(QString("color: %1;").arg(color));
 
-	// Enable apply button if we have a calculated offset and a selected source
+	// Enable apply button if we have a calculated offset and at least one source selected
+	QStringList audioSources = getSelectedAudioSources();
+	QStringList videoSources = getSelectedVideoSources();
 	bool canApply = qAbs(m_calculatedOffsetMs) > 0.01 && // Non-zero offset
-			(m_audioSourceCombo->currentData().isValid() || m_videoSourceCombo->currentData().isValid());
+			(!audioSources.isEmpty() || !videoSources.isEmpty()); // At least one source selected
 	m_applyOffsetButton->setEnabled(canApply);
 }
 
@@ -515,36 +508,43 @@ void AudioSyncModal::refreshSourceList()
 		return;
 	}
 
-	// Store current selections
-	QString currentAudioSource = m_audioSourceCombo->currentText();
-	QString currentVideoSource = m_videoSourceCombo->currentText();
-
-	// Clear and repopulate audio sources
-	m_audioSourceCombo->clear();
-	m_audioSourceCombo->addItem("(None)", QVariant());
-	QList<SourceInfo> audioSources = m_sourceOffsetManager->getAudioSources();
-	for (const SourceInfo &info : audioSources) {
-		m_audioSourceCombo->addItem(info.name, QVariant(info.name));
+	// Store current selections (checked items)
+	QStringList checkedAudioSources;
+	for (int i = 0; i < m_audioSourcesList->count(); ++i) {
+		QListWidgetItem *item = m_audioSourcesList->item(i);
+		if (item && item->checkState() == Qt::Checked) {
+			checkedAudioSources.append(item->data(Qt::UserRole).toString());
+		}
 	}
 
-	// Restore audio selection if still available
-	int audioIndex = m_audioSourceCombo->findText(currentAudioSource);
-	if (audioIndex >= 0) {
-		m_audioSourceCombo->setCurrentIndex(audioIndex);
+	QStringList checkedVideoSources;
+	for (int i = 0; i < m_videoSourcesList->count(); ++i) {
+		QListWidgetItem *item = m_videoSourcesList->item(i);
+		if (item && item->checkState() == Qt::Checked) {
+			checkedVideoSources.append(item->data(Qt::UserRole).toString());
+		}
+	}
+
+	// Clear and repopulate audio sources
+	m_audioSourcesList->clear();
+	QList<SourceInfo> audioSources = m_sourceOffsetManager->getAudioSources();
+	for (const SourceInfo &info : audioSources) {
+		QListWidgetItem *item = new QListWidgetItem(info.name);
+		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+		item->setCheckState(checkedAudioSources.contains(info.name) ? Qt::Checked : Qt::Unchecked);
+		item->setData(Qt::UserRole, info.name);
+		m_audioSourcesList->addItem(item);
 	}
 
 	// Clear and repopulate video sources
-	m_videoSourceCombo->clear();
-	m_videoSourceCombo->addItem("(None)", QVariant());
+	m_videoSourcesList->clear();
 	QList<SourceInfo> videoSources = m_sourceOffsetManager->getVideoSources();
 	for (const SourceInfo &info : videoSources) {
-		m_videoSourceCombo->addItem(info.name, QVariant(info.name));
-	}
-
-	// Restore video selection if still available
-	int videoIndex = m_videoSourceCombo->findText(currentVideoSource);
-	if (videoIndex >= 0) {
-		m_videoSourceCombo->setCurrentIndex(videoIndex);
+		QListWidgetItem *item = new QListWidgetItem(info.name);
+		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+		item->setCheckState(checkedVideoSources.contains(info.name) ? Qt::Checked : Qt::Unchecked);
+		item->setData(Qt::UserRole, info.name);
+		m_videoSourcesList->addItem(item);
 	}
 
 	// Update offset displays
@@ -553,44 +553,43 @@ void AudioSyncModal::refreshSourceList()
 
 void AudioSyncModal::updateOffsetDisplay()
 {
-	if (!m_sourceOffsetManager) {
-		return;
-	}
-
-	// Update audio offset
-	QString audioSource = m_audioSourceCombo->currentData().toString();
-	if (audioSource.isEmpty()) {
-		m_audioOffsetLabel->setText("");
-	} else {
-		int offsetMs = m_sourceOffsetManager->getSourceOffset(audioSource);
-		QString offsetText = QString("%1%2ms").arg(offsetMs >= 0 ? "+" : "").arg(offsetMs);
-		m_audioOffsetLabel->setText(QString("Current: %1").arg(offsetText));
-	}
-
-	// Update video offset
-	QString videoSource = m_videoSourceCombo->currentData().toString();
-	if (videoSource.isEmpty()) {
-		m_videoOffsetLabel->setText("");
-	} else {
-		int offsetMs = m_sourceOffsetManager->getSourceOffset(videoSource);
-		QString offsetText = QString("%1%2ms").arg(offsetMs >= 0 ? "+" : "").arg(offsetMs);
-		m_videoOffsetLabel->setText(QString("Current: %1").arg(offsetText));
-	}
-
 	// Update apply button state
 	updateSyncDisplay();
 }
 
-void AudioSyncModal::onAudioSourceChanged(int index)
+void AudioSyncModal::onSourceSelectionChanged()
 {
-	Q_UNUSED(index);
 	updateOffsetDisplay();
 }
 
-void AudioSyncModal::onVideoSourceChanged(int index)
+QStringList AudioSyncModal::getSelectedAudioSources() const
 {
-	Q_UNUSED(index);
-	updateOffsetDisplay();
+	QStringList selected;
+	if (!m_audioSourcesList) {
+		return selected;
+	}
+	for (int i = 0; i < m_audioSourcesList->count(); ++i) {
+		QListWidgetItem *item = m_audioSourcesList->item(i);
+		if (item && item->checkState() == Qt::Checked) {
+			selected.append(item->data(Qt::UserRole).toString());
+		}
+	}
+	return selected;
+}
+
+QStringList AudioSyncModal::getSelectedVideoSources() const
+{
+	QStringList selected;
+	if (!m_videoSourcesList) {
+		return selected;
+	}
+	for (int i = 0; i < m_videoSourcesList->count(); ++i) {
+		QListWidgetItem *item = m_videoSourcesList->item(i);
+		if (item && item->checkState() == Qt::Checked) {
+			selected.append(item->data(Qt::UserRole).toString());
+		}
+	}
+	return selected;
 }
 
 void AudioSyncModal::onApplyOffsetClicked()
@@ -599,37 +598,38 @@ void AudioSyncModal::onApplyOffsetClicked()
 		return;
 	}
 
-	QString audioSource = m_audioSourceCombo->currentData().toString();
-	QString videoSource = m_videoSourceCombo->currentData().toString();
+	QStringList audioSources = getSelectedAudioSources();
+	QStringList videoSources = getSelectedVideoSources();
 
-	bool applied = false;
+	if (audioSources.isEmpty() && videoSources.isEmpty()) {
+		QMessageBox::warning(this, "Apply Failed", "No sources selected. Please select at least one source to sync.");
+		return;
+	}
+
 	QStringList appliedSources;
 
-	// Apply to audio source if selected
-	if (!audioSource.isEmpty()) {
-		if (m_sourceOffsetManager->setSourceOffset(audioSource, static_cast<int>(m_calculatedOffsetMs), true)) {
-			applied = true;
-			appliedSources.append(audioSource);
+	// Apply to all selected audio sources
+	for (const QString &source : audioSources) {
+		if (m_sourceOffsetManager->setSourceOffset(source, static_cast<int>(m_calculatedOffsetMs), true)) {
+			appliedSources.append(source);
 		}
 	}
 
-	// Apply to video source if selected
-	if (!videoSource.isEmpty()) {
-		if (m_sourceOffsetManager->setSourceOffset(videoSource, static_cast<int>(m_calculatedOffsetMs), true)) {
-			applied = true;
-			appliedSources.append(videoSource);
+	// Apply to all selected video sources
+	for (const QString &source : videoSources) {
+		if (m_sourceOffsetManager->setSourceOffset(source, static_cast<int>(m_calculatedOffsetMs), true)) {
+			appliedSources.append(source);
 		}
 	}
 
-	if (applied) {
+	if (appliedSources.isEmpty()) {
+		QMessageBox::warning(this, "Apply Failed", "Failed to apply offset to any sources. Please check that sources have Async Delay filters.");
+	} else {
 		QMessageBox::information(this, "Offset Applied",
 					 QString("Applied offset of %1ms to:\n%2")
 						 .arg(m_calculatedOffsetMs, 0, 'f', 1)
 						 .arg(appliedSources.join("\n")));
 		// Refresh offset displays
 		updateOffsetDisplay();
-	} else {
-		QMessageBox::warning(this, "Apply Failed",
-				     "Failed to apply offset. Please ensure a source is selected.");
 	}
 }
