@@ -105,8 +105,9 @@ QList<SourceInfo> SourceOffsetManager::enumerateSourcesWithAsyncDelay()
 
 	obs_enum_sources(enumSourceCallback, &data);
 
+	int const SOURCE_COUNT = static_cast<int>(sources.size());
 	blog(LOG_INFO, "[AudioSync] enumerateSourcesWithAsyncDelay: Found %d sources with Async Delay filter",
-	     static_cast<int>(sources.size()));
+	     SOURCE_COUNT);
 
 	return sources;
 }
@@ -205,7 +206,8 @@ QList<SourceInfo> SourceOffsetManager::getAudioSources()
 		}
 	}
 
-	blog(LOG_INFO, "[AudioSync] getAudioSources: Found %d audio sources", static_cast<int>(audioSources.size()));
+	int const AUDIO_COUNT = static_cast<int>(audioSources.size());
+	blog(LOG_INFO, "[AudioSync] getAudioSources: Found %d audio sources", AUDIO_COUNT);
 
 	return audioSources;
 }
@@ -221,7 +223,7 @@ QList<SourceInfo> SourceOffsetManager::getVideoSources()
 		}
 	}
 
-	blog(LOG_INFO, "[AudioSync] getVideoSources: Found %d video sources", videoSources.size());
+	blog(LOG_INFO, "[AudioSync] getVideoSources: Found %d video sources", static_cast<int>(videoSources.size()));
 
 	return videoSources;
 }
