@@ -34,7 +34,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 TimelineWidget::TimelineWidget(QWidget *parent) : QWidget(parent)
 {
-	setMinimumHeight(160); // Increased to accommodate info labels and adjusted layout
+	setMinimumHeight(220); // Increased to accommodate video timeline moved down
 	setMouseTracking(true);
 	m_viewStartTime = m_startTime;
 	m_viewEndTime = m_endTime;
@@ -255,11 +255,11 @@ void TimelineWidget::drawVideoFrameMarkers(QPainter &painter)
 	}
 
 	// Draw video frame blocks centered like the waveform
-	const int VIDEO_CENTER_Y = 100; // Below audio waveform
-	const int FRAME_BLOCK_HEIGHT = 20;
+	const int VIDEO_CENTER_Y = 140; // Below audio waveform (moved down)
+	const int FRAME_BLOCK_HEIGHT = 60; // Same height as audio waveform
 	const int FRAME_BLOCK_TOP = VIDEO_CENTER_Y - FRAME_BLOCK_HEIGHT / 2;
 
-	painter.setPen(QPen(QColor(100, 255, 100), 1));
+	painter.setPen(Qt::NoPen); // Remove green border
 	painter.setBrush(QBrush(QColor(100, 255, 100, 100)));
 
 	// Draw blocks for all video frames in visible range
@@ -290,13 +290,13 @@ void TimelineWidget::drawVideoFramePosition(QPainter &painter)
 	int const X_POS = xFromTimestamp(m_videoFramePosition);
 
 	// Draw vertical line (I-shaped cursor) only over the video timeline area
-	// Video timeline is centered at VIDEO_CENTER_Y = 100, with HEIGHT = 20
-	const int VIDEO_CENTER_Y = 100;
-	const int VIDEO_HEIGHT = 20;
+	// Video timeline is centered at VIDEO_CENTER_Y = 140, with HEIGHT = 60
+	const int VIDEO_CENTER_Y = 140;
+	const int VIDEO_HEIGHT = 60;
 	const int VIDEO_TOP = VIDEO_CENTER_Y - VIDEO_HEIGHT / 2;
 	const int VIDEO_BOTTOM = VIDEO_CENTER_Y + VIDEO_HEIGHT / 2;
 
-	painter.setPen(QPen(QColor(0, 255, 0), 2));
+	painter.setPen(QPen(QColor(0, 255, 0), 4)); // Make cursor bigger (4px instead of 2px)
 	painter.drawLine(X_POS, VIDEO_TOP, X_POS, VIDEO_BOTTOM);
 }
 
@@ -356,11 +356,11 @@ void TimelineWidget::drawFrameDifferenceBars(QPainter &painter)
 	}
 
 	// Draw bars centered on video timeline (same area as video frame markers)
-	const int VIDEO_CENTER_Y = 100;
-	const int MAX_BAR_HEIGHT = 20;
+	const int VIDEO_CENTER_Y = 140;
+	const int MAX_BAR_HEIGHT = 60; // Same height as video timeline
 	const int BAR_WIDTH = 4;
 
-	painter.setPen(Qt::NoPen);
+	painter.setPen(Qt::NoPen); // No border on difference bars
 
 	for (int i = 0; i < m_videoFrameTimestamps.size(); i++) {
 		double frameTime = m_videoFrameTimestamps[i];

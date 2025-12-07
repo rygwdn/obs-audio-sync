@@ -159,7 +159,7 @@ void AudioSyncModal::setupUI()
 	m_frameLabel->setAlignment(Qt::AlignCenter);
 	m_frameLabel->setStyleSheet("background-color: black; border: 1px solid gray;");
 	m_frameLabel->setText("No frame loaded");
-	m_frameLabel->setScaledContents(true); // Scale to fit within bounds
+	m_frameLabel->setScaledContents(false); // Don't stretch - we handle scaling manually with aspect ratio
 	m_frameLabel->setVisible(false);
 	mainLayout->addWidget(m_frameLabel);
 
@@ -457,8 +457,11 @@ void AudioSyncModal::setupSourceSelection()
 void AudioSyncModal::refreshSourceList()
 {
 	if (!m_sourceOffsetManager) {
+		qWarning() << "AudioSyncModal::refreshSourceList: m_sourceOffsetManager is nullptr";
 		return;
 	}
+
+	qInfo() << "AudioSyncModal::refreshSourceList: Refreshing source list";
 
 	// Store current selections (checked items) with their types
 	// Use a key that combines name and type to handle cases where same name might exist in both lists
@@ -478,7 +481,9 @@ void AudioSyncModal::refreshSourceList()
 
 	// Add audio sources
 	QList<SourceInfo> audioSources = m_sourceOffsetManager->getAudioSources();
+	qInfo() << "AudioSyncModal::refreshSourceList: Adding" << audioSources.size() << "audio sources";
 	for (const SourceInfo &info : audioSources) {
+		qInfo() << "AudioSyncModal::refreshSourceList: Adding audio source:" << info.name;
 		QListWidgetItem *item = new QListWidgetItem(QString("[Audio] %1").arg(info.name));
 		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
 		QString key = QString("%1:audio").arg(info.name);
@@ -491,7 +496,9 @@ void AudioSyncModal::refreshSourceList()
 
 	// Add video sources
 	QList<SourceInfo> videoSources = m_sourceOffsetManager->getVideoSources();
+	qInfo() << "AudioSyncModal::refreshSourceList: Adding" << videoSources.size() << "video sources";
 	for (const SourceInfo &info : videoSources) {
+		qInfo() << "AudioSyncModal::refreshSourceList: Adding video source:" << info.name;
 		QListWidgetItem *item = new QListWidgetItem(QString("[Video] %1").arg(info.name));
 		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
 		QString key = QString("%1:video").arg(info.name);
@@ -501,6 +508,8 @@ void AudioSyncModal::refreshSourceList()
 		item->setData(Qt::UserRole + 1, false); // Mark as video source
 		m_sourcesList->addItem(item);
 	}
+
+	qInfo() << "AudioSyncModal::refreshSourceList: Total items in list:" << m_sourcesList->count();
 
 	// Update offset displays
 	updateOffsetDisplay();
