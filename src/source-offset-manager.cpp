@@ -211,10 +211,12 @@ bool SourceOffsetManager::setSourceOffset(const QString &sourceName, int offsetM
 		const int MAX_OFFSET_MS = 20000;
 		if (newOffsetMs < MIN_OFFSET_MS) {
 			newOffsetMs = MIN_OFFSET_MS;
-			qWarning() << "SourceOffsetManager::setSourceOffset: Clamped offset to minimum:" << MIN_OFFSET_MS;
+			qWarning()
+				<< "SourceOffsetManager::setSourceOffset: Clamped offset to minimum:" << MIN_OFFSET_MS;
 		} else if (newOffsetMs > MAX_OFFSET_MS) {
 			newOffsetMs = MAX_OFFSET_MS;
-			qWarning() << "SourceOffsetManager::setSourceOffset: Clamped offset to maximum:" << MAX_OFFSET_MS;
+			qWarning()
+				<< "SourceOffsetManager::setSourceOffset: Clamped offset to maximum:" << MAX_OFFSET_MS;
 		}
 
 		// Convert to nanoseconds and set
@@ -228,8 +230,9 @@ bool SourceOffsetManager::setSourceOffset(const QString &sourceName, int offsetM
 		obs_source_t *filter = obs_source_get_filter_by_name(source, "Async Delay");
 		if (filter == nullptr) {
 			obs_source_release(source);
-			qWarning() << "SourceOffsetManager::setSourceOffset: Video source does not have Async Delay filter:"
-				   << sourceName;
+			qWarning()
+				<< "SourceOffsetManager::setSourceOffset: Video source does not have Async Delay filter:"
+				<< sourceName;
 			return false;
 		}
 
@@ -245,10 +248,12 @@ bool SourceOffsetManager::setSourceOffset(const QString &sourceName, int offsetM
 		const int MAX_OFFSET_MS = 20000;
 		if (newOffsetMs < MIN_OFFSET_MS) {
 			newOffsetMs = MIN_OFFSET_MS;
-			qWarning() << "SourceOffsetManager::setSourceOffset: Clamped offset to minimum:" << MIN_OFFSET_MS;
+			qWarning()
+				<< "SourceOffsetManager::setSourceOffset: Clamped offset to minimum:" << MIN_OFFSET_MS;
 		} else if (newOffsetMs > MAX_OFFSET_MS) {
 			newOffsetMs = MAX_OFFSET_MS;
-			qWarning() << "SourceOffsetManager::setSourceOffset: Clamped offset to maximum:" << MAX_OFFSET_MS;
+			qWarning()
+				<< "SourceOffsetManager::setSourceOffset: Clamped offset to maximum:" << MAX_OFFSET_MS;
 		}
 
 		// Update settings
