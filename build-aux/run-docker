@@ -179,11 +179,6 @@ Usage: %B${functrace[1]%:*}%b <option> [<options>]
     --env QT_VERSION=6
   )
 
-  # Mount ccache directory if it exists
-  if [[ -d ${project_root}/.ccache ]]; then
-    docker_run_args+=(--volume "${project_root}/.ccache:/workspace/.ccache")
-  fi
-
   # Run interactive shell if requested
   if (( interactive )); then
     log_info "Starting interactive shell in container..."
@@ -203,7 +198,7 @@ Usage: %B${functrace[1]%:*}%b <option> [<options>]
     (( total_checks += 1 ))
     log_info "Running clang-format..."
     if docker run ${docker_run_args} ${full_image_name} \
-      /bin/zsh -c "./build-aux/run-clang-format --fail-error"; then
+      /bin/zsh -c "./build-aux/run-clang-format --check --fail-error src/**"; then
       log_status "clang-format completed"
     else
       log_error "clang-format failed"
@@ -216,7 +211,7 @@ Usage: %B${functrace[1]%:*}%b <option> [<options>]
     (( total_checks += 1 ))
     log_info "Running gersemi..."
     if docker run ${docker_run_args} ${full_image_name} \
-      /bin/zsh -c "./build-aux/run-gersemi --fail-error"; then
+      /bin/zsh -c "./build-aux/run-gersemi --check --fail-error"; then
       log_status "gersemi completed"
     else
       log_error "gersemi failed"

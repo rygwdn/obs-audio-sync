@@ -96,6 +96,7 @@ invoke_formatter() {
           if ! echo ${file_output} | diff -q "${file}" - &> /dev/null; then
             # Always log the error message (for CI visibility)
             log_error "${file} requires formatting changes."
+            echo ${file_output} | diff "${file}" - 
             # Capture verbose output to temp file
             echo ${file_output} >> ${check_output_file}
             if (( fail_on_error == 2 )) return 2;
@@ -112,7 +113,11 @@ invoke_formatter() {
           local -a format_args=(-style=file -fallback-style=none -i)
           if (( _loglevel > 2 )) format_args+=(--verbose)
 
-          "${formatter}" ${format_args} ${source_files} >> ${temp_output} 2>&1
+          for file (${source_files}) {
+            "${formatter}" ${format_args} ${file}
+          }
+        } else {
+          echo "Nothing to format"
         }
       }
       ;;
@@ -163,7 +168,9 @@ invoke_formatter() {
         local -a source_files=($@)
 
         if (( ${#source_files} )) {
-          "${formatter}" -i ${source_files} >> ${temp_output} 2>&1
+          for file (${source_files}) {
+            "${formatter}" -i ${file} >> ${temp_output} 2>&1
+          }
         }
       }
       ;;
