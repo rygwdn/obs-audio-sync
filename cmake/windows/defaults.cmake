@@ -51,17 +51,22 @@ set(CPACK_NSIS_DEFAULT_INSTALL_DIR "$PROGRAMFILES64\\obs-studio")
 # CPACK_NSIS_DEFAULT_INSTALL_DIR, not CMAKE_INSTALL_PREFIX.
 set(CPACK_SET_DESTDIR ON)
 
-# Override CMAKE_INSTALL_PREFIX to a relative path for CPack packaging
+# Override CMAKE_INSTALL_PREFIX to avoid path mixing issues with CPack
 # When CPACK_SET_DESTDIR is ON, CPack uses DESTDIR + CMAKE_INSTALL_PREFIX
-# An absolute path in CMAKE_INSTALL_PREFIX causes path mixing issues.
-# Use "." to make installs relative to DESTDIR directly, matching NSIS expectations.
+# An absolute Windows path (e.g., C:\ProgramData\...) causes path mixing.
+# Convert to forward-slash relative path to avoid mixing backslash and forward-slash paths.
 # The actual install location is controlled by CPACK_NSIS_DEFAULT_INSTALL_DIR.
 if(CMAKE_INSTALL_PREFIX MATCHES "^[A-Za-z]:")
   # Original prefix is absolute Windows path, store it for reference
   set(_ORIGINAL_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}" CACHE INTERNAL "Original install prefix")
-  # Use "." to make installs relative to DESTDIR root during CPack staging
-  # This ensures files go to DESTDIR/${CMAKE_PROJECT_NAME}/bin/64bit/ as expected by NSIS
-  set(CMAKE_INSTALL_PREFIX "." CACHE STRING "Install prefix for CPack staging" FORCE)
+  # Extract relative path portion (everything after the drive letter)
+  # Convert backslashes to forward slashes for consistency
+  string(REGEX REPLACE "^[A-Za-z]:(.*)$" "\\1" _RELATIVE_PREFIX "${CMAKE_INSTALL_PREFIX}")
+  string(REPLACE "\\" "/" _RELATIVE_PREFIX "${_RELATIVE_PREFIX}")
+  # Remove leading slash if present
+  string(REGEX REPLACE "^/" "" _RELATIVE_PREFIX "${_RELATIVE_PREFIX}")
+  # Use the relative path for CPack staging
+  set(CMAKE_INSTALL_PREFIX "${_RELATIVE_PREFIX}" CACHE STRING "Install prefix for CPack staging" FORCE)
 endif()
 
 # Custom install commands to place files in OBS directory structure
