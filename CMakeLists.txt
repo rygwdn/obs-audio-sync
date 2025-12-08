@@ -234,38 +234,73 @@ if(AVCODEC_FOUND AND AVFORMAT_FOUND AND AVUTIL_FOUND AND SWSCALE_FOUND)
 endif()
 
 # AGL framework is deprecated and not available on newer macOS
-# Create a stub framework and add it to the search path
+# If using OBS's Qt (from OBS.app), it doesn't have AGL dependency, so no stub needed.
+# If using downloaded Qt6 from obs-deps, it may have AGL dependency and would need a stub.
+# The buildspec.cmake now prefers OBS's Qt when available, so AGL stub is typically not needed.
+# This code is kept as fallback for cases where downloaded Qt6 is used.
 if(APPLE)
-  # Create stub AGL framework if it doesn't exist
-  set(AGL_STUB_DIR "${CMAKE_CURRENT_BINARY_DIR}/AGL.framework")
-  set(AGL_STUB_LIB "${AGL_STUB_DIR}/AGL")
-  if(NOT EXISTS "${AGL_STUB_LIB}")
-    file(MAKE_DIRECTORY "${AGL_STUB_DIR}")
-    file(
-      WRITE "${AGL_STUB_DIR}/AGL-stub.c"
-      "// Minimal stub for deprecated AGL framework\n__attribute__((visibility(\"default\"))) void AGLStub() {}\n"
-    )
-    # Get target architectures from CMAKE_OSX_ARCHITECTURES or default to arm64
-    if(CMAKE_OSX_ARCHITECTURES)
-      set(AGL_ARCH_FLAGS "")
-      foreach(arch ${CMAKE_OSX_ARCHITECTURES})
-        list(APPEND AGL_ARCH_FLAGS "-arch" "${arch}")
-      endforeach()
-    else()
-      set(AGL_ARCH_FLAGS "-arch" "arm64")
+  # Check if we're using OBS's Qt (no AGL) or downloaded Qt6 (may have AGL)
+  set(_using_obs_qt FALSE)
+  foreach(_framework_path IN LISTS CMAKE_FRAMEWORK_PATH)
+    if(_framework_path MATCHES "OBS.app/Contents/Frameworks")
+      set(_using_obs_qt TRUE)
+      break()
     endif()
-    execute_process(
+  endforeach()
+  
+  if(NOT _using_obs_qt)
+    # Using downloaded Qt6 which may have AGL dependency - create stub
+    message(STATUS "Using downloaded Qt6 - creating AGL stub framework (if needed)")
+    set(AGL_STUB_DIR "${CMAKE_CURRENT_BINARY_DIR}/AGL.framework")
+    set(AGL_STUB_LIB "${AGL_STUB_DIR}/AGL")
+    if(NOT EXISTS "${AGL_STUB_LIB}")
+      file(MAKE_DIRECTORY "${AGL_STUB_DIR}")
+      file(
+        WRITE "${AGL_STUB_DIR}/AGL-stub.c"
+        "// Minimal stub for deprecated AGL framework\n__attribute__((visibility(\"default\"))) void AGLStub() {}\n"
+      )
+      # Get target architectures from CMAKE_OSX_ARCHITECTURES or default to arm64
+      if(CMAKE_OSX_ARCHITECTURES)
+        set(AGL_ARCH_FLAGS "")
+        foreach(arch ${CMAKE_OSX_ARCHITECTURES})
+          list(APPEND AGL_ARCH_FLAGS "-arch" "${arch}")
+        endforeach()
+      else()
+        set(AGL_ARCH_FLAGS "-arch" "arm64")
+      endif()
+      execute_process(
+        COMMAND
+          ${CMAKE_C_COMPILER} -shared ${AGL_ARCH_FLAGS} -o "${AGL_STUB_LIB}" "${AGL_STUB_DIR}/AGL-stub.c" -install_name
+          @rpath/AGL.framework/AGL -compatibility_version 1.0 -current_version 1.0
+        RESULT_VARIABLE AGL_STUB_RESULT
+      )
+      if(NOT AGL_STUB_RESULT EQUAL 0)
+        message(WARNING "Failed to create AGL stub framework")
+      endif()
+    endif()
+    # Add stub framework to search path for linking
+    target_link_options(${CMAKE_PROJECT_NAME} PRIVATE "-F${CMAKE_CURRENT_BINARY_DIR}")
+    # Copy AGL framework to plugin bundle's Frameworks directory after build
+    add_custom_command(
+      TARGET ${CMAKE_PROJECT_NAME}
+      POST_BUILD
       COMMAND
-        ${CMAKE_C_COMPILER} -shared ${AGL_ARCH_FLAGS} -o "${AGL_STUB_LIB}" "${AGL_STUB_DIR}/AGL-stub.c" -install_name
-        @rpath/AGL.framework/AGL -compatibility_version 1.0 -current_version 1.0
-      RESULT_VARIABLE AGL_STUB_RESULT
+        "${CMAKE_COMMAND}" -E make_directory "$<TARGET_BUNDLE_DIR:${CMAKE_PROJECT_NAME}>/Contents/Frameworks"
+      COMMAND
+        "${CMAKE_COMMAND}" -E copy_directory "${AGL_STUB_DIR}"
+        "$<TARGET_BUNDLE_DIR:${CMAKE_PROJECT_NAME}>/Contents/Frameworks/AGL.framework"
+      COMMENT "Copying AGL stub framework to plugin bundle"
+      VERBATIM
     )
-    if(NOT AGL_STUB_RESULT EQUAL 0)
-      message(WARNING "Failed to create AGL stub framework")
-    endif()
+    # Install AGL framework with the plugin bundle
+    install(
+      DIRECTORY "${AGL_STUB_DIR}"
+      DESTINATION "$<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>/../Frameworks"
+      USE_SOURCE_PERMISSIONS
+    )
+  else()
+    message(STATUS "Using OBS's Qt frameworks - no AGL stub needed")
   endif()
-  # Add stub framework to search path
-  target_link_options(${CMAKE_PROJECT_NAME} PRIVATE "-F${CMAKE_CURRENT_BINARY_DIR}")
 endif()
 
 target_sources(
