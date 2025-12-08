@@ -11,7 +11,7 @@ build_lint/
 # Exclude build-aux temp files
 .tmp/
 .deps
-build*/
+build_*/
 history/*
 release/*
 /Frameworks

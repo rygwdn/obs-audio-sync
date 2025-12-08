@@ -169,13 +169,21 @@ Usage: %B${functrace[1]%:*}%b <option> [<options>]
     log_info "Using existing Docker image: ${full_image_name}"
   fi
 
+  # Create or use dedicated cache volume
+  local cache_volume_name="${docker_image}-ccache-${target_arch}"
+  if ! docker volume inspect ${cache_volume_name} > /dev/null 2>&1; then
+    log_info "Creating cache volume: ${cache_volume_name}"
+    docker volume create ${cache_volume_name} > /dev/null
+  fi
+
   # Prepare Docker run arguments
   local -a docker_run_args=(
     --rm
     --platform linux/${target_arch}
     --volume "${project_root}:/workspace"
+    --volume "${cache_volume_name}:/root/.ccache"
     --workdir /workspace
-    --env CCACHE_DIR=/workspace/.ccache
+    --env CCACHE_DIR=/root/.ccache
     --env QT_VERSION=6
   )
 
