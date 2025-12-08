@@ -110,5 +110,5 @@ WORKDIR /workspace
 ENV CCACHE_DIR=/workspace/.ccache
 ENV QT_VERSION=6
 
-# Default command
-CMD ["/bin/zsh"]
+# No default CMD - let devcontainers handle the entrypoint/command
+# This allows devcontainers to properly override for initialization commands

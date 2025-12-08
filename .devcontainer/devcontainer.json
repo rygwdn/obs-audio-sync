@@ -2,9 +2,10 @@
   "name": "OBS Audio Sync Plugin",
   "build": {
     "dockerfile": "../Dockerfile",
-    "context": ".."
+    "context": "..",
+    "platform": "linux/x86_64"
   },
-  "workspaceFolder": "/workspace",
+  "workspaceFolder": "/workspaces/obs-audio-sync",
   
   // Use root user (Dockerfile sets up root with sudo access)
   "remoteUser": "root",
@@ -95,7 +96,7 @@
   
   // Environment variables
   "containerEnv": {
-    "CCACHE_DIR": "/workspace/.ccache",
+    "CCACHE_DIR": "/workspaces/obs-audio-sync/.ccache",
     "QT_VERSION": "6",
     "CMAKE_BUILD_TYPE": "RelWithDebInfo"
   },
@@ -104,16 +105,17 @@
   "postCreateCommand": "echo 'Dev container ready! Run: cmake --preset ubuntu-x86_64 && cmake --build build_x86_64'",
   
   // Mounts for ccache and other persistent data
+  // Note: ccache will work within the container, but cache won't persist between container rebuilds
+  // If you want persistent ccache, create .ccache directory locally and uncomment the mount below
   "mounts": [
-    "source=${localWorkspaceFolder}/.ccache,target=/workspace/.ccache,type=bind"
+    // "source=${localWorkspaceFolder}/.ccache,target=/workspace/.ccache,type=bind"
   ],
   
   // Forward ports if needed (for debugging, etc.)
   "forwardPorts": [],
   
-  // Run arguments
-  "runArgs": [
-    "--platform=linux/x86_64"
-  ]
+  // Run arguments - using native platform (arm64 on Apple Silicon, x86_64 on Intel)
+  // Remove platform specification to use native architecture for better performance
+  "runArgs": []
 }
 
