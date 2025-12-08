@@ -20,4 +20,3 @@ string(REPLACE "\\" "\\\\" ESCAPED_DLL_PATH "${NATIVE_DLL_PATH}")
 # Generate the resource file
 file(WRITE "${RESOURCE_OUT}" "#include <windows.h>\n")
 file(APPEND "${RESOURCE_OUT}" "IDR_PLUGIN_DLL RCDATA \"${ESCAPED_DLL_PATH}\"\n")
-
