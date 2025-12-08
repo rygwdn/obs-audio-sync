@@ -29,7 +29,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			UpdateProgressDialog(0, L"Error: OBS Studio not found");
 			CloseProgressDialog();
 			ShowErrorMessage(L"Installation Failed",
-					 L"OBS Studio installation not found.\n\n"
+				 L"OBS Studio installation not found.
+
+					 "
 					 L"Please install OBS Studio first, or manually copy the plugin files.");
 			return 1;
 		}
@@ -69,11 +71,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		if (!CopyFileToDestination(tempDLL, targetDLL)) {
 			DWORD error = GetLastError();
 			std::wstringstream errorMsg;
-			errorMsg << L"Failed to copy plugin to OBS Studio.\n\n";
+			errorMsg << L"Failed to copy plugin to OBS Studio.
 
-			if (error == ERROR_ACCESS_DENIED) {
+				";
+
+				if (error == ERROR_ACCESS_DENIED)
+			{
 				errorMsg << L"Access denied. You may need administrator rights to install the plugin.";
-			} else {
+			}
+			else
+			{
 				errorMsg << L"Error code: " << error;
 			}
 
@@ -100,9 +107,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		UpdateProgressDialog(100, L"Installation complete!");
 		CloseProgressDialog();
 		ShowSuccessMessage(L"Installation Complete",
-				   L"OBS Audio Sync Plugin has been successfully installed to:\n" +
+				   L"OBS Audio Sync Plugin has been successfully installed to: " +
 					   std::wstring(obsPath.begin(), obsPath.end()) +
-					   L"\n\n"
+					   L"
+
+					   "
 					   L"Please restart OBS Studio to use the plugin.");
 		exitCode = 0;
 
