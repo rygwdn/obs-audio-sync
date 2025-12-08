@@ -66,7 +66,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 		// Step 3: Install DLL to OBS
 		UpdateProgressDialog(66, L"Installing plugin to OBS Studio...");
-		std::string targetDLL = obsPath + "\\obs-plugins\\64bit\\" + pluginDLL;
+		std::string targetDLL = obsPath + R"(\obs-plugins\64bit\)" + pluginDLL;
 
 		if (!CopyFileToDestination(tempDLL, targetDLL)) {
 			DWORD error = GetLastError();
