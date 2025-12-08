@@ -1,0 +1,119 @@
+{
+  "name": "OBS Audio Sync Plugin",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspace",
+  
+  // Use root user (Dockerfile sets up root with sudo access)
+  "remoteUser": "root",
+  
+  // Features to install in the container
+  "features": {},
+  
+  // VS Code extensions to install
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cpptools-extension-pack",
+        "ms-vscode.cmake-tools",
+        "twxs.cmake",
+        "ms-vscode.cpptools-themes",
+        "ms-vscode.test-adapter-converter",
+        "hbenl.vscode-test-explorer",
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ],
+      "settings": {
+        // CMake settings
+        "cmake.configureOnOpen": false,
+        "cmake.sourceDirectory": "${workspaceFolder}",
+        "cmake.buildDirectory": "${workspaceFolder}/build_x86_64",
+        "cmake.configureSettings": {
+          "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+          "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        },
+        "cmake.generator": "Ninja",
+        "cmake.preferredGenerators": ["Ninja", "Unix Makefiles"],
+        "cmake.configureArgs": [
+          "--preset=ubuntu-x86_64"
+        ],
+        
+        // C++ settings
+        "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+        "C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
+        "C_Cpp.default.compilerPath": "/usr/bin/g++",
+        "C_Cpp.default.cppStandard": "c++17",
+        "C_Cpp.default.includePath": [
+          "${workspaceFolder}/**",
+          "/usr/include",
+          "/usr/include/qt6",
+          "/usr/include/qt6/QtCore",
+          "/usr/include/qt6/QtWidgets",
+          "/usr/include/qt6/QtGui",
+          "/usr/include/obs"
+        ],
+        
+        // Editor settings
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "ms-vscode.cpptools",
+        "[cpp]": {
+          "editor.defaultFormatter": "ms-vscode.cpptools",
+          "editor.formatOnSave": true
+        },
+        "[c]": {
+          "editor.defaultFormatter": "ms-vscode.cpptools",
+          "editor.formatOnSave": true
+        },
+        "[cmake]": {
+          "editor.defaultFormatter": "ms-vscode.cmake-tools",
+          "editor.formatOnSave": true
+        },
+        
+        // File associations
+        "files.associations": {
+          "*.h": "cpp",
+          "*.cpp": "cpp",
+          "*.c": "c"
+        },
+        
+        // Terminal settings
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/bin/zsh"
+          },
+          "bash": {
+            "path": "/bin/bash"
+          }
+        }
+      }
+    }
+  },
+  
+  // Environment variables
+  "containerEnv": {
+    "CCACHE_DIR": "/workspace/.ccache",
+    "QT_VERSION": "6",
+    "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+  },
+  
+  // Post-create command to set up the environment
+  "postCreateCommand": "echo 'Dev container ready! Run: cmake --preset ubuntu-x86_64 && cmake --build build_x86_64'",
+  
+  // Mounts for ccache and other persistent data
+  "mounts": [
+    "source=${localWorkspaceFolder}/.ccache,target=/workspace/.ccache,type=bind"
+  ],
+  
+  // Forward ports if needed (for debugging, etc.)
+  "forwardPorts": [],
+  
+  // Run arguments
+  "runArgs": [
+    "--platform=linux/x86_64"
+  ]
+}
+
