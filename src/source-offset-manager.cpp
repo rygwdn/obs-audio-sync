@@ -29,10 +29,11 @@ struct EnumData {
 	SourceOffsetManager *manager;
 };
 
-static bool enumFilterCallback(void *param, obs_source_t *filter)
+static void enumFilterCallback(obs_source_t *source, obs_source_t *filter, void *param)
 {
+	(void)source; // Unused parameter
 	if (filter == nullptr) {
-		return true;
+		return;
 	}
 	const char *sourceName = static_cast<const char *>(param);
 	const char *filterName = obs_source_get_name(filter);
@@ -41,7 +42,6 @@ static bool enumFilterCallback(void *param, obs_source_t *filter)
 	blog(LOG_INFO, "[AudioSync] enumFilterCallback: Source %s - Filter: %s (id: %s, enabled: %d)",
 	     sourceName ? sourceName : "(null)", filterName ? filterName : "(null)", filterId ? filterId : "(null)",
 	     enabled);
-	return true;
 }
 
 static bool enumSourceCallback(void *param, obs_source_t *source)
@@ -106,7 +106,7 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 
 		// List all filters on this source
 		QByteArray sourceNameBytes = sourceNameStr.toUtf8();
-		obs_source_enum_filters(source, enumFilterCallback, sourceNameBytes.constData());
+		obs_source_enum_filters(source, enumFilterCallback, const_cast<char *>(sourceNameBytes.constData()));
 
 		obs_source_t *filter = obs_source_get_filter_by_name(source, "Async Delay");
 		if (filter == nullptr) {

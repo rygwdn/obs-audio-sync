@@ -429,8 +429,8 @@ void AudioSyncPanel::startAutoSyncRecording()
 			QFileInfoList files =
 				directory.entryInfoList(filters, QDir::Files, QDir::Time | QDir::Reversed);
 
-			blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Found %d video files in directory",
-			     files.size());
+			blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Found %lld video files in directory",
+			     static_cast<long long>(files.size()));
 
 			if (!files.isEmpty()) {
 				// Get the newest file (first in list when sorted by time reversed)

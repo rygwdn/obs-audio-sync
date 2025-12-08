@@ -138,8 +138,8 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 				     elapsed, baseline, baseline * m_spikeThreshold);
 			} else {
 				blog(LOG_DEBUG,
-				     "[AudioSync] RealTimeAudioMonitor: Collecting baseline: %.2fs / %.2fs, samples: %d",
-				     elapsed, m_baselineWindowSeconds, m_recentSamples.size());
+				     "[AudioSync] RealTimeAudioMonitor: Collecting baseline: %.2fs / %.2fs, samples: %lld",
+				     elapsed, m_baselineWindowSeconds, static_cast<long long>(m_recentSamples.size()));
 			}
 		}
 		// Remove old samples outside baseline window
@@ -277,8 +277,9 @@ void RealTimeAudioMonitor::checkForSpike()
 			return;
 		}
 
-		blog(LOG_DEBUG, "[AudioSync] RealTimeAudioMonitor: Extracted %d audio samples, last timestamp: %.3fs",
-		     allSamples.size(), allSamples.isEmpty() ? 0.0 : allSamples.last().timestamp);
+		blog(LOG_DEBUG, "[AudioSync] RealTimeAudioMonitor: Extracted %lld audio samples, last timestamp: %.3fs",
+		     static_cast<long long>(allSamples.size()),
+		     allSamples.isEmpty() ? 0.0 : allSamples.last().timestamp);
 
 		// Get new samples since last check
 		QVector<AudioSample> newSamples;

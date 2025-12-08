@@ -624,10 +624,11 @@ void AudioSyncModal::onApplyOffsetClicked()
 			this, "Apply Failed",
 			"Failed to apply offset to any sources. Please check that audio sources are available or video sources have Async Delay filters.");
 	} else {
-		QString message = QString("Applied offset of %1ms to:\n"
-					  "%2")
-					  .arg(m_calculatedOffsetMs, 0, 'f', 1)
-					  .arg(appliedSources.join("\n"));
+		QString offsetText = QString::number(m_calculatedOffsetMs, 'f', 1);
+		QChar newlineChar(0x0A); // Newline character
+		QString sourcesText = appliedSources.join(newlineChar);
+		QString header = QString("Applied offset of %1ms to:").arg(offsetText);
+		QString message = header + newlineChar + sourcesText;
 		QMessageBox::information(this, "Offset Applied", message);
 		// Refresh offset displays
 		updateOffsetDisplay();
