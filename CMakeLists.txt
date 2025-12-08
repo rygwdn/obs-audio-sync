@@ -351,7 +351,7 @@ if(WIN32)
   add_custom_command(
     OUTPUT "${INSTALLER_RESOURCE_RC}"
     COMMAND
-      ${CMAKE_COMMAND} -DPLUGIN_DLL="$<TARGET_FILE:${CMAKE_PROJECT_NAME}>" -DRESOURCE_OUT="${INSTALLER_RESOURCE_RC}" -P
+      ${CMAKE_COMMAND} -DPLUGIN_DLL="$<TARGET_FILE:${CMAKE_PROJECT_NAME}>" -DRESOURCE_OUT=${INSTALLER_RESOURCE_RC} -P
       "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/generate-installer-resource.cmake"
     DEPENDS ${CMAKE_PROJECT_NAME}
     COMMENT "Generating installer resource file with embedded DLL"
