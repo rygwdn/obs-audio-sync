@@ -322,6 +322,59 @@ target_sources(
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
 
+# Windows installer executable (only on Windows)
+if(WIN32)
+  # Create installer executable
+  add_executable(${CMAKE_PROJECT_NAME}-installer
+    src/installer/installer-main.cpp
+    src/installer/installer.cpp
+  )
+
+  # Set output name
+  set_target_properties(${CMAKE_PROJECT_NAME}-installer PROPERTIES OUTPUT_NAME "${CMAKE_PROJECT_NAME}-${CMAKE_PROJECT_VERSION}-windows-x64-installer")
+
+  # Link Windows libraries
+  target_link_libraries(${CMAKE_PROJECT_NAME}-installer
+    PRIVATE
+      advapi32
+      shlwapi
+      ole32
+      user32
+      kernel32
+  )
+
+  # Define plugin name for installer
+  target_compile_definitions(${CMAKE_PROJECT_NAME}-installer PRIVATE PLUGIN_NAME="${CMAKE_PROJECT_NAME}")
+
+  # Generate resource file that embeds the DLL
+  # The resource file needs to be generated at build time after the DLL is built
+  set(INSTALLER_RESOURCE_RC "${CMAKE_CURRENT_BINARY_DIR}/installer-resource.rc")
+  
+  # Generate resource file with DLL path using a CMake script
+  # This allows us to use generator expressions properly
+  add_custom_command(
+    OUTPUT "${INSTALLER_RESOURCE_RC}"
+    COMMAND ${CMAKE_COMMAND}
+      -DPLUGIN_DLL="$<TARGET_FILE:${CMAKE_PROJECT_NAME}>"
+      -DRESOURCE_OUT="${INSTALLER_RESOURCE_RC}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/generate-installer-resource.cmake"
+    DEPENDS ${CMAKE_PROJECT_NAME}
+    COMMENT "Generating installer resource file with embedded DLL"
+    VERBATIM
+  )
+
+  # Add the resource file to the installer target
+  target_sources(${CMAKE_PROJECT_NAME}-installer PRIVATE "${INSTALLER_RESOURCE_RC}")
+
+  # Set subsystem to Windows (no console)
+  set_target_properties(${CMAKE_PROJECT_NAME}-installer PROPERTIES
+    WIN32_EXECUTABLE TRUE
+  )
+
+  # Make installer depend on plugin DLL and resource file
+  add_dependencies(${CMAKE_PROJECT_NAME}-installer ${CMAKE_PROJECT_NAME})
+endif()
+
 # Generate compile_commands.json for IDE support
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Generate compile_commands.json" FORCE)
 

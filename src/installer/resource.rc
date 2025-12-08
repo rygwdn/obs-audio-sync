@@ -1,0 +1,8 @@
+#include <windows.h>
+
+// Resource ID for embedded DLL
+// The DLL will be embedded at build time by CMake
+IDR_PLUGIN_DLL RCDATA "PLUGIN_DLL_PLACEHOLDER"
+
+
+

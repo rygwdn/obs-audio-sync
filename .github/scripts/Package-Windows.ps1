@@ -71,165 +71,89 @@ function Package {
     Compress-Archive -Force @CompressArgs
     Log-Group
 
-    # Always generate NSIS installer using CPack
+    # Build installer executable
     if (-not (Test-Path "${BuildDir}")) {
         throw "Build directory not found: ${BuildDir}. Run the build script first."
     }
 
-    Log-Group "Generating NSIS installer for ${ProductName}..."
+    Log-Group "Building installer executable for ${ProductName}..."
 
-    # Generate installer using CPack (CPack will handle staging via DESTDIR)
     Push-Location $BuildDir
     try {
-        # Add verbose logging to debug CPack staging issues
-        $CpackArgs = @(
-            "-C", $Configuration
-            "-G", "NSIS"
-            "--verbose"
-            "--debug"
-        )
-        
-        # Log CPack configuration before running
-        Write-Output "::group::CPack Configuration"
+        Write-Output "::group::Building Installer"
         Write-Output "Build Directory: ${BuildDir}"
         Write-Output "Configuration: ${Configuration}"
         Write-Output "Project Root: ${ProjectRoot}"
         
-        # Check if install rules exist
-        $InstallManifest = "${BuildDir}/install_manifest.txt"
-        if (Test-Path $InstallManifest) {
-            Write-Output "Install manifest found: ${InstallManifest}"
-            Write-Output "Install manifest contents:"
-            Get-Content $InstallManifest | ForEach-Object { Write-Output "  $_" }
-        } else {
-            Write-Output "WARNING: Install manifest not found at ${InstallManifest}"
-            Write-Output "This suggests cmake --install was not run or files were not installed."
+        # Build the installer target
+        $BuildArgs = @(
+            "--build", "."
+            "--config", $Configuration
+            "--target", "${ProductName}-installer"
+            "--parallel"
+        )
+        
+        if ($DebugPreference -eq 'Continue') {
+            $BuildArgs += "--verbose"
         }
         
-        # Check for installed files in release directory
-        $ReleaseDir = "${ProjectRoot}/release/${Configuration}"
-        if (Test-Path $ReleaseDir) {
-            Write-Output "Release directory exists: ${ReleaseDir}"
-            Write-Output "Release directory contents:"
-            Get-ChildItem -Path $ReleaseDir -Recurse | ForEach-Object {
-                Write-Output "  $($_.FullName.Replace($ProjectRoot, '.'))"
-            }
-        } else {
-            Write-Output "WARNING: Release directory not found at ${ReleaseDir}"
-        }
-        
-        # Check CPack variables from CMake cache
-        Write-Output "Checking CPack configuration..."
-        $CmakeCache = "${BuildDir}/CMakeCache.txt"
-        if (Test-Path $CmakeCache) {
-            $CpackVars = Get-Content $CmakeCache | Select-String -Pattern "^CPACK_" | Select-Object -First 20
-            Write-Output "CPack variables from CMakeCache:"
-            $CpackVars | ForEach-Object { Write-Output "  $_" }
-        }
-        
+        Invoke-External cmake $BuildArgs
         Write-Output "::endgroup::"
         
-        try {
-            Write-Output "::group::Running CPack"
-            Invoke-External cpack $CpackArgs
-            Write-Output "::endgroup::"
-            
-            # Log CPack staging results
-            Write-Output "::group::CPack Staging Results"
-            $CpackStagingDir = "${BuildDir}/_CPack_Packages/win64/NSIS"
-            if (Test-Path $CpackStagingDir) {
-                Write-Output "CPack staging directory found: ${CpackStagingDir}"
-                Write-Output "Staging directory contents:"
-                Get-ChildItem -Path $CpackStagingDir -Recurse | ForEach-Object {
-                    $size = if ($_.PSIsContainer) { "<DIR>" } else { "$([math]::Round($_.Length / 1KB, 2)) KB" }
-                    Write-Output "  $($_.FullName.Replace($BuildDir, '.')) [$size]"
+        # Find the installer executable
+        Write-Output "::group::Locating Installer Executable"
+        $InstallerPattern = "${ProductName}-*-windows-x64-installer.exe"
+        
+        # Check common output locations
+        $PossibleLocations = @(
+            "${BuildDir}/${Configuration}",
+            "${BuildDir}/Release",
+            "${BuildDir}/RelWithDebInfo",
+            "${BuildDir}/Debug",
+            "${BuildDir}"
+        )
+        
+        $InstallerFile = $null
+        foreach ($Location in $PossibleLocations) {
+            if (Test-Path $Location) {
+                $Found = Get-ChildItem -Path $Location -Filter $InstallerPattern -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($Found) {
+                    $InstallerFile = $Found
+                    Write-Output "Found installer at: ${InstallerFile.FullName}"
+                    break
                 }
-                
-                # Check for the actual package directory
-                $PackageDir = Get-ChildItem -Path $CpackStagingDir -Directory -Filter "*" | Select-Object -First 1
-                if ($PackageDir) {
-                    Write-Output "Package directory: ${PackageDir.FullName}"
-                    Write-Output "Package directory contents:"
-                    Get-ChildItem -Path $PackageDir.FullName -Recurse | ForEach-Object {
-                        $size = if ($_.PSIsContainer) { "<DIR>" } else { "$([math]::Round($_.Length / 1KB, 2)) KB" }
-                        Write-Output "  $($_.FullName.Replace($PackageDir.FullName, '.')) [$size]"
-                    }
-                } else {
-                    Write-Output "WARNING: No package directory found in staging area"
-                }
-            } else {
-                Write-Output "ERROR: CPack staging directory not found at ${CpackStagingDir}"
-                Write-Output "This suggests CPack did not stage any files."
-            }
-            Write-Output "::endgroup::"
-        } catch {
-            # CPack failed - output NSIS log if it exists
-            $NSISLogPath = "${BuildDir}/_CPack_Packages/win64/NSIS/NSISOutput.log"
-            Write-Output "::error::CPack failed. Checking for NSIS log..."
-            if (Test-Path $NSISLogPath) {
-                Write-Output "::error::=========================================="
-                Write-Output "::error::NSIS Output Log:"
-                Write-Output "::error::=========================================="
-                # Read and output the entire log file
-                $logContent = Get-Content $NSISLogPath -Raw
-                # Output each line with error prefix so it's visible in CI
-                $logContent -split "`r?`n" | ForEach-Object {
-                    if ($_.Trim().Length -gt 0) {
-                        Write-Output "::error::$($_)"
-                    }
-                }
-                Write-Output "::error::=========================================="
-            } else {
-                Write-Output "::error::NSIS log not found at: ${NSISLogPath}"
-                # Try to find any NSIS-related files for debugging
-                $NSISDir = "${BuildDir}/_CPack_Packages/win64/NSIS"
-                if (Test-Path $NSISDir) {
-                    Write-Output "::error::NSIS directory contents:"
-                    Get-ChildItem -Path $NSISDir | ForEach-Object { Write-Output "::error::  $($_.Name)" }
-                } else {
-                    Write-Output "::error::NSIS directory not found at: ${NSISDir}"
-                }
-            }
-            throw
-        }
-
-        # Find and move installer to release directory with proper name
-        # CPack outputs to the directory specified by CPACK_OUTPUT_FILE_PREFIX (release/)
-        Write-Output "::group::Installer File Check"
-        $InstallerFile = Get-ChildItem -Path "${ProjectRoot}/release" -Filter "${ProductName}-*-windows-x64.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($InstallerFile) {
-            $DestPath = "${ProjectRoot}/release/${OutputName}.exe"
-            if ($InstallerFile.FullName -ne $DestPath) {
-                Move-Item -Path $InstallerFile.FullName -Destination $DestPath -Force
-            }
-            $InstallerSize = [math]::Round((Get-Item $DestPath).Length / 1KB, 2)
-            Write-Output "Installer created: ${DestPath}"
-            Write-Output "Installer size: ${InstallerSize} KB"
-            if ($InstallerSize -lt 1) {
-                Write-Output "WARNING: Installer size is very small (${InstallerSize} KB), which suggests no files were packaged"
-            }
-            Log-Output "Installer created: ${DestPath}"
-        } else {
-            # Also check build directory as fallback
-            Write-Output "Installer not found in release directory, checking build directory..."
-            $InstallerFile = Get-ChildItem -Path "${BuildDir}" -Filter "${ProductName}-*-windows-x64.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($InstallerFile) {
-                $DestPath = "${ProjectRoot}/release/${OutputName}.exe"
-                Move-Item -Path $InstallerFile.FullName -Destination $DestPath -Force
-                $InstallerSize = [math]::Round((Get-Item $DestPath).Length / 1KB, 2)
-                Write-Output "Installer found in build directory and moved to: ${DestPath}"
-                Write-Output "Installer size: ${InstallerSize} KB"
-                Log-Output "Installer created: ${DestPath}"
-            } else {
-                Write-Output "ERROR: Installer file not found in release or build directory"
-                Write-Output "Searched in:"
-                Write-Output "  - ${ProjectRoot}/release"
-                Write-Output "  - ${BuildDir}"
-                Write-Output "Looking for: ${ProductName}-*-windows-x64.exe"
-                throw "Installer file not found after CPack execution. Expected: ${ProductName}-*-windows-x64.exe"
             }
         }
+        
+        if (-not $InstallerFile) {
+            Write-Output "ERROR: Installer executable not found"
+            Write-Output "Searched in:"
+            $PossibleLocations | ForEach-Object { Write-Output "  - $_" }
+            Write-Output "Looking for pattern: ${InstallerPattern}"
+            throw "Installer executable not found. Expected: ${InstallerPattern}"
+        }
+        
+        # Copy installer to release directory with proper name
+        $DestPath = "${ProjectRoot}/release/${OutputName}-installer.exe"
+        $DestDir = Split-Path -Path $DestPath -Parent
+        if (-not (Test-Path $DestDir)) {
+            New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
+        }
+        
+        Copy-Item -Path $InstallerFile.FullName -Destination $DestPath -Force
+        $InstallerSize = [math]::Round((Get-Item $DestPath).Length / 1KB, 2)
+        Write-Output "Installer created: ${DestPath}"
+        Write-Output "Installer size: ${InstallerSize} KB"
+        
+        if ($InstallerSize -lt 10) {
+            Write-Output "WARNING: Installer size is very small (${InstallerSize} KB), which suggests the DLL may not be embedded"
+        }
+        
+        Log-Output "Installer created: ${DestPath}"
         Write-Output "::endgroup::"
+    } catch {
+        Write-Output "::error::Failed to build installer: $_"
+        throw
     } finally {
         Pop-Location
     }
