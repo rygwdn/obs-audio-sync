@@ -44,6 +44,13 @@ static void enumFilterCallback(obs_source_t *source, obs_source_t *filter, void 
 	     enabled);
 }
 
+// Helper callback for enumerating sources within groups
+static bool enumGroupSourceCallback(void *param, obs_source_t *source)
+{
+	// Reuse the same enumSourceCallback logic
+	return enumSourceCallback(param, source);
+}
+
 static bool enumSourceCallback(void *param, obs_source_t *source)
 {
 	auto *data = static_cast<EnumData *>(param);
@@ -59,7 +66,19 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 	}
 
 	QString sourceNameStr = QString::fromUtf8(sourceName);
-	blog(LOG_INFO, "[AudioSync] enumSourceCallback: Checking source: %s", sourceNameStr.toUtf8().constData());
+	const char *sourceId = obs_source_get_id(source);
+	bool isGroup = (sourceId != nullptr && strcmp(sourceId, "group") == 0);
+
+	blog(LOG_INFO, "[AudioSync] enumSourceCallback: Checking source: %s (id: %s, isGroup: %d)",
+	     sourceNameStr.toUtf8().constData(), sourceId ? sourceId : "(null)", isGroup);
+
+	// If this is a group, recursively enumerate its children
+	if (isGroup) {
+		blog(LOG_INFO, "[AudioSync] enumSourceCallback: Source %s is a group, enumerating children",
+		     sourceNameStr.toUtf8().constData());
+		obs_source_enum_active_sources(source, enumGroupSourceCallback, data);
+		// Continue processing the group itself (groups can have filters too, though less common)
+	}
 
 	// Get source type and output flags
 	uint32_t outputFlags = obs_source_get_output_flags(source);
@@ -98,7 +117,7 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 		return true; // Continue enumeration
 	}
 
-	// For video sources: check if they have Async Delay filter (even if disabled)
+	// For video sources: check if they have Video Delay (Async) filter (even if disabled)
 	if (isVideo) {
 		// Enumerate all filters to log them
 		blog(LOG_INFO, "[AudioSync] enumSourceCallback: Video source found: %s",
@@ -108,10 +127,10 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 		QByteArray sourceNameBytes = sourceNameStr.toUtf8();
 		obs_source_enum_filters(source, enumFilterCallback, const_cast<char *>(sourceNameBytes.constData()));
 
-		obs_source_t *filter = obs_source_get_filter_by_name(source, "Async Delay");
+		obs_source_t *filter = obs_source_get_filter_by_name(source, "Video Delay (Async)");
 		if (filter == nullptr) {
 			blog(LOG_INFO,
-			     "[AudioSync] enumSourceCallback: Source %s is video but has no Async Delay filter, skipping",
+			     "[AudioSync] enumSourceCallback: Source %s is video but has no Video Delay (Async) filter, skipping",
 			     sourceNameStr.toUtf8().constData());
 			return true; // Continue enumeration - video source needs filter
 		}
@@ -122,7 +141,7 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 		obs_data_release(settings);
 
 		blog(LOG_INFO,
-		     "[AudioSync] enumSourceCallback: Source %s is video with Async Delay filter (offset: %d ms), adding to list",
+		     "[AudioSync] enumSourceCallback: Source %s is video with Video Delay (Async) filter (offset: %d ms), adding to list",
 		     sourceNameStr.toUtf8().constData(), delayMs);
 
 		// Create source info
@@ -147,7 +166,7 @@ QList<SourceInfo> SourceOffsetManager::enumerateSourcesWithAsyncDelay()
 
 	blog(LOG_INFO, "[AudioSync] enumerateSourcesWithAsyncDelay: Starting source enumeration");
 
-	// Enumerate all sources
+	// Enumerate all sources (this will recursively handle groups via enumSourceCallback)
 	EnumData data;
 	data.sources = &sources;
 	data.manager = this;
@@ -156,7 +175,7 @@ QList<SourceInfo> SourceOffsetManager::enumerateSourcesWithAsyncDelay()
 
 	int const SOURCE_COUNT = static_cast<int>(sources.size());
 	blog(LOG_INFO,
-	     "[AudioSync] enumerateSourcesWithAsyncDelay: Found %d sources (audio with built-in sync or video with Async Delay filter)",
+	     "[AudioSync] enumerateSourcesWithAsyncDelay: Found %d sources (audio with built-in sync or video with Video Delay (Async) filter)",
 	     SOURCE_COUNT);
 
 	return sources;
@@ -188,7 +207,7 @@ SourceInfo SourceOffsetManager::getSourceInfo(const QString &sourceName)
 		info.hasAsyncDelayFilter = false;
 	} else if (info.isVideo) {
 		// For video sources: check if source has async delay filter
-		obs_source_t *filter = obs_source_get_filter_by_name(source, "Async Delay");
+		obs_source_t *filter = obs_source_get_filter_by_name(source, "Video Delay (Async)");
 		if (filter != nullptr) {
 			info.hasAsyncDelayFilter = true;
 			obs_data_t *settings = obs_source_get_settings(filter);
@@ -249,12 +268,12 @@ bool SourceOffsetManager::setSourceOffset(const QString &sourceName, int offsetM
 		obs_source_release(source);
 		return true;
 	} else if (isVideo) {
-		// For video sources: use Async Delay filter
-		obs_source_t *filter = obs_source_get_filter_by_name(source, "Async Delay");
+		// For video sources: use Video Delay (Async) filter
+		obs_source_t *filter = obs_source_get_filter_by_name(source, "Video Delay (Async)");
 		if (filter == nullptr) {
 			obs_source_release(source);
 			qWarning()
-				<< "SourceOffsetManager::setSourceOffset: Video source does not have Async Delay filter:"
+				<< "SourceOffsetManager::setSourceOffset: Video source does not have Video Delay (Async) filter:"
 				<< sourceName;
 			return false;
 		}
