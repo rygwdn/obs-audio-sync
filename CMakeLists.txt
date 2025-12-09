@@ -273,6 +273,17 @@ if(APPLE)
       set(AGL_SDK_FLAGS "")
       if(CMAKE_OSX_SYSROOT)
         list(APPEND AGL_SDK_FLAGS "-isysroot" "${CMAKE_OSX_SYSROOT}")
+      else()
+        # Try to get SDK path from xcrun as fallback
+        execute_process(
+          COMMAND xcrun --show-sdk-path
+          OUTPUT_VARIABLE AGL_SDK_PATH
+          OUTPUT_STRIP_TRAILING_WHITESPACE
+          ERROR_QUIET
+        )
+        if(AGL_SDK_PATH)
+          list(APPEND AGL_SDK_FLAGS "-isysroot" "${AGL_SDK_PATH}")
+        endif()
       endif()
       # Add framework System for macOS system libraries
       list(APPEND AGL_SDK_FLAGS "-framework" "System")
