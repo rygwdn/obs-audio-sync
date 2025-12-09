@@ -205,8 +205,11 @@ Usage: %B${functrace[1]%:*}%b <option> [<options>]
   if (( ! skip_formatting )); then
     (( total_checks += 1 ))
     log_info "Running clang-format..."
+    docker run ${docker_run_args} ${full_image_name} \
+      /bin/zsh -c "./build-aux/run-clang-format"
+
     if docker run ${docker_run_args} ${full_image_name} \
-      /bin/zsh -c "./build-aux/run-clang-format --check --fail-error src/**"; then
+      /bin/zsh -c "./build-aux/run-clang-format --check --fail-error"; then
       log_status "clang-format completed"
     else
       log_error "clang-format failed"
@@ -218,6 +221,9 @@ Usage: %B${functrace[1]%:*}%b <option> [<options>]
   if (( ! skip_cmake_formatting )); then
     (( total_checks += 1 ))
     log_info "Running gersemi..."
+    docker run ${docker_run_args} ${full_image_name} \
+      /bin/zsh -c "./build-aux/run-gersemi"
+
     if docker run ${docker_run_args} ${full_image_name} \
       /bin/zsh -c "./build-aux/run-gersemi --check --fail-error"; then
       log_status "gersemi completed"

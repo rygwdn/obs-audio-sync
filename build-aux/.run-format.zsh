@@ -30,7 +30,7 @@ invoke_formatter() {
   local formatter="${1}"
   shift
   local -a source_files=(${@})
-  
+
   # Create temp directory in repo
   if (( ! ${+SCRIPT_HOME} )) typeset -g SCRIPT_HOME=${ZSH_ARGZERO:A:h}
   local project_root=${SCRIPT_HOME:A:h}
@@ -39,139 +39,45 @@ invoke_formatter() {
   mkdir -p ${temp_base_dir}
   # Clean up previous temp files from this script
   rm -f ${temp_base_dir}/${script_name}-*(N) ${temp_base_dir}/${script_name}-*.check(N)
-  
+
   # Create temp file for verbose output (accessible to nested functions)
   local temp_output=$(mktemp ${temp_base_dir}/${script_name}-XXXXXX)
   trap "rm -f ${temp_output} ${temp_output}.check" EXIT
 
   case ${formatter} {
     clang)
-      if (( ${+commands[clang-format-19]} )) {
-        local formatter=clang-format-19
-      } elif (( ${+commands[clang-format]} )) {
-        local formatter=clang-format
-      } else {
-        log_error "No viable clang-format version found (required 19.1.1)"
-        exit 2
-      }
-
-      local -a formatter_version=($(${formatter} --version))
-      # Extract version number (e.g., "19.1.7" from "Ubuntu clang-format version 19.1.7 (...)")
-      # Version is typically the 4th element (index 3 in 0-based), but try to find it by pattern
-      local version_string=""
-      for v in ${formatter_version[@]}; do
-        if [[ ${v} =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-          version_string=${v}
-          break
-        fi
-      done
-      # Fallback to last element if pattern matching fails
-      if [[ -z ${version_string} ]]; then
-        version_string=${formatter_version[-1]}
-      fi
-
-      if ! is-at-least 19.1.1 ${version_string}; then
-        log_error "clang-format is not version 19.1.1 or above (found ${version_string})."
-        exit 2
-      fi
-
+      local -a source_files=($@)
       if (( ! #source_files )) source_files=(src/**/*.(c|cpp|h|hpp|m|mm)(.N))
 
-      local -a format_args=(-style=file -fallback-style=none)
-      if (( _loglevel > 2 )) format_args+=(--verbose)
+      local -a format_args=(-style=file -fallback-style=none -Werror --fail-on-incomplete-format )
 
       check_files() {
-        local -i num_failures=0
-        local -a source_files=($@)
-        local file
-        local -a format_args=(-style=file -fallback-style=none)
-        if (( _loglevel > 2 )) format_args+=(--verbose)
-
-        local -a command=(${formatter} ${format_args})
-        local check_output_file="${temp_output}.check"
-        : > ${check_output_file}
-        
-        for file (${source_files}) {
-          local file_output=$(${command} "${file}" 2>&1)
-          if ! echo ${file_output} | diff -q "${file}" - &> /dev/null; then
-            # Always log the error message (for CI visibility)
-            log_error "${file} requires formatting changes."
-            echo ${file_output} | diff "${file}" - 
-            # Capture verbose output to temp file
-            echo ${file_output} >> ${check_output_file}
-            if (( fail_on_error == 2 )) return 2;
-            num_failures=$(( num_failures + 1 ))
-          fi
-        }
-        if (( num_failures && fail_on_error == 1 )) return 2
+        if ! clang-format-19 $format_args -n ${source_files}; then
+          if (( fail_on_error == 1 )) {
+            return 2
+          }
+        fi
       }
 
       format_files() {
-        local -a source_files=($@)
-
-        if (( ${#source_files} )) {
-          local -a format_args=(-style=file -fallback-style=none -i)
-          if (( _loglevel > 2 )) format_args+=(--verbose)
-
-          for file (${source_files}) {
-            "${formatter}" ${format_args} ${file}
-          }
-        } else {
-          echo "Nothing to format"
-        }
+        clang-format-19 $format_args --verbose  -i ${source_files}
       }
       ;;
     gersemi)
       local formatter=gersemi
-      if (( ${+commands[gersemi]} )) {
-        local gersemi_version=($(gersemi --version))
 
-        if ! is-at-least 0.12.0 ${gersemi_version[2]}; then
-          log_error "gersemi is not version 0.12.0 or above (found ${gersemi_version[2]}."
-          exit 2
+      local -a source_files=($@)
+      if (( ! #source_files )) source_files=(CMakeLists.txt (cmake)/**/(CMakeLists.txt|*.cmake)(.N))
+      local -a format_args=(--no-cache --warnings-as-errors)
+
+      check_files() {
+        if ! ${formatter} ${format_args} -c --diff ${source_files}; then
+          if (( fail_on_error == 2 )) return 2
         fi
       }
 
-      if (( ! #source_files )) source_files=(CMakeLists.txt (cmake)/**/(CMakeLists.txt|*.cmake)(.N))
-
-      check_files() {
-        local -i num_failures=0
-        local -a source_files=($@)
-        local file
-        local -a command=(${formatter} -c --no-cache ${source_files})
-        local check_output_file="${temp_output}.check"
-        : > ${check_output_file}
-
-        if (( ${#source_files} )) {
-          while read -r line; do
-            local -a line_tokens=(${(z)line})
-            if (( #line_tokens )) {
-              file=${line_tokens[1]//*${project_root}\//}
-              # Always log the error message (for CI visibility)
-              log_error "${file} requires formatting changes."
-              # Capture verbose output to temp file
-              echo ${line} >> ${check_output_file}
-            } else {
-              # Capture non-file lines to temp file
-              echo ${line} >> ${check_output_file}
-            }
-
-            if (( fail_on_error == 2 )) return 2
-            num_failures=$(( num_failures + 1 ))
-          done < <(${command} 2>&1)
-
-          if (( num_failures && fail_on_error == 1 )) return 2
-        }
-      }
-
       format_files() {
-        local -a source_files=($@)
-
-        if (( ${#source_files} )) {
-          for file (${source_files}) {
-            "${formatter}" -i ${file} >> ${temp_output} 2>&1
-          }
-        }
+        ${formatter} ${format_args} -i ${source_files}
       }
       ;;
     swift)
@@ -224,12 +130,12 @@ invoke_formatter() {
 
   local file
   local -i num_failures=0
-  
+
   if (( check_only )) {
     if (( ${+functions[check_files]} )) {
       check_files ${source_files}
       local check_result=$?
-      
+
       # Show verbose output based on line count (errors already logged via log_error)
       local check_output_file="${temp_output}.check"
       if [[ -f ${check_output_file} ]] && [[ -s ${check_output_file} ]]; then
@@ -254,7 +160,7 @@ invoke_formatter() {
           log_info "Detailed formatting output (${line_count} lines): ${check_output_file}"
         fi
       fi
-      
+
       if (( check_result != 0 )); then
         exit ${check_result}
       fi
@@ -266,7 +172,7 @@ invoke_formatter() {
     if (( ${+functions[format_files]} )) {
       format_files ${source_files}
       local format_result=$?
-      
+
       # Show output based on line count
       if [[ -f ${temp_output} ]] && [[ -s ${temp_output} ]]; then
         local line_count=$(wc -l < ${temp_output} 2>/dev/null || echo 0)
@@ -276,7 +182,7 @@ invoke_formatter() {
           log_info "Formatting output (${line_count} lines): ${temp_output}"
         fi
       fi
-      
+
       if (( format_result != 0 )); then
         exit ${format_result}
       fi
