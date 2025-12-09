@@ -269,9 +269,16 @@ if(APPLE)
       else()
         set(AGL_ARCH_FLAGS "-arch" "arm64")
       endif()
+      # Get SDK path for macOS
+      set(AGL_SDK_FLAGS "")
+      if(CMAKE_OSX_SYSROOT)
+        list(APPEND AGL_SDK_FLAGS "-isysroot" "${CMAKE_OSX_SYSROOT}")
+      endif()
+      # Add framework System for macOS system libraries
+      list(APPEND AGL_SDK_FLAGS "-framework" "System")
       execute_process(
         COMMAND
-          ${CMAKE_C_COMPILER} -shared ${AGL_ARCH_FLAGS} -o "${AGL_STUB_LIB}" "${AGL_STUB_DIR}/AGL-stub.c" -install_name
+          ${CMAKE_C_COMPILER} -shared ${AGL_ARCH_FLAGS} ${AGL_SDK_FLAGS} -o "${AGL_STUB_LIB}" "${AGL_STUB_DIR}/AGL-stub.c" -install_name
           @rpath/AGL.framework/AGL -compatibility_version 1.0 -current_version 1.0
         RESULT_VARIABLE AGL_STUB_RESULT
       )
