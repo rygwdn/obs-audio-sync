@@ -250,31 +250,8 @@ void TimelineWidget::drawSpikeMarker(QPainter &painter)
 
 void TimelineWidget::drawVideoFrameMarkers(QPainter &painter)
 {
-	if (m_videoFrameTimestamps.isEmpty()) {
-		return;
-	}
-
-	// Draw video frame blocks centered like the waveform
-	const int VIDEO_CENTER_Y = 140;    // Below audio waveform (moved down)
-	const int FRAME_BLOCK_HEIGHT = 60; // Same height as audio waveform
-	const int FRAME_BLOCK_TOP = VIDEO_CENTER_Y - FRAME_BLOCK_HEIGHT / 2;
-
-	painter.setPen(QPen(QColor(100, 255, 100), 1)); // Light green border only
-	painter.setBrush(Qt::NoBrush);                  // No background fill
-
-	// Draw blocks for all video frames in visible range
-	for (double frameTime : m_videoFrameTimestamps) {
-		if (frameTime < m_viewStartTime || frameTime > m_viewEndTime) {
-			continue;
-		}
-		int const X_POS = xFromTimestamp(frameTime);
-		if (X_POS < 20 || X_POS > width() - 20) {
-			continue;
-		}
-		// Draw centered block
-		const int BLOCK_WIDTH = 4;
-		painter.drawRect(X_POS - BLOCK_WIDTH / 2, FRAME_BLOCK_TOP, BLOCK_WIDTH, FRAME_BLOCK_HEIGHT);
-	}
+	// Frame markers removed - only colored bars from drawFrameDifferenceBars are shown
+	Q_UNUSED(painter);
 }
 
 void TimelineWidget::drawVideoFramePosition(QPainter &painter)

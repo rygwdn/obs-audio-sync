@@ -38,6 +38,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qabstractitemview.h>
 #include <qlabel.h>
 #include <qset.h>
+#include <qcheckbox.h>
 
 AudioSyncModal::AudioSyncModal(const QString &filePath, QWidget *parent) : QDialog(parent)
 {
@@ -113,9 +114,10 @@ void AudioSyncModal::setupUI()
 	mainLayout->setContentsMargins(10, 10, 10, 10);
 	mainLayout->setSpacing(10);
 
-	// Timeline widget
+	// Timeline widget - fixed height
 	m_timelineWidget = new TimelineWidget(this);
 	m_timelineWidget->setVisible(false);
+	m_timelineWidget->setFixedHeight(220); // Static height
 	mainLayout->addWidget(m_timelineWidget);
 
 	// Zoom and frame navigation controls
@@ -159,32 +161,43 @@ void AudioSyncModal::setupUI()
 	zoomLayout->addWidget(m_nextFrameButton);
 	mainLayout->addLayout(zoomLayout);
 
-	// Video frame display
+	// Video frame display - grows to fill available space
 	m_frameLabel = new QLabel(this);
 	m_frameLabel->setMinimumHeight(200);
-	m_frameLabel->setMaximumHeight(400); // Fixed maximum to prevent growth
-	m_frameLabel->setMaximumWidth(800);  // Fixed maximum width
 	m_frameLabel->setAlignment(Qt::AlignCenter);
 	m_frameLabel->setStyleSheet("background-color: black; border: 1px solid gray;");
 	m_frameLabel->setText("No frame loaded");
 	m_frameLabel->setScaledContents(false); // Don't stretch - we handle scaling manually with aspect ratio
 	m_frameLabel->setVisible(false);
-	mainLayout->addWidget(m_frameLabel);
+	mainLayout->addWidget(m_frameLabel, 1); // Stretch factor 1 - grows to fill
 
-	// Source selection section with combined list and apply button
-	auto *sourceLayout = new QHBoxLayout();
+	// Source selection section with filter checkbox, list and apply button
+	auto *sourceLayout = new QVBoxLayout();
+
+	// Filter checkbox above apply button
+	m_filterNonZeroCheckbox = new QCheckBox("Show only sources with non-zero offsets", this);
+	m_filterNonZeroCheckbox->setToolTip("Filter to show only sources that have offsets configured");
+	connect(m_filterNonZeroCheckbox, &QCheckBox::toggled, this, &AudioSyncModal::onFilterNonZeroToggled);
+
+	auto *sourceRowLayout = new QHBoxLayout();
 	m_sourcesList = new QListWidget(this);
 	m_sourcesList->setSelectionMode(QAbstractItemView::NoSelection);
-	m_sourcesList->setMaximumHeight(150);
+	m_sourcesList->setMinimumHeight(100);
 	m_sourcesList->setToolTip("Select audio and video sources to sync to match the recording");
-	sourceLayout->addWidget(m_sourcesList);
+	sourceRowLayout->addWidget(m_sourcesList);
 
 	// Apply offset button to the right
+	auto *buttonLayout = new QVBoxLayout();
+	buttonLayout->addWidget(m_filterNonZeroCheckbox);
+	buttonLayout->addStretch();
 	m_applyOffsetButton = new QPushButton("Apply Offset", this);
 	m_applyOffsetButton->setToolTip("Apply the calculated sync offset as a delta to the selected source");
 	m_applyOffsetButton->setEnabled(false);
-	sourceLayout->addWidget(m_applyOffsetButton);
-	mainLayout->addLayout(sourceLayout);
+	buttonLayout->addWidget(m_applyOffsetButton);
+	sourceRowLayout->addLayout(buttonLayout);
+
+	sourceLayout->addLayout(sourceRowLayout);
+	mainLayout->addLayout(sourceLayout, 0); // No stretch - expands after video frame fills
 
 	// Spinner (initially hidden)
 	m_spinner = new QProgressBar(this);
@@ -341,13 +354,13 @@ void AudioSyncModal::updateFrameDisplay()
 	}
 
 	const VideoFrame &frame = m_frames[m_currentFrameIndex];
-	// Scale to fit within maximum label bounds while maintaining aspect ratio
-	QSize maxSize = m_frameLabel->maximumSize();
-	if (maxSize.width() <= 0 || maxSize.height() <= 0) {
-		maxSize = QSize(800, 400); // Fallback
+	// Scale to fit within label bounds while maintaining aspect ratio
+	QSize labelSize = m_frameLabel->size();
+	if (labelSize.width() <= 0 || labelSize.height() <= 0) {
+		labelSize = QSize(800, 400); // Fallback
 	}
 	// Scale to fit (not fill) - this ensures the entire image is visible
-	QPixmap scaledPixmap = frame.pixmap.scaled(maxSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+	QPixmap scaledPixmap = frame.pixmap.scaled(labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 	m_frameLabel->setPixmap(scaledPixmap);
 
 	// Update timeline with current video frame position
@@ -498,6 +511,9 @@ void AudioSyncModal::refreshSourceList()
 		}
 	}
 
+	// Check if filter is enabled
+	bool filterNonZero = m_filterNonZeroCheckbox && m_filterNonZeroCheckbox->isChecked();
+
 	// Clear and repopulate combined list
 	m_sourcesList->clear();
 
@@ -505,6 +521,10 @@ void AudioSyncModal::refreshSourceList()
 	QList<SourceInfo> audioSources = m_sourceOffsetManager->getAudioSources();
 	qInfo() << "AudioSyncModal::refreshSourceList: Adding" << audioSources.size() << "audio sources";
 	for (const SourceInfo &info : audioSources) {
+		// Filter: if checkbox is checked, only show sources with non-zero offsets
+		if (filterNonZero && info.currentOffsetMs == 0) {
+			continue;
+		}
 		qInfo() << "AudioSyncModal::refreshSourceList: Adding audio source:" << info.name;
 		QString offsetText = info.currentOffsetMs != 0 ? QString(" (offset: %1 ms)").arg(info.currentOffsetMs)
 							       : "";
@@ -522,6 +542,10 @@ void AudioSyncModal::refreshSourceList()
 	QList<SourceInfo> videoSources = m_sourceOffsetManager->getVideoSources();
 	qInfo() << "AudioSyncModal::refreshSourceList: Adding" << videoSources.size() << "video sources";
 	for (const SourceInfo &info : videoSources) {
+		// Filter: if checkbox is checked, only show sources with non-zero offsets
+		if (filterNonZero && info.currentOffsetMs == 0) {
+			continue;
+		}
 		qInfo() << "AudioSyncModal::refreshSourceList: Adding video source:" << info.name;
 		QString offsetText = info.currentOffsetMs != 0 ? QString(" (offset: %1 ms)").arg(info.currentOffsetMs)
 							       : "";
@@ -588,6 +612,11 @@ QStringList AudioSyncModal::getSelectedVideoSources() const
 	return selected;
 }
 
+void AudioSyncModal::onFilterNonZeroToggled()
+{
+	refreshSourceList();
+}
+
 void AudioSyncModal::onApplyOffsetClicked()
 {
 	if (!m_sourceOffsetManager || qAbs(m_calculatedOffsetMs) < 0.01) {
@@ -630,7 +659,7 @@ void AudioSyncModal::onApplyOffsetClicked()
 		QString header = QString("Applied offset of %1ms to:").arg(offsetText);
 		QString message = header + newlineChar + sourcesText;
 		QMessageBox::information(this, "Offset Applied", message);
-		// Refresh offset displays
-		updateOffsetDisplay();
+		// Refresh offset displays and source list (to update offset values)
+		refreshSourceList();
 	}
 }

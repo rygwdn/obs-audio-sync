@@ -36,6 +36,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "video-extraction-worker.h"
 #include "source-offset-manager.h"
 #include <QListWidget>
+#include <QCheckBox>
 
 class AudioSyncModal : public QDialog {
 	Q_OBJECT
@@ -61,6 +62,7 @@ private slots:
 	void onSnapToPeaksToggled();
 	void onSourceSelectionChanged();
 	void onApplyOffsetClicked();
+	void onFilterNonZeroToggled();
 	// Worker slots
 	void onAudioAnalyzed(const AudioSpike &spike, const QVector<AudioSample> &samples);
 	void onAnalysisError(const QString &error);
@@ -97,6 +99,7 @@ private:
 	// Source selection UI
 	QListWidget *m_sourcesList{nullptr};
 	QPushButton *m_applyOffsetButton{nullptr};
+	QCheckBox *m_filterNonZeroCheckbox{nullptr};
 
 	// Source offset manager
 	SourceOffsetManager *m_sourceOffsetManager{nullptr};
