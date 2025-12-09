@@ -289,8 +289,9 @@ if(APPLE)
       list(APPEND AGL_SDK_FLAGS "-framework" "System")
       execute_process(
         COMMAND
-          ${CMAKE_C_COMPILER} -shared ${AGL_ARCH_FLAGS} ${AGL_SDK_FLAGS} -o "${AGL_STUB_LIB}" "${AGL_STUB_DIR}/AGL-stub.c" -install_name
-          @rpath/AGL.framework/AGL -compatibility_version 1.0 -current_version 1.0
+          ${CMAKE_C_COMPILER} -shared ${AGL_ARCH_FLAGS} ${AGL_SDK_FLAGS} -o "${AGL_STUB_LIB}"
+          "${AGL_STUB_DIR}/AGL-stub.c" -install_name @rpath/AGL.framework/AGL -compatibility_version 1.0
+          -current_version 1.0
         RESULT_VARIABLE AGL_STUB_RESULT
       )
       if(NOT AGL_STUB_RESULT EQUAL 0)
