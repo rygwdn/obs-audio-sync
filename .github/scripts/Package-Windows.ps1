@@ -97,7 +97,7 @@ function Package {
             $BuildArgs += "--verbose"
         }
         
-        Invoke-External cmake $BuildArgs
+        Invoke-External cmake @BuildArgs
         Write-Output "::endgroup::"
         
         # Find the installer executable
