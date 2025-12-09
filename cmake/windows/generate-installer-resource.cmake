@@ -11,11 +11,27 @@ if(NOT DEFINED RESOURCE_OUT)
 endif()
 
 # The DLL path comes from generator expressions, so it should already be expanded
-# Convert to native path format (Windows uses backslashes)
-file(TO_NATIVE_PATH "${PLUGIN_DLL}" NATIVE_DLL_PATH)
+# Verify the DLL file exists
+if(NOT EXISTS "${PLUGIN_DLL}")
+  message(FATAL_ERROR "Plugin DLL not found: ${PLUGIN_DLL}")
+endif()
 
-# Escape backslashes for the resource file (they need to be doubled in .rc files)
-string(REPLACE "\\" "\\\\" ESCAPED_DLL_PATH "${NATIVE_DLL_PATH}")
+# Get the directory where the resource file will be located
+get_filename_component(RESOURCE_DIR "${RESOURCE_OUT}" DIRECTORY)
+
+# Try to make the path relative to the resource file directory for better compatibility
+file(RELATIVE_PATH RELATIVE_DLL_PATH "${RESOURCE_DIR}" "${PLUGIN_DLL}")
+
+# If relative path would go up too many levels, use absolute path instead
+if(RELATIVE_DLL_PATH MATCHES "^\\.\\.")
+  # Use absolute path if relative is too complex
+  file(TO_NATIVE_PATH "${PLUGIN_DLL}" NATIVE_DLL_PATH)
+  string(REPLACE "\\" "\\\\" ESCAPED_DLL_PATH "${NATIVE_DLL_PATH}")
+else()
+  # Use relative path
+  file(TO_NATIVE_PATH "${RELATIVE_DLL_PATH}" NATIVE_DLL_PATH)
+  string(REPLACE "\\" "\\\\" ESCAPED_DLL_PATH "${NATIVE_DLL_PATH}")
+endif()
 
 # Generate the resource file
 file(WRITE "${RESOURCE_OUT}" "#include <windows.h>\n")

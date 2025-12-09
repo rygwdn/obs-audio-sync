@@ -64,6 +64,10 @@ bool ExtractDLLFromResource(const std::string &outputPath)
 	// Find the embedded DLL resource
 	HRSRC hRes = FindResourceA(NULL, MAKEINTRESOURCEA(IDR_PLUGIN_DLL), (LPCSTR)RT_RCDATA);
 	if (!hRes) {
+		DWORD error = GetLastError();
+		// Log error for debugging (can be viewed in Event Viewer or debugger)
+		// Error 1813 = ERROR_RESOURCE_TYPE_NOT_FOUND
+		// Error 1814 = ERROR_RESOURCE_NAME_NOT_FOUND
 		return false;
 	}
 

@@ -58,7 +58,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		if (!ExtractDLLFromResource(tempDLL)) {
 			UpdateProgressDialog(0, L"Error: Failed to extract plugin files");
 			CloseProgressDialog();
-			ShowErrorMessage(L"Installation Failed", L"Failed to extract plugin files from installer.");
+			DWORD error = GetLastError();
+			std::wstringstream errorMsg;
+			errorMsg << L"Failed to extract plugin files from installer.\n\n";
+			errorMsg << L"This usually means the DLL was not embedded in the installer.\n";
+			errorMsg << L"Error code: " << error;
+			ShowErrorMessage(L"Installation Failed", errorMsg.str());
 			return 1;
 		}
 
