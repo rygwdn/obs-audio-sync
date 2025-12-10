@@ -44,11 +44,16 @@ static void enumFilterCallback(obs_source_t *source, obs_source_t *filter, void 
 	     enabled);
 }
 
+// Forward declaration
+static bool enumSourceCallback(void *param, obs_source_t *source);
+
 // Helper callback for enumerating sources within groups
-static bool enumGroupSourceCallback(void *param, obs_source_t *source)
+// obs_source_enum_active_sources uses a different signature: void callback(obs_source_t *parent, obs_source_t *child, void *param)
+static void enumGroupSourceCallback(obs_source_t *parent, obs_source_t *child, void *param)
 {
-	// Reuse the same enumSourceCallback logic
-	return enumSourceCallback(param, source);
+	(void)parent; // Unused parameter
+	// Process the child source using the same logic
+	enumSourceCallback(param, child);
 }
 
 static bool enumSourceCallback(void *param, obs_source_t *source)
