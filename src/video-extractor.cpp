@@ -22,8 +22,8 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qlogging.h>
 #include <cstdint>
 #include <qpixmap.h>
-#include <QtConcurrent>
 #include <QFuture>
+#include <QtConcurrent/QtConcurrentRun>
 #include <algorithm>
 
 // FFmpeg includes

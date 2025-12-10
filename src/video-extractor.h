@@ -32,6 +32,7 @@ struct AVCodecContext;
 struct SwsContext;
 struct AVFrame;
 struct AVPacket;
+enum AVPixelFormat;
 }
 
 struct VideoFrame {
