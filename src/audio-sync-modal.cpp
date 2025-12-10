@@ -639,14 +639,16 @@ void AudioSyncModal::onApplyOffsetClicked()
 
 	// Apply to all selected audio sources
 	for (const QString &source : audioSources) {
-		if (m_sourceOffsetManager->setSourceOffset(source, static_cast<int>(m_calculatedOffsetMs), true)) {
+		if (m_sourceOffsetManager->setSourceOffset(source, static_cast<int>(m_calculatedOffsetMs), true,
+							   true)) {
 			appliedSources.append(source);
 		}
 	}
 
 	// Apply to all selected video sources
 	for (const QString &source : videoSources) {
-		if (m_sourceOffsetManager->setSourceOffset(source, static_cast<int>(m_calculatedOffsetMs), true)) {
+		if (m_sourceOffsetManager->setSourceOffset(source, static_cast<int>(m_calculatedOffsetMs), true,
+							   false)) {
 			appliedSources.append(source);
 		}
 	}

@@ -28,7 +28,8 @@ SourceOffsetManager::SourceOffsetManager(QObject *parent) : QObject(parent) {}
 struct EnumData {
 	QList<SourceInfo> *sources;
 	SourceOffsetManager *manager;
-	QSet<QString> *addedSources; // Track source names with type to prevent duplicates (format: "name:audio" or "name:video")
+	QSet<QString> *
+		addedSources; // Track source names with type to prevent duplicates (format: "name:audio" or "name:video")
 };
 
 static void enumFilterCallback(obs_source_t *source, obs_source_t *filter, void *param)
@@ -140,7 +141,8 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 
 			// List all filters on this source
 			QByteArray sourceNameBytes = sourceNameStr.toUtf8();
-			obs_source_enum_filters(source, enumFilterCallback, const_cast<char *>(sourceNameBytes.constData()));
+			obs_source_enum_filters(source, enumFilterCallback,
+						const_cast<char *>(sourceNameBytes.constData()));
 
 			obs_source_t *filter = obs_source_get_filter_by_name(source, "Video Delay (Async)");
 			if (filter == nullptr) {
@@ -179,7 +181,8 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 QList<SourceInfo> SourceOffsetManager::enumerateSourcesWithAsyncDelay()
 {
 	QList<SourceInfo> sources;
-	QSet<QString> addedSources; // Track source names with type to prevent duplicates (format: "name:audio" or "name:video")
+	QSet<QString>
+		addedSources; // Track source names with type to prevent duplicates (format: "name:audio" or "name:video")
 
 	blog(LOG_INFO, "[AudioSync] enumerateSourcesWithAsyncDelay: Starting source enumeration");
 
@@ -244,7 +247,7 @@ int SourceOffsetManager::getSourceOffset(const QString &sourceName)
 	return info.currentOffsetMs;
 }
 
-bool SourceOffsetManager::setSourceOffset(const QString &sourceName, int offsetMs, bool asDelta)
+bool SourceOffsetManager::setSourceOffset(const QString &sourceName, int offsetMs, bool asDelta, bool applyToAudio)
 {
 	// Find source by name
 	obs_source_t *source = obs_get_source_by_name(sourceName.toUtf8().constData());
@@ -258,7 +261,8 @@ bool SourceOffsetManager::setSourceOffset(const QString &sourceName, int offsetM
 	bool isAudio = (outputFlags & OBS_SOURCE_AUDIO) != 0;
 	bool isVideo = (outputFlags & OBS_SOURCE_VIDEO) != 0;
 
-	if (isAudio) {
+	// Apply to audio if requested and source supports audio
+	if (applyToAudio && isAudio) {
 		// For audio sources: use built-in sync offset (in nanoseconds)
 		int64_t currentOffsetNs = obs_source_get_sync_offset(source);
 		int currentOffsetMs = static_cast<int>(currentOffsetNs / 1000000LL);
@@ -285,7 +289,10 @@ bool SourceOffsetManager::setSourceOffset(const QString &sourceName, int offsetM
 
 		obs_source_release(source);
 		return true;
-	} else if (isVideo) {
+	}
+
+	// Apply to video if requested and source supports video
+	if (!applyToAudio && isVideo) {
 		// For video sources: use Video Delay (Async) filter
 		obs_source_t *filter = obs_source_get_filter_by_name(source, "Video Delay (Async)");
 		if (filter == nullptr) {

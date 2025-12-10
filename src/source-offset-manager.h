@@ -56,7 +56,9 @@ public:
 
 	// Set source offset (in milliseconds)
 	// If asDelta is true, adds offsetMs to current offset; otherwise sets absolute value
-	bool setSourceOffset(const QString &sourceName, int offsetMs, bool asDelta = false);
+	// If applyToAudio is true, applies to audio; if false, applies to video
+	// For sources with both audio and video, this parameter determines which to update
+	bool setSourceOffset(const QString &sourceName, int offsetMs, bool asDelta = false, bool applyToAudio = true);
 
 	// Get list of audio sources with async delay filter
 	QList<SourceInfo> getAudioSources();
