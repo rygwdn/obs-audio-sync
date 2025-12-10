@@ -365,13 +365,17 @@ if(WIN32)
   set(INSTALLER_RESOURCE_RC "${CMAKE_CURRENT_BINARY_DIR}/installer-resource.rc")
 
   # Generate resource file with DLL path using a CMake script
-  # This allows us to use generator expressions properly
+  # Use a wrapper approach: the script will be called with the DLL path as a generator expression
+  # The DEPENDS ensures the DLL file exists before this command runs
   add_custom_command(
     OUTPUT "${INSTALLER_RESOURCE_RC}"
     COMMAND
-      ${CMAKE_COMMAND} -DPLUGIN_DLL="$<TARGET_FILE:${CMAKE_PROJECT_NAME}>" -DRESOURCE_OUT=${INSTALLER_RESOURCE_RC} -P
-      "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/generate-installer-resource.cmake"
-    DEPENDS ${CMAKE_PROJECT_NAME}
+      ${CMAKE_COMMAND}
+      -DPLUGIN_DLL="$<TARGET_FILE:${CMAKE_PROJECT_NAME}>"
+      -DRESOURCE_OUT="${INSTALLER_RESOURCE_RC}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/generate-installer-resource.cmake"
+    DEPENDS $<TARGET_FILE:${CMAKE_PROJECT_NAME}>
+    IMPLICIT_DEPENDS CXX "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/generate-installer-resource.cmake"
     COMMENT "Generating installer resource file with embedded DLL"
     VERBATIM
   )
