@@ -51,10 +51,16 @@ if(NOT ACTUAL_DLL_PATH OR NOT EXISTS "${ACTUAL_DLL_PATH}")
 endif()
 
 # Get the directory where the resource file will be located
+# Ensure it's an absolute path for file(RELATIVE_PATH)
 get_filename_component(RESOURCE_DIR "${RESOURCE_OUT}" DIRECTORY)
+if(NOT IS_ABSOLUTE "${RESOURCE_DIR}")
+  get_filename_component(RESOURCE_DIR "${RESOURCE_DIR}" ABSOLUTE)
+endif()
 
 # Try to make the path relative to the resource file directory for better compatibility
-file(RELATIVE_PATH RELATIVE_DLL_PATH "${RESOURCE_DIR}" "${ACTUAL_DLL_PATH}")
+# Both paths must be absolute for file(RELATIVE_PATH)
+get_filename_component(ACTUAL_DLL_PATH_ABS "${ACTUAL_DLL_PATH}" ABSOLUTE)
+file(RELATIVE_PATH RELATIVE_DLL_PATH "${RESOURCE_DIR}" "${ACTUAL_DLL_PATH_ABS}")
 
 # If relative path would go up too many levels, use absolute path instead
 if(RELATIVE_DLL_PATH MATCHES "^\\.\\.")
