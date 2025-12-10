@@ -39,12 +39,14 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qlabel.h>
 #include <qset.h>
 #include <qcheckbox.h>
+#include <QResizeEvent>
 
 AudioSyncModal::AudioSyncModal(const QString &filePath, QWidget *parent) : QDialog(parent)
 {
 	setWindowTitle("Audio Sync - " + QFileInfo(filePath).fileName());
 	setModal(true);
 	setMinimumSize(900, 700);
+	resize(1200, 900); // Start larger than minimum
 
 	m_currentRecording = filePath;
 	m_calculatedOffsetMs = 0.0;
@@ -661,5 +663,14 @@ void AudioSyncModal::onApplyOffsetClicked()
 		QMessageBox::information(this, "Offset Applied", message);
 		// Refresh offset displays and source list (to update offset values)
 		refreshSourceList();
+	}
+}
+
+void AudioSyncModal::resizeEvent(QResizeEvent *event)
+{
+	QDialog::resizeEvent(event);
+	// Update frame display when modal is resized so video frame scales properly
+	if (!m_frames.isEmpty() && m_currentFrameIndex >= 0 && m_currentFrameIndex < m_frames.size()) {
+		updateFrameDisplay();
 	}
 }

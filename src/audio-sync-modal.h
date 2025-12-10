@@ -51,6 +51,9 @@ public:
 	AudioSyncModal(AudioSyncModal &&) = delete;
 	AudioSyncModal &operator=(AudioSyncModal &&) = delete;
 
+protected:
+	void resizeEvent(QResizeEvent *event) override;
+
 private slots:
 	void onSpikePositionChanged(double timestamp);
 	void onVideoFramePositionChanged(double timestamp);
