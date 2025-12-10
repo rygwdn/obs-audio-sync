@@ -374,9 +374,9 @@ if(WIN32)
       -DPLUGIN_DLL="$<TARGET_FILE:${CMAKE_PROJECT_NAME}>"
       -DRESOURCE_OUT="${INSTALLER_RESOURCE_RC}"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/generate-installer-resource.cmake"
-    DEPENDS $<TARGET_FILE:${CMAKE_PROJECT_NAME}>
+    DEPENDS $<TARGET_FILE:${CMAKE_PROJECT_NAME}> "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/resources/installer.manifest"
     IMPLICIT_DEPENDS CXX "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/generate-installer-resource.cmake"
-    COMMENT "Generating installer resource file with embedded DLL"
+    COMMENT "Generating installer resource file with embedded DLL and UAC manifest"
     VERBATIM
   )
 
