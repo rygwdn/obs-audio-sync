@@ -19,6 +19,8 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "video-extraction-worker.h"
 #include "video-extractor.h"
 #include <QDebug>
+#include <QElapsedTimer>
+#include <qlogging.h>
 
 VideoExtractionWorker::VideoExtractionWorker(QObject *parent) : QObject(parent), m_videoExtractor(new VideoExtractor())
 {
@@ -61,6 +63,11 @@ void VideoExtractionWorker::extractFrames(const QString &filePath, double startT
 void VideoExtractionWorker::extractFramesIncremental(const QString &filePath, double startTime, double endTime,
 						     double priorityCenter)
 {
+	QElapsedTimer totalTimer;
+	totalTimer.start();
+	qInfo() << "VideoExtractionWorker::extractFramesIncremental: Starting extraction for" << filePath
+		<< "(range:" << startTime << "-" << endTime << "s, priority:" << priorityCenter << "s)";
+
 	try {
 		if (!m_videoExtractor->openFile(filePath)) {
 			emit extractionError("Could not open video from recording.");
@@ -94,11 +101,15 @@ void VideoExtractionWorker::extractFramesIncremental(const QString &filePath, do
 
 		// Emit priority frames first
 		if (!priorityFrames.isEmpty()) {
+			qInfo() << "VideoExtractionWorker::extractFramesIncremental: Emitting" << priorityFrames.size()
+				<< "priority frames";
 			emit framesExtractedIncremental(priorityFrames, fps, true);
 		}
 
 		// Emit remaining frames
 		if (!remainingFrames.isEmpty()) {
+			qInfo() << "VideoExtractionWorker::extractFramesIncremental: Emitting" << remainingFrames.size()
+				<< "remaining frames";
 			emit framesExtractedIncremental(remainingFrames, fps, false);
 		}
 
@@ -110,6 +121,9 @@ void VideoExtractionWorker::extractFramesIncremental(const QString &filePath, do
 			return;
 		}
 
+		qInfo() << "VideoExtractionWorker::extractFramesIncremental: Completed extraction of"
+			<< allFrames.size() << "frames in" << totalTimer.elapsed()
+			<< "ms (priority:" << priorityFrames.size() << ", remaining:" << remainingFrames.size() << ")";
 		emit framesExtracted(allFrames, fps);
 	} catch (const std::exception &e) {
 		qWarning() << "VideoExtractionWorker::extractFramesIncremental: Exception:" << e.what();

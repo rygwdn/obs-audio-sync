@@ -282,7 +282,9 @@ void TestVideoExtractor::testConvertNativeFramesToRGB_parallelConversion()
 	// Verify structure allows parallel conversion
 
 	QVector<VideoExtractor::NativeFrame> nativeFrames;
-	for (int i = 0; i < 20; i++) {
+	// Create frames from 0.0 to 4.0 seconds (40 frames at 0.1s intervals)
+	// This ensures we have frames both inside and outside the priority window
+	for (int i = 0; i < 40; i++) {
 		VideoExtractor::NativeFrame frame;
 		frame.frame = nullptr;
 		frame.timestamp = i * 0.1;
@@ -292,7 +294,7 @@ void TestVideoExtractor::testConvertNativeFramesToRGB_parallelConversion()
 
 	// Verify we can split into priority and remaining
 	const double PRIORITY_WINDOW = 1.0;
-	double cursorPosition = 1.0;
+	double cursorPosition = 1.0; // Cursor at 1.0s, priority window is 0.0-2.0s
 
 	QVector<int> priorityIndices;
 	QVector<int> remainingIndices;

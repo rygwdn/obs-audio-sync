@@ -40,10 +40,24 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qset.h>
 #include <qcheckbox.h>
 #include <QResizeEvent>
+#include <QProcess>
+#include <QElapsedTimer>
 
 AudioSyncModal::AudioSyncModal(const QString &filePath, QWidget *parent) : QDialog(parent)
 {
-	setWindowTitle("Audio Sync - " + QFileInfo(filePath).fileName());
+	// Get git SHA for title
+	QString gitSha = "unknown";
+	QProcess gitProcess;
+	gitProcess.start("git", QStringList() << "rev-parse" << "--short" << "HEAD");
+	if (gitProcess.waitForFinished(1000)) {
+		QByteArray output = gitProcess.readAllStandardOutput();
+		gitSha = QString::fromUtf8(output).trimmed();
+		if (gitSha.isEmpty()) {
+			gitSha = "unknown";
+		}
+	}
+
+	setWindowTitle(QString("Audio Sync - %1 [%2]").arg(QFileInfo(filePath).fileName(), gitSha));
 	setModal(true);
 	setMinimumSize(900, 700);
 	resize(1200, 900); // Start larger than minimum

@@ -25,6 +25,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QFuture>
 #include <QtConcurrent/QtConcurrentRun>
 #include <algorithm>
+#include <QElapsedTimer>
 
 // FFmpeg includes
 extern "C" {
@@ -442,6 +443,8 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 
 QVector<VideoFrame> VideoExtractor::extractFramesInRange(double startTime, double endTime)
 {
+	QElapsedTimer timer;
+	timer.start();
 	QVector<VideoFrame> frames;
 
 	if (!m_fileOpen || m_filePath.isEmpty() || m_fps <= 0.0) {
@@ -449,6 +452,9 @@ QVector<VideoFrame> VideoExtractor::extractFramesInRange(double startTime, doubl
 			   << m_fileOpen << "m_filePath.isEmpty()=" << m_filePath.isEmpty() << "m_fps=" << m_fps << ")";
 		return frames;
 	}
+
+	qInfo() << "VideoExtractor::extractFramesInRange: Starting extraction for range [" << startTime << "-"
+		<< endTime << "]s";
 
 	// Setup format context
 	FormatContextData formatData = setupFormatContext(m_filePath);
@@ -633,14 +639,26 @@ QVector<VideoFrame> VideoExtractor::extractFramesInRange(double startTime, doubl
 	cleanupFormatContext(formatData);
 
 	// Calculate frame-to-frame differences
+	QElapsedTimer diffTimer;
+	diffTimer.start();
 	VideoExtractor::calculateFrameDifferences(frames);
+	qInfo() << "VideoExtractor::extractFramesInRange: Frame difference calculation took" << diffTimer.elapsed()
+		<< "ms";
+
+	qInfo() << "VideoExtractor::extractFramesInRange: Completed extraction of" << frames.size() << "frames in"
+		<< timer.elapsed() << "ms (range:" << startTime << "-" << endTime << "s)";
 
 	return frames;
 }
 
 QVector<VideoExtractor::NativeFrame> VideoExtractor::decodeFramesToNative(double startTime, double endTime)
 {
+	QElapsedTimer timer;
+	timer.start();
 	QVector<NativeFrame> nativeFrames;
+
+	qInfo() << "VideoExtractor::decodeFramesToNative: Starting decode for range [" << startTime << "-" << endTime
+		<< "]s";
 
 	if (!m_fileOpen || m_filePath.isEmpty() || m_fps <= 0.0) {
 		qWarning() << "VideoExtractor::decodeFramesToNative: File not open or invalid FPS";
@@ -740,6 +758,9 @@ QVector<VideoExtractor::NativeFrame> VideoExtractor::decodeFramesToNative(double
 	cleanupCodecContext(codecData);
 	cleanupFormatContext(formatData);
 
+	qInfo() << "VideoExtractor::decodeFramesToNative: Decoded" << nativeFrames.size() << "native frames in"
+		<< timer.elapsed() << "ms (range:" << startTime << "-" << endTime << "s)";
+
 	return nativeFrames;
 }
 
@@ -791,11 +812,16 @@ VideoFrame VideoExtractor::convertSingleNativeFrameToRGB(const NativeFrame &nati
 
 QVector<VideoFrame> VideoExtractor::extractFramesOptimized(double startTime, double endTime, double cursorPosition)
 {
+	QElapsedTimer totalTimer;
+	totalTimer.start();
 	QVector<VideoFrame> frames;
 
 	if (!m_fileOpen || m_filePath.isEmpty() || m_fps <= 0.0) {
 		return frames;
 	}
+
+	qInfo() << "VideoExtractor::extractFramesOptimized: Starting optimized extraction for range [" << startTime
+		<< "-" << endTime << "]s (cursor:" << cursorPosition << "s)";
 
 	// Phase 1: Decode all frames to native format (single pass, fast)
 	QVector<NativeFrame> nativeFrames = decodeFramesToNative(startTime, endTime);
@@ -843,6 +869,10 @@ QVector<VideoFrame> VideoExtractor::extractFramesOptimized(double startTime, dou
 	cleanupCodecContext(codecData);
 	cleanupFormatContext(formatData);
 
+	qInfo() << "VideoExtractor::extractFramesOptimized: Completed optimized extraction of" << frames.size()
+		<< "frames in" << totalTimer.elapsed() << "ms (range:" << startTime << "-" << endTime
+		<< "s, cursor:" << cursorPosition << "s)";
+
 	return frames;
 }
 
@@ -850,11 +880,16 @@ QVector<VideoFrame> VideoExtractor::convertNativeFramesToRGB(const QVector<Nativ
 							     AVCodecContext *codecContext, int width, int height,
 							     AVPixelFormat srcFormat, double cursorPosition)
 {
+	QElapsedTimer timer;
+	timer.start();
 	QVector<VideoFrame> frames;
 
 	if (nativeFrames.isEmpty() || codecContext == nullptr) {
 		return frames;
 	}
+
+	qInfo() << "VideoExtractor::convertNativeFramesToRGB: Starting conversion of" << nativeFrames.size()
+		<< "frames (cursor:" << cursorPosition << "s)";
 
 	// Sort frames by distance from cursor (priority zone first)
 	QVector<QPair<int, double>> frameDistances; // index, distance
@@ -891,15 +926,21 @@ QVector<VideoFrame> VideoExtractor::convertNativeFramesToRGB(const QVector<Nativ
 	}
 
 	// Convert priority frames first (synchronous, for immediate UI feedback)
+	QElapsedTimer priorityTimer;
+	priorityTimer.start();
 	for (int idx : priorityIndices) {
 		VideoFrame frame = convertSingleNativeFrameToRGB(nativeFrames[idx], codecContext, mainSwsContext);
 		convertedFrames.append(qMakePair(idx, frame));
 	}
+	qInfo() << "VideoExtractor::convertNativeFramesToRGB: Priority zone conversion (" << priorityIndices.size()
+		<< "frames) took" << priorityTimer.elapsed() << "ms";
 
 	sws_freeContext(mainSwsContext);
 
 	// Convert remaining frames in parallel
 	if (!remainingIndices.isEmpty()) {
+		QElapsedTimer parallelTimer;
+		parallelTimer.start();
 		QVector<QFuture<QPair<int, VideoFrame>>> futures;
 		for (int idx : remainingIndices) {
 			// Convert in parallel - create SwsContext inside the thread (it's not thread-safe)
@@ -929,6 +970,8 @@ QVector<VideoFrame> VideoExtractor::convertNativeFramesToRGB(const QVector<Nativ
 			future.waitForFinished();
 			convertedFrames.append(future.result());
 		}
+		qInfo() << "VideoExtractor::convertNativeFramesToRGB: Parallel conversion (" << remainingIndices.size()
+			<< "frames) took" << parallelTimer.elapsed() << "ms";
 	}
 
 	// Sort by original index to maintain timestamp order
@@ -941,7 +984,15 @@ QVector<VideoFrame> VideoExtractor::convertNativeFramesToRGB(const QVector<Nativ
 	}
 
 	// Calculate frame differences
+	QElapsedTimer diffTimer;
+	diffTimer.start();
 	calculateFrameDifferences(frames);
+	qInfo() << "VideoExtractor::convertNativeFramesToRGB: Frame difference calculation took" << diffTimer.elapsed()
+		<< "ms";
+
+	qInfo() << "VideoExtractor::convertNativeFramesToRGB: Completed conversion of" << frames.size() << "frames in"
+		<< timer.elapsed() << "ms (priority:" << priorityIndices.size()
+		<< ", parallel:" << remainingIndices.size() << ")";
 
 	return frames;
 }
