@@ -55,14 +55,33 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			return 1;
 		}
 		std::string tempDLL = std::string(tempPath) + pluginDLL;
-		if (!ExtractDLLFromResource(tempDLL)) {
+		std::string extractError;
+		if (!ExtractDLLFromResource(tempDLL, extractError)) {
 			UpdateProgressDialog(0, L"Error: Failed to extract plugin files");
 			CloseProgressDialog();
-			DWORD error = GetLastError();
 			std::wstringstream errorMsg;
 			errorMsg << L"Failed to extract plugin files from installer.\n\n";
-			errorMsg << L"This usually means the DLL was not embedded in the installer.\n";
-			errorMsg << L"Error code: " << error;
+			if (!extractError.empty()) {
+				// Convert error details to wide string
+				int size_needed = MultiByteToWideChar(CP_UTF8, 0, extractError.c_str(), static_cast<int>(extractError.length()), NULL, 0);
+				if (size_needed > 0) {
+					std::wstring errorDetailsW(size_needed, 0);
+					MultiByteToWideChar(CP_UTF8, 0, extractError.c_str(), static_cast<int>(extractError.length()), &errorDetailsW[0], size_needed);
+					errorMsg << errorDetailsW;
+				} else {
+					// Fallback: convert using ANSI if UTF-8 fails
+					size_needed = MultiByteToWideChar(CP_ACP, 0, extractError.c_str(), static_cast<int>(extractError.length()), NULL, 0);
+					if (size_needed > 0) {
+						std::wstring errorDetailsW(size_needed, 0);
+						MultiByteToWideChar(CP_ACP, 0, extractError.c_str(), static_cast<int>(extractError.length()), &errorDetailsW[0], size_needed);
+						errorMsg << errorDetailsW;
+					} else {
+						errorMsg << L"Error details could not be converted to display format.";
+					}
+				}
+			} else {
+				errorMsg << L"Unknown error occurred during extraction.";
+			}
 			ShowErrorMessage(L"Installation Failed", errorMsg.str());
 			return 1;
 		}

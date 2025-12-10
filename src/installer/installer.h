@@ -16,7 +16,7 @@
 std::string GetOBSInstallPath();
 bool DirectoryExists(const std::string &path);
 bool FileExists(const std::string &path);
-bool ExtractDLLFromResource(const std::string &outputPath);
+bool ExtractDLLFromResource(const std::string &outputPath, std::string &errorDetails);
 bool CopyFileToDestination(const std::string &source, const std::string &destination);
 bool CopyDataFiles(const std::string &obsPath, const std::string &pluginName);
 bool IsOBSRunning(const std::string &pluginName);

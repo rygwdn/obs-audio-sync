@@ -59,46 +59,92 @@ bool FileExists(const std::string &path)
 	return (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 }
 
-bool ExtractDLLFromResource(const std::string &outputPath)
+bool ExtractDLLFromResource(const std::string &outputPath, std::string &errorDetails)
 {
+	errorDetails.clear();
+	
 	// Find the embedded DLL resource
 	HRSRC hRes = FindResourceA(NULL, MAKEINTRESOURCEA(IDR_PLUGIN_DLL), (LPCSTR)RT_RCDATA);
 	if (!hRes) {
 		DWORD error = GetLastError();
-		// Log error for debugging (can be viewed in Event Viewer or debugger)
-		// Error 1813 = ERROR_RESOURCE_TYPE_NOT_FOUND
-		// Error 1814 = ERROR_RESOURCE_NAME_NOT_FOUND
+		std::ostringstream oss;
+		oss << "FindResourceA failed. Error code: " << error;
+		if (error == 1813) {
+			oss << " (ERROR_RESOURCE_TYPE_NOT_FOUND - RT_RCDATA type not found)";
+		} else if (error == 1814) {
+			oss << " (ERROR_RESOURCE_NAME_NOT_FOUND - Resource ID " << IDR_PLUGIN_DLL << " not found)";
+		}
+		oss << "\n\nThis usually means the DLL was not embedded in the installer executable.";
+		errorDetails = oss.str();
 		return false;
 	}
 
 	// Load the resource
 	HGLOBAL hData = LoadResource(NULL, hRes);
 	if (!hData) {
+		DWORD error = GetLastError();
+		std::ostringstream oss;
+		oss << "LoadResource failed. Error code: " << error;
+		errorDetails = oss.str();
 		return false;
 	}
 
 	// Lock the resource
 	LPVOID pData = LockResource(hData);
 	if (!pData) {
+		std::ostringstream oss;
+		oss << "LockResource failed. Unable to access resource data.";
+		errorDetails = oss.str();
 		return false;
 	}
 
 	// Get resource size
 	DWORD size = SizeofResource(NULL, hRes);
 	if (size == 0) {
+		std::ostringstream oss;
+		oss << "SizeofResource returned 0. Resource appears to be empty.";
+		errorDetails = oss.str();
 		return false;
 	}
 
 	// Write to temporary file
 	std::ofstream outFile(outputPath, std::ios::binary);
 	if (!outFile) {
+		DWORD error = GetLastError();
+		std::ostringstream oss;
+		oss << "Failed to create output file: " << outputPath << "\n";
+		oss << "Error code: " << error;
+		if (error == ERROR_ACCESS_DENIED) {
+			oss << " (Access denied - may need administrator rights)";
+		} else if (error == ERROR_PATH_NOT_FOUND) {
+			oss << " (Path not found - directory does not exist)";
+		}
+		errorDetails = oss.str();
 		return false;
 	}
 
 	outFile.write(static_cast<const char *>(pData), size);
+	bool writeSuccess = outFile.good();
 	outFile.close();
 
-	return outFile.good();
+	if (!writeSuccess) {
+		std::ostringstream oss;
+		oss << "Failed to write resource data to file: " << outputPath << "\n";
+		oss << "Resource size: " << size << " bytes\n";
+		oss << "File write operation failed.";
+		errorDetails = oss.str();
+		return false;
+	}
+
+	// Verify the file was written correctly
+	if (!FileExists(outputPath)) {
+		std::ostringstream oss;
+		oss << "File was not created after write operation: " << outputPath;
+		errorDetails = oss.str();
+		return false;
+	}
+
+	return true;
 }
 
 bool CopyFileToDestination(const std::string &source, const std::string &destination)
