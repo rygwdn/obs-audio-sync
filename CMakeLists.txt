@@ -386,12 +386,17 @@ if(WIN32)
   # Set subsystem to Windows (no console)
   set_target_properties(${CMAKE_PROJECT_NAME}-installer PROPERTIES WIN32_EXECUTABLE TRUE)
 
-  # Set manifest file for UAC (requires administrator privileges)
-  # This approach avoids duplicate manifest resources
+  # Disable Visual Studio's automatic manifest generation
+  # We'll embed the manifest manually as a resource to ensure UAC works
   set_target_properties(
     ${CMAKE_PROJECT_NAME}-installer
-    PROPERTIES VS_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/resources/installer.manifest"
+    PROPERTIES VS_MANIFEST "OFF"
   )
+
+  # Add linker flag to disable automatic manifest embedding
+  if(MSVC)
+    target_link_options(${CMAKE_PROJECT_NAME}-installer PRIVATE /MANIFEST:NO)
+  endif()
 
   # Make installer depend on plugin DLL and resource file
   add_dependencies(${CMAKE_PROJECT_NAME}-installer ${CMAKE_PROJECT_NAME})

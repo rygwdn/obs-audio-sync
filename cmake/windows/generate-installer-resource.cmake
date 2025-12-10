@@ -80,11 +80,20 @@ else()
   string(REPLACE "\\" "\\\\" ESCAPED_DLL_PATH "${NATIVE_DLL_PATH}")
 endif()
 
+# Get the manifest file path (absolute path for resource compiler)
+get_filename_component(SCRIPT_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
+get_filename_component(MANIFEST_FILE_ABS "${SCRIPT_DIR}/resources/installer.manifest" ABSOLUTE)
+file(TO_NATIVE_PATH "${MANIFEST_FILE_ABS}" MANIFEST_FILE_NATIVE)
+string(REPLACE "\\" "\\\\" ESCAPED_MANIFEST_PATH "${MANIFEST_FILE_NATIVE}")
+
 # Generate the resource file
 # Include the definition of IDR_PLUGIN_DLL (101) or define it directly
 # We use the numeric value directly to avoid path issues with header includes
-# Note: Manifest is handled separately via CMake's VS_MANIFEST property to avoid duplicates
+# Embed manifest as RT_MANIFEST resource (ID 1) - this is the standard way
 file(WRITE "${RESOURCE_OUT_CLEAN}" "#include <windows.h>\n")
+file(APPEND "${RESOURCE_OUT_CLEAN}" "\n")
+file(APPEND "${RESOURCE_OUT_CLEAN}" "// UAC Manifest - requests administrator privileges\n")
+file(APPEND "${RESOURCE_OUT_CLEAN}" "1 RT_MANIFEST \"${ESCAPED_MANIFEST_PATH}\"\n")
 file(APPEND "${RESOURCE_OUT_CLEAN}" "\n")
 file(APPEND "${RESOURCE_OUT_CLEAN}" "// Resource ID for embedded DLL (must match IDR_PLUGIN_DLL in installer.h)\n")
 file(APPEND "${RESOURCE_OUT_CLEAN}" "101 RCDATA \"${ESCAPED_DLL_PATH}\"\n")
