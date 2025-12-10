@@ -245,6 +245,8 @@ void AudioSyncModal::setupWorkerThreads()
 	m_videoWorker->moveToThread(m_videoThread);
 	connect(m_videoThread, &QThread::finished, m_videoWorker, &QObject::deleteLater);
 	connect(m_videoWorker, &VideoExtractionWorker::framesExtracted, this, &AudioSyncModal::onFramesExtracted);
+	connect(m_videoWorker, &VideoExtractionWorker::framesExtractedIncremental, this,
+		&AudioSyncModal::onFramesExtractedIncremental);
 	connect(m_videoWorker, &VideoExtractionWorker::extractionError, this, &AudioSyncModal::onExtractionError);
 	m_videoThread->start();
 }
@@ -283,11 +285,14 @@ void AudioSyncModal::onAudioAnalyzed(const AudioSpike &spike, const QVector<Audi
 	m_zoomOutButton->setVisible(true);
 	m_resetZoomButton->setVisible(true);
 
-	// Start video extraction in background thread
-	showSpinner("Extracting frames...");
-	QMetaObject::invokeMethod(m_videoWorker, "extractFrames", Qt::QueuedConnection,
+	// Start video extraction in background thread (incremental: priority zone first)
+	showSpinner("Extracting frames (priority zone)...");
+	m_frameExtractionStartTime = m_currentSpike.windowStart;
+	m_frameExtractionEndTime = m_currentSpike.windowEnd;
+	m_allFramesExtracted = false;
+	QMetaObject::invokeMethod(m_videoWorker, "extractFramesIncremental", Qt::QueuedConnection,
 				  Q_ARG(QString, m_currentRecording), Q_ARG(double, m_currentSpike.windowStart),
-				  Q_ARG(double, m_currentSpike.windowEnd));
+				  Q_ARG(double, m_currentSpike.windowEnd), Q_ARG(double, m_currentSpike.timestamp));
 }
 
 void AudioSyncModal::onAnalysisError(const QString &error)
@@ -296,48 +301,69 @@ void AudioSyncModal::onAnalysisError(const QString &error)
 	QMessageBox::warning(this, "Analysis Failed", error);
 }
 
-void AudioSyncModal::onFramesExtracted(const QVector<VideoFrame> &frames, double fps)
+void AudioSyncModal::onFramesExtractedIncremental(const QVector<VideoFrame> &frames, double fps, bool isPriorityPhase)
 {
-	m_frames = frames;
-	m_videoFPS = fps;
-	m_currentFrameIndex = 0;
+	if (m_frames.isEmpty()) {
+		// First batch - initialize
+		m_videoFPS = fps;
+		m_frames = frames;
+		// Show UI components after first batch
+		m_frameLabel->setVisible(true);
+		m_prevFrameButton->setVisible(true);
+		m_nextFrameButton->setVisible(true);
+		m_syncOffsetLabel->setVisible(true);
+		m_snapToPeaksButton->setVisible(true);
+	} else {
+		// Merge new frames with existing ones
+		mergeFrames(frames);
+	}
 
 	// Update timeline with FPS
 	m_timelineWidget->setFPS(m_videoFPS);
 
-	// Show UI components
-	m_frameLabel->setVisible(true);
-	m_prevFrameButton->setVisible(true);
-	m_nextFrameButton->setVisible(true);
-	m_syncOffsetLabel->setVisible(true);
-	m_snapToPeaksButton->setVisible(true);
-
 	// Update timeline with video frame data
 	QVector<double> frameTimestamps;
 	QVector<double> frameDifferences;
-	for (const VideoFrame &frame : frames) {
+	for (const VideoFrame &frame : m_frames) {
 		frameTimestamps.append(frame.timestamp);
 		frameDifferences.append(frame.differenceFromPrevious);
 	}
 	m_timelineWidget->setVideoFrames(frameTimestamps);
 	m_timelineWidget->setFrameDifferences(frameDifferences);
 
-	// Find the frame closest to the audio spike
-	double minDiff = 1e10;
-	int bestFrameIndex = 0;
-	for (int i = 0; i < frames.size(); i++) {
-		double diff = qAbs(frames[i].timestamp - m_currentSpike.timestamp);
-		if (diff < minDiff) {
-			minDiff = diff;
-			bestFrameIndex = i;
+	// If this is the priority phase, find the frame closest to the audio spike
+	if (isPriorityPhase && m_currentFrameIndex < 0) {
+		double minDiff = 1e10;
+		int bestFrameIndex = 0;
+		for (int i = 0; i < m_frames.size(); i++) {
+			double diff = qAbs(m_frames[i].timestamp - m_currentSpike.timestamp);
+			if (diff < minDiff) {
+				minDiff = diff;
+				bestFrameIndex = i;
+			}
 		}
+		m_currentFrameIndex = bestFrameIndex;
+		updateFrameDisplay();
+		updateSyncDisplay();
 	}
-	m_currentFrameIndex = bestFrameIndex;
 
-	// Set initial video frame position to the closest frame (which will be close to the spike)
-	updateFrameDisplay();
-	updateSyncDisplay();
+	// Update spinner message
+	if (isPriorityPhase) {
+		// After priority phase, show message for remaining frames
+		// The worker will emit remaining frames if any exist, or framesExtracted when complete
+		showSpinner("Extracting frames (remaining)...");
+	} else {
+		// Remaining frames extracted, extraction is complete
+		m_allFramesExtracted = true;
+		hideSpinner();
+	}
+}
 
+void AudioSyncModal::onFramesExtracted(const QVector<VideoFrame> &frames, double fps)
+{
+	// This signal is emitted after all frames are extracted (for backward compatibility)
+	// The incremental signal handles the UI updates, so we just mark as complete
+	m_allFramesExtracted = true;
 	hideSpinner();
 }
 
@@ -429,11 +455,14 @@ void AudioSyncModal::onSpikePositionChanged(double timestamp)
 
 void AudioSyncModal::onVideoFramePositionChanged(double timestamp)
 {
-	// Find the frame closest to the new timestamp
-	if (m_frames.isEmpty()) {
+	// Check if timestamp is outside the extracted range
+	if (m_frames.isEmpty() || timestamp < m_frameExtractionStartTime || timestamp > m_frameExtractionEndTime) {
+		// Extract frame on demand
+		extractFrameOnDemand(timestamp);
 		return;
 	}
 
+	// Find the frame closest to the new timestamp
 	double minDiff = 1e10;
 	int bestFrameIndex = m_currentFrameIndex;
 	for (int i = 0; i < m_frames.size(); i++) {
@@ -444,7 +473,16 @@ void AudioSyncModal::onVideoFramePositionChanged(double timestamp)
 		}
 	}
 
-	if (bestFrameIndex != m_currentFrameIndex) {
+	// If no frame is close enough (within half a frame duration), extract on demand
+	if (m_videoFPS > 0.0) {
+		double frameDuration = 1.0 / m_videoFPS;
+		if (minDiff > frameDuration * 0.5) {
+			extractFrameOnDemand(timestamp);
+			return;
+		}
+	}
+
+	if (bestFrameIndex != m_currentFrameIndex && bestFrameIndex >= 0 && bestFrameIndex < m_frames.size()) {
 		m_currentFrameIndex = bestFrameIndex;
 		updateFrameDisplay();
 	}
@@ -666,6 +704,97 @@ void AudioSyncModal::onApplyOffsetClicked()
 		QMessageBox::information(this, "Offset Applied", message);
 		// Refresh offset displays and source list (to update offset values)
 		refreshSourceList();
+	}
+}
+
+void AudioSyncModal::mergeFrames(const QVector<VideoFrame> &newFrames)
+{
+	// Merge new frames with existing ones, maintaining sorted order by timestamp
+	for (const VideoFrame &newFrame : newFrames) {
+		// Check if frame already exists (by timestamp)
+		bool exists = false;
+		for (const VideoFrame &existingFrame : m_frames) {
+			if (qAbs(existingFrame.timestamp - newFrame.timestamp) < 0.001) {
+				exists = true;
+				break;
+			}
+		}
+		if (!exists) {
+			m_frames.append(newFrame);
+		}
+	}
+
+	// Sort by timestamp
+	std::sort(m_frames.begin(), m_frames.end(),
+		  [](const VideoFrame &a, const VideoFrame &b) { return a.timestamp < b.timestamp; });
+
+	// Recalculate frame differences for the complete set
+	VideoExtractor::calculateFrameDifferences(m_frames);
+}
+
+void AudioSyncModal::extractFrameOnDemand(double timestamp)
+{
+	// Extract a single frame at the requested timestamp
+	if (m_currentRecording.isEmpty()) {
+		return;
+	}
+
+	// Check if we already have this frame
+	for (int i = 0; i < m_frames.size(); i++) {
+		if (qAbs(m_frames[i].timestamp - timestamp) < 0.001) {
+			m_currentFrameIndex = i;
+			updateFrameDisplay();
+			return;
+		}
+	}
+
+	// Extract frame using VideoExtractor directly (synchronous, but should be fast for single frame)
+	VideoExtractor extractor;
+	if (extractor.openFile(m_currentRecording)) {
+		VideoFrame frame = extractor.extractFrameAt(timestamp);
+		if (!frame.pixmap.isNull()) {
+			// Calculate frame number based on position in sequence
+			// Find insertion point to calculate frame number
+			int insertIndex = 0;
+			for (int i = 0; i < m_frames.size(); i++) {
+				if (m_frames[i].timestamp < timestamp) {
+					insertIndex = i + 1;
+				} else {
+					break;
+				}
+			}
+			frame.frameNumber = insertIndex;
+
+			// Insert frame in sorted order
+			m_frames.insert(insertIndex, frame);
+
+			// Update frame numbers for all frames after insertion
+			for (int i = insertIndex + 1; i < m_frames.size(); i++) {
+				m_frames[i].frameNumber = i;
+			}
+
+			// Recalculate differences
+			VideoExtractor::calculateFrameDifferences(m_frames);
+
+			// Find the newly inserted frame
+			for (int i = 0; i < m_frames.size(); i++) {
+				if (qAbs(m_frames[i].timestamp - timestamp) < 0.001) {
+					m_currentFrameIndex = i;
+					updateFrameDisplay();
+
+					// Update timeline
+					QVector<double> frameTimestamps;
+					QVector<double> frameDifferences;
+					for (const VideoFrame &f : m_frames) {
+						frameTimestamps.append(f.timestamp);
+						frameDifferences.append(f.differenceFromPrevious);
+					}
+					m_timelineWidget->setVideoFrames(frameTimestamps);
+					m_timelineWidget->setFrameDifferences(frameDifferences);
+					break;
+				}
+			}
+		}
 	}
 }
 

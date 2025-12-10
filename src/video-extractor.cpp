@@ -22,6 +22,9 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qlogging.h>
 #include <cstdint>
 #include <qpixmap.h>
+#include <QtConcurrent>
+#include <QFuture>
+#include <algorithm>
 
 // FFmpeg includes
 extern "C" {
@@ -406,6 +409,7 @@ double VideoExtractor::calculateFrameDifference(const QPixmap &frame1, const QPi
 	return pixelCount > 0 ? (double)totalDiff / pixelCount : 0.0;
 }
 
+// static
 void VideoExtractor::calculateFrameDifferences(QVector<VideoFrame> &frames)
 {
 	if (frames.size() < 2) {
@@ -433,10 +437,15 @@ void VideoExtractor::calculateFrameDifferences(QVector<VideoFrame> &frames)
 
 QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTime)
 {
+	return extractFramesInRange(startTime, endTime);
+}
+
+QVector<VideoFrame> VideoExtractor::extractFramesInRange(double startTime, double endTime)
+{
 	QVector<VideoFrame> frames;
 
 	if (!m_fileOpen || m_filePath.isEmpty() || m_fps <= 0.0) {
-		qWarning() << "VideoExtractor::extractFrames: File not open or invalid FPS (m_fileOpen=" << m_fileOpen
+		qWarning() << "VideoExtractor::extractFramesInRange: File not open or invalid FPS (m_fileOpen=" << m_fileOpen
 			   << "m_filePath.isEmpty()=" << m_filePath.isEmpty() << "m_fps=" << m_fps << ")";
 		return frames;
 	}
@@ -444,14 +453,14 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 	// Setup format context
 	FormatContextData formatData = setupFormatContext(m_filePath);
 	if (formatData.formatContext == nullptr) {
-		qWarning() << "VideoExtractor::extractFrames: Failed to setup format context for" << m_filePath;
+		qWarning() << "VideoExtractor::extractFramesInRange: Failed to setup format context for" << m_filePath;
 		return frames;
 	}
 
 	// Setup codec context
 	CodecContextData codecData = setupCodecContext(formatData);
 	if (codecData.codecContext == nullptr) {
-		qWarning() << "VideoExtractor::extractFrames: Failed to setup codec context";
+		qWarning() << "VideoExtractor::extractFramesInRange: Failed to setup codec context";
 		cleanupFormatContext(formatData);
 		return frames;
 	}
@@ -464,7 +473,7 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 	if (SEEK_RET < 0) {
 		char errbuf[AV_ERROR_MAX_STRING_SIZE];
 		av_strerror(SEEK_RET, errbuf, AV_ERROR_MAX_STRING_SIZE);
-		qWarning() << "VideoExtractor::extractFrames: Failed to seek to start time" << startTime
+		qWarning() << "VideoExtractor::extractFramesInRange: Failed to seek to start time" << startTime
 			   << "(target=" << seekTarget << "):" << errbuf;
 		cleanupCodecContext(codecData);
 		cleanupFormatContext(formatData);
@@ -476,61 +485,39 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 
 	double const FRAME_DURATION = 1.0 / m_fps;
 	double const TOLERANCE = FRAME_DURATION * 0.5; // Half a frame duration tolerance
-	int frameNumber = 0;
 
-	// Calculate target frame times
-	QVector<double> targetTimes;
-	for (double t = startTime; t <= endTime + TOLERANCE; t += FRAME_DURATION) {
-		targetTimes.append(t);
-	}
+	// Calculate target frame numbers directly from time range
+	// This is more efficient than matching timestamps
+	int startFrameNumber = static_cast<int>(qRound(startTime * m_fps));
+	int endFrameNumber = static_cast<int>(qRound(endTime * m_fps));
+	int numFrames = endFrameNumber - startFrameNumber + 1;
 
-	if (targetTimes.isEmpty()) {
-		qWarning() << "VideoExtractor::extractFrames: No target times calculated (startTime=" << startTime
-			   << "endTime=" << endTime << ")";
+	if (numFrames <= 0) {
+		qWarning() << "VideoExtractor::extractFramesInRange: Invalid frame range (startTime=" << startTime
+			   << "endTime=" << endTime << "fps=" << m_fps << ")";
 		cleanupCodecContext(codecData);
 		cleanupFormatContext(formatData);
 		return frames;
 	}
 
-	// Decode frames sequentially and match them to target times
-	int targetIndex = 0;
+	// Decode frames sequentially and extract at target frame intervals
+	// We decode all frames but only convert to RGB the ones we need
+	int currentFrameIndex = 0; // Index in our output array
+	int decodedFrameCount = 0;  // Total frames decoded (for tracking)
 	bool eofReached = false;
 	AVFrame *lastDecodedFrame = nullptr;
 	double lastDecodedTime = -1.0;
 
-	while (!eofReached && targetIndex < targetTimes.size()) {
-		double const TARGET_TIME = targetTimes[targetIndex];
+	while (!eofReached && currentFrameIndex < numFrames) {
+		int const TARGET_FRAME_NUMBER = startFrameNumber + currentFrameIndex;
+		double const TARGET_TIME = startTime + (currentFrameIndex * FRAME_DURATION);
 
-		// Check if we can reuse the last decoded frame
-		if (lastDecodedFrame != nullptr && lastDecodedTime >= 0.0) {
-			double timeDiff = qAbs(lastDecodedTime - TARGET_TIME);
-			if (timeDiff < TOLERANCE) {
-				// Reuse last frame
-				VideoFrame frame;
-				frame.timestamp = lastDecodedTime;
-				frame.frameNumber = frameNumber;
+		// Decode frames sequentially - we must decode all frames due to codec dependencies
+		// but we only convert to RGB when we have a frame we actually want
+		AVFrame *targetFrame = nullptr;
+		double targetFrameTime = TARGET_TIME;
 
-				// Convert to QPixmap (copy image data to ensure it persists)
-				QImage image(lastDecodedFrame->data[0], codecData.codecContext->width,
-					     codecData.codecContext->height, lastDecodedFrame->linesize[0],
-					     QImage::Format_RGB888);
-				frame.pixmap = QPixmap::fromImage(image.copy());
-				frames.append(frame);
-
-				frameNumber++;
-				targetIndex++;
-				continue;
-			}
-		}
-
-		// Need to decode more frames
-		AVFrame *bestFrame = nullptr;
-		double bestFrameTime = -1.0;
-		double bestTimeDiff = 1e10;
-
-		int packetsRead = 0;
-		int framesDecoded = 0;
-		while (!eofReached) {
+		while (!eofReached && targetFrame == nullptr) {
 			int readRet = av_read_frame(formatData.formatContext, codecData.packet);
 			if (readRet < 0) {
 				eofReached = true;
@@ -538,7 +525,6 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 				avcodec_send_packet(codecData.codecContext, nullptr);
 				break;
 			}
-			packetsRead++;
 
 			if (codecData.packet->stream_index == formatData.videoStreamIndex) {
 				int ret = avcodec_send_packet(codecData.codecContext, codecData.packet);
@@ -556,123 +542,87 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 						char errbuf[AV_ERROR_MAX_STRING_SIZE];
 						av_strerror(ret, errbuf, AV_ERROR_MAX_STRING_SIZE);
 						qWarning()
-							<< "VideoExtractor::extractFrames: avcodec_receive_frame error:"
+							<< "VideoExtractor::extractFramesInRange: avcodec_receive_frame error:"
 							<< errbuf;
 						break;
 					}
-					framesDecoded++;
+					decodedFrameCount++;
 
-					// Calculate frame timestamp
-					if (codecData.avFrame->pts == AV_NOPTS_VALUE) {
-						qWarning()
-							<< "VideoExtractor::extractFrames: Frame has invalid PTS (AV_NOPTS_VALUE), skipping";
-						continue;
+					// Calculate frame timestamp from PTS (or use calculated time if PTS unavailable)
+					double frameTime = TARGET_TIME;
+					if (codecData.avFrame->pts != AV_NOPTS_VALUE) {
+						frameTime = codecData.avFrame->pts * TIME_BASE;
+					} else {
+						// Fallback: calculate from frame number
+						frameTime = startTime + (decodedFrameCount * FRAME_DURATION);
 					}
 
-					double const FRAME_TIME = codecData.avFrame->pts * TIME_BASE;
-
 					// If we've gone past endTime, we're done
-					if (FRAME_TIME > endTime + TOLERANCE) {
+					if (frameTime > endTime + TOLERANCE) {
 						eofReached = true;
 						break;
 					}
 
-					// Check if this frame is close to our target
-					double timeDiff = qAbs(FRAME_TIME - TARGET_TIME);
-					if (timeDiff < bestTimeDiff) {
-						bestTimeDiff = timeDiff;
-						bestFrameTime = FRAME_TIME;
-						// Convert to RGB
+					// Check if this frame matches our target (within tolerance)
+					double timeDiff = qAbs(frameTime - TARGET_TIME);
+					if (timeDiff < TOLERANCE) {
+						// This is the frame we want - convert to RGB (ONLY NOW)
 						sws_scale(codecData.swsContext,
 							  (const uint8_t *const *)codecData.avFrame->data,
 							  codecData.avFrame->linesize, 0,
 							  codecData.codecContext->height, codecData.rgbFrame->data,
 							  codecData.rgbFrame->linesize);
 
-						// Free previous best frame if exists
-						if (bestFrame != nullptr) {
-							av_frame_free(&bestFrame);
-						}
-						bestFrame = av_frame_clone(codecData.rgbFrame);
-						if (bestFrame == nullptr) {
-							qWarning()
-								<< "VideoExtractor::extractFrames: Failed to clone RGB frame (format="
-								<< codecData.rgbFrame->format
-								<< "width=" << codecData.rgbFrame->width
-								<< "height=" << codecData.rgbFrame->height << "data[0]="
-								<< (codecData.rgbFrame->data[0] != nullptr ? "set"
-													   : "null")
-								<< ")";
-						}
+						targetFrame = av_frame_clone(codecData.rgbFrame);
+						targetFrameTime = frameTime;
+						break; // Found our frame
 					}
 
-					// Store last decoded frame for potential reuse
+					// Store last decoded frame for potential reuse (keep in native format, not RGB)
 					if (lastDecodedFrame != nullptr) {
 						av_frame_free(&lastDecodedFrame);
 					}
-					sws_scale(codecData.swsContext, (const uint8_t *const *)codecData.avFrame->data,
-						  codecData.avFrame->linesize, 0, codecData.codecContext->height,
-						  codecData.rgbFrame->data, codecData.rgbFrame->linesize);
-					lastDecodedFrame = av_frame_clone(codecData.rgbFrame);
-					lastDecodedTime = FRAME_TIME;
+					lastDecodedFrame = av_frame_clone(codecData.avFrame);
+					lastDecodedTime = frameTime;
 
-					// If we've passed the target time significantly, we're done with this target
-					if (FRAME_TIME > TARGET_TIME + TOLERANCE) {
+					// If we've passed the target significantly, use last frame as fallback
+					if (frameTime > TARGET_TIME + FRAME_DURATION && targetFrame == nullptr) {
+						// Convert last frame to RGB as fallback
+						sws_scale(codecData.swsContext,
+							  (const uint8_t *const *)lastDecodedFrame->data,
+							  lastDecodedFrame->linesize, 0,
+							  codecData.codecContext->height, codecData.rgbFrame->data,
+							  codecData.rgbFrame->linesize);
+						targetFrame = av_frame_clone(codecData.rgbFrame);
+						targetFrameTime = lastDecodedTime;
 						break;
 					}
 				}
 			}
 			av_packet_unref(codecData.packet);
-
-			// If we found a good frame (within tolerance) AND it was successfully cloned, use it
-			if (bestTimeDiff < TOLERANCE && bestFrame != nullptr) {
-				break;
-			}
-
-			// If we found a good frame but cloning failed, continue searching
-			if (bestTimeDiff < TOLERANCE && bestFrame == nullptr) {
-				qWarning()
-					<< "VideoExtractor::extractFrames: Found good frame but cloning failed, continuing search";
-				// Reset bestTimeDiff to continue searching
-				bestTimeDiff = 1e10;
-				bestFrameTime = -1.0;
-			}
-
-			// If we've gone too far past the target, break
-			if (bestFrameTime >= 0.0 && bestFrameTime > TARGET_TIME + FRAME_DURATION) {
-				break;
-			}
 		}
 
-		// Convert best frame to VideoFrame if we found one
-		if (bestFrame != nullptr && bestTimeDiff < TOLERANCE * 2 && bestFrameTime >= 0.0) {
+		// Convert target frame to VideoFrame if we found one
+		if (targetFrame != nullptr) {
 			VideoFrame frame;
-			frame.timestamp = bestFrameTime;
-			frame.frameNumber = frameNumber;
+			frame.timestamp = targetFrameTime;
+			frame.frameNumber = TARGET_FRAME_NUMBER;
 
 			// Convert to QPixmap (copy image data to ensure it persists)
-			QImage image(bestFrame->data[0], codecData.codecContext->width, codecData.codecContext->height,
-				     bestFrame->linesize[0], QImage::Format_RGB888);
+			QImage image(targetFrame->data[0], codecData.codecContext->width,
+				     codecData.codecContext->height, targetFrame->linesize[0],
+				     QImage::Format_RGB888);
 			frame.pixmap = QPixmap::fromImage(image.copy());
 			frames.append(frame);
 
-			av_frame_free(&bestFrame);
-			frameNumber++;
+			av_frame_free(&targetFrame);
+			currentFrameIndex++;
 		} else {
-			if (bestFrame != nullptr) {
-				qWarning()
-					<< "VideoExtractor::extractFrames: Best frame found but not used (bestTimeDiff="
-					<< bestTimeDiff << "TOLERANCE*2=" << (TOLERANCE * 2)
-					<< "bestFrameTime=" << bestFrameTime << ")";
-				av_frame_free(&bestFrame);
-			} else {
-				qWarning() << "VideoExtractor::extractFrames: No frame found for target" << TARGET_TIME
-					   << "(targetIndex=" << targetIndex << "/" << targetTimes.size() << ")";
-			}
+			// No frame found - can happen near boundaries
+			qWarning() << "VideoExtractor::extractFramesInRange: No frame found for target"
+				   << TARGET_FRAME_NUMBER << "(time=" << TARGET_TIME << ")";
+			currentFrameIndex++;
 		}
-
-		// Move to next target time
-		targetIndex++;
 	}
 
 	// Cleanup last decoded frame
@@ -685,6 +635,316 @@ QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTi
 	cleanupFormatContext(formatData);
 
 	// Calculate frame-to-frame differences
+	VideoExtractor::calculateFrameDifferences(frames);
+
+	return frames;
+}
+
+QVector<VideoExtractor::NativeFrame> VideoExtractor::decodeFramesToNative(double startTime, double endTime)
+{
+	QVector<NativeFrame> nativeFrames;
+
+	if (!m_fileOpen || m_filePath.isEmpty() || m_fps <= 0.0) {
+		qWarning() << "VideoExtractor::decodeFramesToNative: File not open or invalid FPS";
+		return nativeFrames;
+	}
+
+	// Setup format context
+	FormatContextData formatData = setupFormatContext(m_filePath);
+	if (formatData.formatContext == nullptr) {
+		qWarning() << "VideoExtractor::decodeFramesToNative: Failed to setup format context";
+		return nativeFrames;
+	}
+
+	// Setup codec context (no RGB conversion needed yet)
+	CodecContextData codecData = setupCodecContext(formatData);
+	if (codecData.codecContext == nullptr) {
+		qWarning() << "VideoExtractor::decodeFramesToNative: Failed to setup codec context";
+		cleanupFormatContext(formatData);
+		return nativeFrames;
+	}
+
+	// Seek to start time
+	double const TIME_BASE = av_q2d(formatData.videoStream->time_base);
+	auto seekTarget = (int64_t)(startTime / TIME_BASE);
+	int const SEEK_RET =
+		av_seek_frame(formatData.formatContext, formatData.videoStreamIndex, seekTarget, AVSEEK_FLAG_BACKWARD);
+	if (SEEK_RET < 0) {
+		char errbuf[AV_ERROR_MAX_STRING_SIZE];
+		av_strerror(SEEK_RET, errbuf, AV_ERROR_MAX_STRING_SIZE);
+		qWarning() << "VideoExtractor::decodeFramesToNative: Failed to seek:" << errbuf;
+		cleanupCodecContext(codecData);
+		cleanupFormatContext(formatData);
+		return nativeFrames;
+	}
+
+	// Flush codec buffers after seek
+	avcodec_flush_buffers(codecData.codecContext);
+
+	double const FRAME_DURATION = 1.0 / m_fps;
+	double const TOLERANCE = FRAME_DURATION * 0.5;
+	int frameNumber = 0;
+	bool eofReached = false;
+
+	// Decode all frames in range to native format (single pass, fast)
+	while (!eofReached) {
+		int readRet = av_read_frame(formatData.formatContext, codecData.packet);
+		if (readRet < 0) {
+			eofReached = true;
+			avcodec_send_packet(codecData.codecContext, nullptr);
+			break;
+		}
+
+		if (codecData.packet->stream_index == formatData.videoStreamIndex) {
+			int ret = avcodec_send_packet(codecData.codecContext, codecData.packet);
+			if (ret < 0) {
+				av_packet_unref(codecData.packet);
+				continue;
+			}
+
+			while (ret >= 0) {
+				ret = avcodec_receive_frame(codecData.codecContext, codecData.avFrame);
+				if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+					break;
+				}
+				if (ret < 0) {
+					break;
+				}
+
+				// Calculate frame timestamp
+				double frameTime = startTime + (frameNumber * FRAME_DURATION);
+				if (codecData.avFrame->pts != AV_NOPTS_VALUE) {
+					frameTime = codecData.avFrame->pts * TIME_BASE;
+				}
+
+				// If we've gone past endTime, we're done
+				if (frameTime > endTime + TOLERANCE) {
+					eofReached = true;
+					break;
+				}
+
+				// Only store frames within our range
+				if (frameTime >= startTime - TOLERANCE && frameTime <= endTime + TOLERANCE) {
+					NativeFrame nativeFrame;
+					nativeFrame.frame = av_frame_clone(codecData.avFrame);
+					nativeFrame.timestamp = frameTime;
+					nativeFrame.frameNumber = frameNumber;
+					nativeFrames.append(nativeFrame);
+				}
+
+				frameNumber++;
+			}
+		}
+		av_packet_unref(codecData.packet);
+	}
+
+	// Cleanup (but keep native frames - they'll be freed when converted)
+	cleanupCodecContext(codecData);
+	cleanupFormatContext(formatData);
+
+	return nativeFrames;
+}
+
+VideoFrame VideoExtractor::convertSingleNativeFrameToRGB(const NativeFrame &nativeFrame,
+							 AVCodecContext *codecContext, SwsContext *swsContext)
+{
+	VideoFrame videoFrame;
+	videoFrame.timestamp = nativeFrame.timestamp;
+	videoFrame.frameNumber = nativeFrame.frameNumber;
+
+	if (nativeFrame.frame == nullptr || codecContext == nullptr || swsContext == nullptr) {
+		return videoFrame;
+	}
+
+	// Allocate RGB frame for conversion
+	AVFrame *rgbFrame = av_frame_alloc();
+	if (rgbFrame == nullptr) {
+		return videoFrame;
+	}
+
+	int const NUM_BYTES = av_image_get_buffer_size(AV_PIX_FMT_RGB24, codecContext->width, codecContext->height, 1);
+	uint8_t *buffer = (uint8_t *)av_malloc(NUM_BYTES * sizeof(uint8_t));
+	if (buffer == nullptr) {
+		av_frame_free(&rgbFrame);
+		return videoFrame;
+	}
+
+	av_image_fill_arrays(rgbFrame->data, rgbFrame->linesize, buffer, AV_PIX_FMT_RGB24, codecContext->width,
+			     codecContext->height, 1);
+	rgbFrame->format = AV_PIX_FMT_RGB24;
+	rgbFrame->width = codecContext->width;
+	rgbFrame->height = codecContext->height;
+
+	// Convert to RGB
+	sws_scale(swsContext, (const uint8_t *const *)nativeFrame.frame->data, nativeFrame.frame->linesize, 0,
+		  codecContext->height, rgbFrame->data, rgbFrame->linesize);
+
+	// Convert to QPixmap
+	QImage image(rgbFrame->data[0], codecContext->width, codecContext->height, rgbFrame->linesize[0],
+		     QImage::Format_RGB888);
+	videoFrame.pixmap = QPixmap::fromImage(image.copy());
+
+	// Cleanup
+	av_free(buffer);
+	av_frame_free(&rgbFrame);
+
+	return videoFrame;
+}
+
+QVector<VideoFrame> VideoExtractor::extractFramesOptimized(double startTime, double endTime, double cursorPosition)
+{
+	QVector<VideoFrame> frames;
+
+	if (!m_fileOpen || m_filePath.isEmpty() || m_fps <= 0.0) {
+		return frames;
+	}
+
+	// Phase 1: Decode all frames to native format (single pass, fast)
+	QVector<NativeFrame> nativeFrames = decodeFramesToNative(startTime, endTime);
+	if (nativeFrames.isEmpty()) {
+		return frames;
+	}
+
+	// Phase 2: Convert to RGB in parallel, starting from cursor
+	// We need codec context info for conversion
+	FormatContextData formatData = setupFormatContext(m_filePath);
+	if (formatData.formatContext == nullptr) {
+		// Cleanup native frames
+		for (auto &nf : nativeFrames) {
+			if (nf.frame) {
+				av_frame_free(&nf.frame);
+			}
+		}
+		return frames;
+	}
+
+	CodecContextData codecData = setupCodecContext(formatData);
+	if (codecData.codecContext == nullptr) {
+		cleanupFormatContext(formatData);
+		// Cleanup native frames
+		for (auto &nf : nativeFrames) {
+			if (nf.frame) {
+				av_frame_free(&nf.frame);
+			}
+		}
+		return frames;
+	}
+
+	// Convert native frames to RGB
+	frames = convertNativeFramesToRGB(nativeFrames, codecData.codecContext, codecData.codecContext->width,
+					  codecData.codecContext->height, codecData.codecContext->pix_fmt,
+					  cursorPosition);
+
+	// Cleanup native frames
+	for (auto &nf : nativeFrames) {
+		if (nf.frame) {
+			av_frame_free(&nf.frame);
+		}
+	}
+
+	cleanupCodecContext(codecData);
+	cleanupFormatContext(formatData);
+
+	return frames;
+}
+
+QVector<VideoFrame> VideoExtractor::convertNativeFramesToRGB(const QVector<NativeFrame> &nativeFrames,
+							      AVCodecContext *codecContext, int width, int height,
+							      AVPixelFormat srcFormat, double cursorPosition)
+{
+	QVector<VideoFrame> frames;
+
+	if (nativeFrames.isEmpty() || codecContext == nullptr) {
+		return frames;
+	}
+
+	// Sort frames by distance from cursor (priority zone first)
+	QVector<QPair<int, double>> frameDistances; // index, distance
+	for (int i = 0; i < nativeFrames.size(); i++) {
+		double distance = qAbs(nativeFrames[i].timestamp - cursorPosition);
+		frameDistances.append(qMakePair(i, distance));
+	}
+
+	std::sort(frameDistances.begin(), frameDistances.end(),
+		  [](const QPair<int, double> &a, const QPair<int, double> &b) { return a.second < b.second; });
+
+	// Convert frames in parallel, starting from cursor and moving outward
+	// Use QtConcurrent to parallelize RGB conversion
+	QVector<QPair<int, VideoFrame>> convertedFrames;
+
+	// Convert frames in batches: priority zone first (synchronous), then rest (parallel)
+	const double PRIORITY_WINDOW = 1.0; // 1 second on each side
+	QVector<int> priorityIndices;
+	QVector<int> remainingIndices;
+
+	for (const auto &pair : frameDistances) {
+		if (pair.second <= PRIORITY_WINDOW) {
+			priorityIndices.append(pair.first);
+		} else {
+			remainingIndices.append(pair.first);
+		}
+	}
+
+	// Create a SwsContext for priority zone (main thread)
+	SwsContext *mainSwsContext = sws_getContext(width, height, srcFormat, width, height, AV_PIX_FMT_RGB24,
+						    SWS_BILINEAR, nullptr, nullptr, nullptr);
+	if (mainSwsContext == nullptr) {
+		return frames;
+	}
+
+	// Convert priority frames first (synchronous, for immediate UI feedback)
+	for (int idx : priorityIndices) {
+		VideoFrame frame = convertSingleNativeFrameToRGB(nativeFrames[idx], codecContext, mainSwsContext);
+		convertedFrames.append(qMakePair(idx, frame));
+	}
+
+	sws_freeContext(mainSwsContext);
+
+	// Convert remaining frames in parallel
+	if (!remainingIndices.isEmpty()) {
+		QVector<QFuture<QPair<int, VideoFrame>>> futures;
+		for (int idx : remainingIndices) {
+			// Convert in parallel - create SwsContext inside the thread (it's not thread-safe)
+			QFuture<QPair<int, VideoFrame>> future = QtConcurrent::run([&nativeFrames, idx, codecContext,
+											  width, height, srcFormat]() {
+				// Create SwsContext for this thread
+				SwsContext *threadSwsContext = sws_getContext(width, height, srcFormat, width, height,
+									       AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr, nullptr,
+									       nullptr);
+				if (threadSwsContext == nullptr) {
+					return qMakePair(idx, VideoFrame{});
+				}
+
+				VideoFrame frame = convertSingleNativeFrameToRGB(nativeFrames[idx], codecContext,
+									     threadSwsContext);
+
+				// Cleanup thread-local SwsContext
+				sws_freeContext(threadSwsContext);
+
+				return qMakePair(idx, frame);
+			});
+			futures.append(future);
+		}
+
+		// Wait for all conversions to complete
+		for (auto &future : futures) {
+			future.waitForFinished();
+			convertedFrames.append(future.result());
+		}
+	}
+
+	// Sort by original index to maintain timestamp order
+	std::sort(convertedFrames.begin(), convertedFrames.end(),
+		  [](const QPair<int, VideoFrame> &a, const QPair<int, VideoFrame> &b) {
+			  return a.first < b.first;
+		  });
+
+	// Extract frames in order
+	for (const auto &pair : convertedFrames) {
+		frames.append(pair.second);
+	}
+
+	// Calculate frame differences
 	calculateFrameDifferences(frames);
 
 	return frames;

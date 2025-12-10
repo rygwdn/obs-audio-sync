@@ -61,6 +61,43 @@ public:
 	// Extract all frames in time range
 	QVector<VideoFrame> extractFrames(double startTime, double endTime);
 
+	// Extract frames in a specific time range (used for incremental extraction)
+	// This is the same as extractFrames but kept separate for clarity
+	QVector<VideoFrame> extractFramesInRange(double startTime, double endTime);
+
+	// Extract frames using optimized two-phase approach:
+	// Phase 1: Decode all frames to native format (single pass, fast)
+	// Phase 2: Convert to RGB starting from cursor position, moving outward (parallel)
+	struct NativeFrame {
+		AVFrame *frame{nullptr};
+		double timestamp{};
+		int frameNumber{};
+	};
+
+	// Decode all frames in range to native format (fast, single pass)
+	// Returns native frames sorted by timestamp
+	QVector<NativeFrame> decodeFramesToNative(double startTime, double endTime);
+
+	// Convert native frames to RGB starting from cursor position, moving outward (parallel)
+	// This method handles the full extraction: decode to native, then convert to RGB
+	// Returns frames sorted by timestamp, with priority zone converted first
+	QVector<VideoFrame> extractFramesOptimized(double startTime, double endTime, double cursorPosition);
+
+	// Convert a single native frame to RGB (thread-safe helper)
+	// Note: Each thread must create its own SwsContext (not thread-safe)
+	static VideoFrame convertSingleNativeFrameToRGB(const NativeFrame &nativeFrame,
+							AVCodecContext *codecContext, SwsContext *swsContext);
+
+	// Convert native frames to RGB starting from cursor position, moving outward (parallel)
+	// Returns frames sorted by timestamp, with priority zone converted first
+	static QVector<VideoFrame> convertNativeFramesToRGB(const QVector<NativeFrame> &nativeFrames,
+							     AVCodecContext *codecContext, int width, int height,
+							     AVPixelFormat srcFormat, double cursorPosition);
+
+	// Calculate frame-to-frame differences for a vector of frames
+	// This is useful when combining frames from multiple extractions
+	static void calculateFrameDifferences(QVector<VideoFrame> &frames);
+
 	// Get video FPS
 	[[nodiscard]] double getFPS() const { return m_fps; }
 
@@ -102,7 +139,6 @@ private:
 	static bool decodeVideoPackets(const FormatContextData &formatData, const CodecContextData &codecData,
 				       double timestamp, double &bestTimeDiff, AVFrame *&bestFrame);
 	static double calculateFrameDifference(const QPixmap &frame1, const QPixmap &frame2);
-	static void calculateFrameDifferences(QVector<VideoFrame> &frames);
 
 	QString m_filePath{};
 	double m_fps{};

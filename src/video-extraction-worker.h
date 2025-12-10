@@ -39,9 +39,11 @@ public:
 
 public slots:
 	void extractFrames(const QString &filePath, double startTime, double endTime);
+	void extractFramesIncremental(const QString &filePath, double startTime, double endTime, double priorityCenter);
 
 signals:
 	void framesExtracted(const QVector<VideoFrame> &frames, double fps);
+	void framesExtractedIncremental(const QVector<VideoFrame> &frames, double fps, bool isPriorityPhase);
 	void extractionError(const QString &error);
 
 private:

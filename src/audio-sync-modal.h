@@ -70,6 +70,7 @@ private slots:
 	void onAudioAnalyzed(const AudioSpike &spike, const QVector<AudioSample> &samples);
 	void onAnalysisError(const QString &error);
 	void onFramesExtracted(const QVector<VideoFrame> &frames, double fps);
+	void onFramesExtractedIncremental(const QVector<VideoFrame> &frames, double fps, bool isPriorityPhase);
 	void onExtractionError(const QString &error);
 
 private:
@@ -85,6 +86,8 @@ private:
 	void updateSyncDisplay();
 	void showSpinner(const QString &message);
 	void hideSpinner();
+	void extractFrameOnDemand(double timestamp);
+	void mergeFrames(const QVector<VideoFrame> &newFrames);
 
 	TimelineWidget *m_timelineWidget{nullptr};
 	QPushButton *m_zoomInButton{nullptr};
@@ -114,6 +117,9 @@ private:
 	int m_currentFrameIndex{-1};
 	double m_videoFPS{30.0};
 	double m_calculatedOffsetMs{0.0}; // Calculated sync offset in milliseconds
+	double m_frameExtractionStartTime{0.0};
+	double m_frameExtractionEndTime{0.0};
+	bool m_allFramesExtracted{false};
 
 	// Worker threads
 	QThread *m_audioThread{nullptr};
