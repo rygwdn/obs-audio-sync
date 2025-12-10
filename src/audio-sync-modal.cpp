@@ -179,6 +179,7 @@ void AudioSyncModal::setupUI()
 	// Filter checkbox above apply button
 	m_filterNonZeroCheckbox = new QCheckBox("Show only sources with non-zero offsets", this);
 	m_filterNonZeroCheckbox->setToolTip("Filter to show only sources that have offsets configured");
+	m_filterNonZeroCheckbox->setChecked(true); // Default to checked
 	connect(m_filterNonZeroCheckbox, &QCheckBox::toggled, this, &AudioSyncModal::onFilterNonZeroToggled);
 
 	auto *sourceRowLayout = new QHBoxLayout();
