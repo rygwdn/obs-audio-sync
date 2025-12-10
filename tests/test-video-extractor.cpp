@@ -238,8 +238,8 @@ void TestVideoExtractor::testConvertNativeFramesToRGB_basic()
 	// Test basic conversion of native frames to RGB
 	QVector<VideoExtractor::NativeFrame> nativeFrames;
 	// Empty input should return empty output
-	QVector<VideoFrame> frames = VideoExtractor::convertNativeFramesToRGB(nativeFrames, nullptr, 0, 0,
-										AV_PIX_FMT_NONE, 0.0);
+	QVector<VideoFrame> frames =
+		VideoExtractor::convertNativeFramesToRGB(nativeFrames, nullptr, 0, 0, AV_PIX_FMT_NONE, 0.0);
 	QVERIFY(frames.isEmpty());
 }
 
@@ -270,9 +270,7 @@ void TestVideoExtractor::testConvertNativeFramesToRGB_cursorPriority()
 
 	// Sort by distance from cursor
 	std::sort(frameDistances.begin(), frameDistances.end(),
-		  [](const QPair<int, double> &a, const QPair<int, double> &b) {
-			  return a.second < b.second;
-		  });
+		  [](const QPair<int, double> &a, const QPair<int, double> &b) { return a.second < b.second; });
 
 	// Verify closest frame to cursor (0.5) is frame at 0.5
 	QVERIFY(frameDistances[0].first == 5); // Frame at index 5 (timestamp 0.5)
@@ -344,8 +342,8 @@ void TestVideoExtractor::testConvertNativeFramesToRGB_emptyInput()
 {
 	// Test with empty input
 	QVector<VideoExtractor::NativeFrame> emptyFrames;
-	QVector<VideoFrame> frames = VideoExtractor::convertNativeFramesToRGB(emptyFrames, nullptr, 0, 0,
-										AV_PIX_FMT_NONE, 0.0);
+	QVector<VideoFrame> frames =
+		VideoExtractor::convertNativeFramesToRGB(emptyFrames, nullptr, 0, 0, AV_PIX_FMT_NONE, 0.0);
 	QVERIFY(frames.isEmpty());
 }
 
