@@ -10,6 +10,10 @@ if(NOT DEFINED RESOURCE_OUT)
   message(FATAL_ERROR "RESOURCE_OUT not defined")
 endif()
 
+# Strip any surrounding quotes from both paths (CMake may pass them with quotes)
+string(STRIP "${RESOURCE_OUT}" RESOURCE_OUT_STRIPPED)
+string(REGEX REPLACE "^\"(.*)\"$" "\\1" RESOURCE_OUT_CLEAN "${RESOURCE_OUT_STRIPPED}")
+
 # The DLL path comes from generator expressions, so it should already be expanded
 # Strip any surrounding quotes first
 string(STRIP "${PLUGIN_DLL}" PLUGIN_DLL_STRIPPED)
@@ -52,7 +56,7 @@ endif()
 
 # Get the directory where the resource file will be located
 # Ensure it's an absolute path for file(RELATIVE_PATH)
-get_filename_component(RESOURCE_DIR "${RESOURCE_OUT}" DIRECTORY)
+get_filename_component(RESOURCE_DIR "${RESOURCE_OUT_CLEAN}" DIRECTORY)
 if(NOT IS_ABSOLUTE "${RESOURCE_DIR}")
   get_filename_component(RESOURCE_DIR "${RESOURCE_DIR}" ABSOLUTE)
 endif()
@@ -74,5 +78,5 @@ else()
 endif()
 
 # Generate the resource file
-file(WRITE "${RESOURCE_OUT}" "#include <windows.h>\n")
-file(APPEND "${RESOURCE_OUT}" "IDR_PLUGIN_DLL RCDATA \"${ESCAPED_DLL_PATH}\"\n")
+file(WRITE "${RESOURCE_OUT_CLEAN}" "#include <windows.h>\n")
+file(APPEND "${RESOURCE_OUT_CLEAN}" "IDR_PLUGIN_DLL RCDATA \"${ESCAPED_DLL_PATH}\"\n")
