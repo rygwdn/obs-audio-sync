@@ -13,7 +13,6 @@ the Free Software Foundation; either version 2 of the License, or
 #include <QFileInfo>
 #include <QDir>
 #include <QStandardPaths>
-#include <QtConcurrent>
 #include <algorithm>
 #include <cmath>
 
