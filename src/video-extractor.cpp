@@ -445,8 +445,8 @@ QVector<VideoFrame> VideoExtractor::extractFramesInRange(double startTime, doubl
 	QVector<VideoFrame> frames;
 
 	if (!m_fileOpen || m_filePath.isEmpty() || m_fps <= 0.0) {
-		qWarning() << "VideoExtractor::extractFramesInRange: File not open or invalid FPS (m_fileOpen=" << m_fileOpen
-			   << "m_filePath.isEmpty()=" << m_filePath.isEmpty() << "m_fps=" << m_fps << ")";
+		qWarning() << "VideoExtractor::extractFramesInRange: File not open or invalid FPS (m_fileOpen="
+			   << m_fileOpen << "m_filePath.isEmpty()=" << m_filePath.isEmpty() << "m_fps=" << m_fps << ")";
 		return frames;
 	}
 
@@ -503,7 +503,7 @@ QVector<VideoFrame> VideoExtractor::extractFramesInRange(double startTime, doubl
 	// Decode frames sequentially and extract at target frame intervals
 	// We decode all frames but only convert to RGB the ones we need
 	int currentFrameIndex = 0; // Index in our output array
-	int decodedFrameCount = 0;  // Total frames decoded (for tracking)
+	int decodedFrameCount = 0; // Total frames decoded (for tracking)
 	bool eofReached = false;
 	AVFrame *lastDecodedFrame = nullptr;
 	double lastDecodedTime = -1.0;
@@ -590,9 +590,8 @@ QVector<VideoFrame> VideoExtractor::extractFramesInRange(double startTime, doubl
 						// Convert last frame to RGB as fallback
 						sws_scale(codecData.swsContext,
 							  (const uint8_t *const *)lastDecodedFrame->data,
-							  lastDecodedFrame->linesize, 0,
-							  codecData.codecContext->height, codecData.rgbFrame->data,
-							  codecData.rgbFrame->linesize);
+							  lastDecodedFrame->linesize, 0, codecData.codecContext->height,
+							  codecData.rgbFrame->data, codecData.rgbFrame->linesize);
 						targetFrame = av_frame_clone(codecData.rgbFrame);
 						targetFrameTime = lastDecodedTime;
 						break;
@@ -610,8 +609,7 @@ QVector<VideoFrame> VideoExtractor::extractFramesInRange(double startTime, doubl
 
 			// Convert to QPixmap (copy image data to ensure it persists)
 			QImage image(targetFrame->data[0], codecData.codecContext->width,
-				     codecData.codecContext->height, targetFrame->linesize[0],
-				     QImage::Format_RGB888);
+				     codecData.codecContext->height, targetFrame->linesize[0], QImage::Format_RGB888);
 			frame.pixmap = QPixmap::fromImage(image.copy());
 			frames.append(frame);
 
@@ -745,8 +743,8 @@ QVector<VideoExtractor::NativeFrame> VideoExtractor::decodeFramesToNative(double
 	return nativeFrames;
 }
 
-VideoFrame VideoExtractor::convertSingleNativeFrameToRGB(const NativeFrame &nativeFrame,
-							 AVCodecContext *codecContext, SwsContext *swsContext)
+VideoFrame VideoExtractor::convertSingleNativeFrameToRGB(const NativeFrame &nativeFrame, AVCodecContext *codecContext,
+							 SwsContext *swsContext)
 {
 	VideoFrame videoFrame;
 	videoFrame.timestamp = nativeFrame.timestamp;
@@ -849,8 +847,8 @@ QVector<VideoFrame> VideoExtractor::extractFramesOptimized(double startTime, dou
 }
 
 QVector<VideoFrame> VideoExtractor::convertNativeFramesToRGB(const QVector<NativeFrame> &nativeFrames,
-							      AVCodecContext *codecContext, int width, int height,
-							      AVPixelFormat srcFormat, double cursorPosition)
+							     AVCodecContext *codecContext, int width, int height,
+							     AVPixelFormat srcFormat, double cursorPosition)
 {
 	QVector<VideoFrame> frames;
 
@@ -906,17 +904,17 @@ QVector<VideoFrame> VideoExtractor::convertNativeFramesToRGB(const QVector<Nativ
 		for (int idx : remainingIndices) {
 			// Convert in parallel - create SwsContext inside the thread (it's not thread-safe)
 			QFuture<QPair<int, VideoFrame>> future = QtConcurrent::run([&nativeFrames, idx, codecContext,
-											  width, height, srcFormat]() {
+										    width, height, srcFormat]() {
 				// Create SwsContext for this thread
 				SwsContext *threadSwsContext = sws_getContext(width, height, srcFormat, width, height,
-									       AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr, nullptr,
-									       nullptr);
+									      AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr,
+									      nullptr, nullptr);
 				if (threadSwsContext == nullptr) {
 					return qMakePair(idx, VideoFrame{});
 				}
 
 				VideoFrame frame = convertSingleNativeFrameToRGB(nativeFrames[idx], codecContext,
-									     threadSwsContext);
+										 threadSwsContext);
 
 				// Cleanup thread-local SwsContext
 				sws_freeContext(threadSwsContext);
@@ -935,9 +933,7 @@ QVector<VideoFrame> VideoExtractor::convertNativeFramesToRGB(const QVector<Nativ
 
 	// Sort by original index to maintain timestamp order
 	std::sort(convertedFrames.begin(), convertedFrames.end(),
-		  [](const QPair<int, VideoFrame> &a, const QPair<int, VideoFrame> &b) {
-			  return a.first < b.first;
-		  });
+		  [](const QPair<int, VideoFrame> &a, const QPair<int, VideoFrame> &b) { return a.first < b.first; });
 
 	// Extract frames in order
 	for (const auto &pair : convertedFrames) {

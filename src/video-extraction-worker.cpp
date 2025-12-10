@@ -59,7 +59,7 @@ void VideoExtractionWorker::extractFrames(const QString &filePath, double startT
 }
 
 void VideoExtractionWorker::extractFramesIncremental(const QString &filePath, double startTime, double endTime,
-						      double priorityCenter)
+						     double priorityCenter)
 {
 	try {
 		if (!m_videoExtractor->openFile(filePath)) {
@@ -71,8 +71,8 @@ void VideoExtractionWorker::extractFramesIncremental(const QString &filePath, do
 
 		// Use optimized extraction: single-pass decode, then parallel RGB conversion
 		// Priority zone (1 second around cursor) is converted first, then rest in parallel
-		QVector<VideoFrame> allFrames = m_videoExtractor->extractFramesOptimized(startTime, endTime,
-											  priorityCenter);
+		QVector<VideoFrame> allFrames =
+			m_videoExtractor->extractFramesOptimized(startTime, endTime, priorityCenter);
 
 		// Split frames into priority zone and remaining for incremental emission
 		const double PRIORITY_WINDOW = 1.0;

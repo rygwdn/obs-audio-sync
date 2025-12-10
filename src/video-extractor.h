@@ -85,14 +85,14 @@ public:
 
 	// Convert a single native frame to RGB (thread-safe helper)
 	// Note: Each thread must create its own SwsContext (not thread-safe)
-	static VideoFrame convertSingleNativeFrameToRGB(const NativeFrame &nativeFrame,
-							AVCodecContext *codecContext, SwsContext *swsContext);
+	static VideoFrame convertSingleNativeFrameToRGB(const NativeFrame &nativeFrame, AVCodecContext *codecContext,
+							SwsContext *swsContext);
 
 	// Convert native frames to RGB starting from cursor position, moving outward (parallel)
 	// Returns frames sorted by timestamp, with priority zone converted first
 	static QVector<VideoFrame> convertNativeFramesToRGB(const QVector<NativeFrame> &nativeFrames,
-							     AVCodecContext *codecContext, int width, int height,
-							     AVPixelFormat srcFormat, double cursorPosition);
+							    AVCodecContext *codecContext, int width, int height,
+							    AVPixelFormat srcFormat, double cursorPosition);
 
 	// Calculate frame-to-frame differences for a vector of frames
 	// This is useful when combining frames from multiple extractions
