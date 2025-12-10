@@ -78,5 +78,9 @@ else()
 endif()
 
 # Generate the resource file
+# Include the definition of IDR_PLUGIN_DLL (101) or define it directly
+# We use the numeric value directly to avoid path issues with header includes
 file(WRITE "${RESOURCE_OUT_CLEAN}" "#include <windows.h>\n")
-file(APPEND "${RESOURCE_OUT_CLEAN}" "IDR_PLUGIN_DLL RCDATA \"${ESCAPED_DLL_PATH}\"\n")
+file(APPEND "${RESOURCE_OUT_CLEAN}" "\n")
+file(APPEND "${RESOURCE_OUT_CLEAN}" "// Resource ID for embedded DLL (must match IDR_PLUGIN_DLL in installer.h)\n")
+file(APPEND "${RESOURCE_OUT_CLEAN}" "101 RCDATA \"${ESCAPED_DLL_PATH}\"\n")
