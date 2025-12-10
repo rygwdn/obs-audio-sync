@@ -24,6 +24,11 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QVector>
 #include <QPair>
 
+// FFmpeg includes (needed for AVPixelFormat which is a typedef enum)
+extern "C" {
+#include <libavutil/pixfmt.h>
+}
+
 // FFmpeg forward declarations
 extern "C" {
 struct AVFormatContext;
@@ -32,7 +37,6 @@ struct AVCodecContext;
 struct SwsContext;
 struct AVFrame;
 struct AVPacket;
-enum AVPixelFormat;
 }
 
 struct VideoFrame {
