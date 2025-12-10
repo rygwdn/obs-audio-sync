@@ -370,11 +370,11 @@ if(WIN32)
   add_custom_command(
     OUTPUT "${INSTALLER_RESOURCE_RC}"
     COMMAND
-      ${CMAKE_COMMAND}
-      -DPLUGIN_DLL="$<TARGET_FILE:${CMAKE_PROJECT_NAME}>"
-      -DRESOURCE_OUT="${INSTALLER_RESOURCE_RC}"
-      -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/generate-installer-resource.cmake"
-    DEPENDS $<TARGET_FILE:${CMAKE_PROJECT_NAME}> "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/resources/installer.manifest"
+      ${CMAKE_COMMAND} -DPLUGIN_DLL="$<TARGET_FILE:${CMAKE_PROJECT_NAME}>" -DRESOURCE_OUT="${INSTALLER_RESOURCE_RC}" -P
+      "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/generate-installer-resource.cmake"
+    DEPENDS
+      $<TARGET_FILE:${CMAKE_PROJECT_NAME}>
+      "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/resources/installer.manifest"
     IMPLICIT_DEPENDS CXX "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/generate-installer-resource.cmake"
     COMMENT "Generating installer resource file with embedded DLL and UAC manifest"
     VERBATIM
@@ -385,6 +385,13 @@ if(WIN32)
 
   # Set subsystem to Windows (no console)
   set_target_properties(${CMAKE_PROJECT_NAME}-installer PROPERTIES WIN32_EXECUTABLE TRUE)
+
+  # Set manifest file for UAC (requires administrator privileges)
+  # This approach avoids duplicate manifest resources
+  set_target_properties(
+    ${CMAKE_PROJECT_NAME}-installer
+    PROPERTIES VS_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows/resources/installer.manifest"
+  )
 
   # Make installer depend on plugin DLL and resource file
   add_dependencies(${CMAKE_PROJECT_NAME}-installer ${CMAKE_PROJECT_NAME})

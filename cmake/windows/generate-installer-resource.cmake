@@ -51,7 +51,10 @@ if(NOT ACTUAL_DLL_PATH OR NOT EXISTS "${ACTUAL_DLL_PATH}")
   message(STATUS "  Absolute: ${PLUGIN_DLL_ABS}")
   message(STATUS "  Normalized: ${PLUGIN_DLL_NORMALIZED}")
   message(STATUS "  Native: ${PLUGIN_DLL_NATIVE}")
-  message(FATAL_ERROR "Plugin DLL not found. The plugin target must be built before generating the installer resource. Expected DLL at: ${PLUGIN_DLL_CLEAN}")
+  message(
+    FATAL_ERROR
+    "Plugin DLL not found. The plugin target must be built before generating the installer resource. Expected DLL at: ${PLUGIN_DLL_CLEAN}"
+  )
 endif()
 
 # Get the directory where the resource file will be located
@@ -77,17 +80,11 @@ else()
   string(REPLACE "\\" "\\\\" ESCAPED_DLL_PATH "${NATIVE_DLL_PATH}")
 endif()
 
-# Get the manifest file path
-get_filename_component(SCRIPT_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
-set(MANIFEST_FILE "${SCRIPT_DIR}/resources/installer.manifest")
-
 # Generate the resource file
 # Include the definition of IDR_PLUGIN_DLL (101) or define it directly
 # We use the numeric value directly to avoid path issues with header includes
+# Note: Manifest is handled separately via CMake's VS_MANIFEST property to avoid duplicates
 file(WRITE "${RESOURCE_OUT_CLEAN}" "#include <windows.h>\n")
-file(APPEND "${RESOURCE_OUT_CLEAN}" "\n")
-file(APPEND "${RESOURCE_OUT_CLEAN}" "// UAC Manifest - requests administrator privileges\n")
-file(APPEND "${RESOURCE_OUT_CLEAN}" "1 RT_MANIFEST \"${MANIFEST_FILE}\"\n")
 file(APPEND "${RESOURCE_OUT_CLEAN}" "\n")
 file(APPEND "${RESOURCE_OUT_CLEAN}" "// Resource ID for embedded DLL (must match IDR_PLUGIN_DLL in installer.h)\n")
 file(APPEND "${RESOURCE_OUT_CLEAN}" "101 RCDATA \"${ESCAPED_DLL_PATH}\"\n")
