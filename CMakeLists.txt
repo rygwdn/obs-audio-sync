@@ -388,10 +388,7 @@ if(WIN32)
 
   # Disable Visual Studio's automatic manifest generation
   # We'll embed the manifest manually as a resource to ensure UAC works
-  set_target_properties(
-    ${CMAKE_PROJECT_NAME}-installer
-    PROPERTIES VS_MANIFEST "OFF"
-  )
+  set_target_properties(${CMAKE_PROJECT_NAME}-installer PROPERTIES VS_MANIFEST "OFF")
 
   # Add linker flag to disable automatic manifest embedding
   if(MSVC)

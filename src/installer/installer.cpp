@@ -62,7 +62,7 @@ bool FileExists(const std::string &path)
 bool ExtractDLLFromResource(const std::string &outputPath, std::string &errorDetails)
 {
 	errorDetails.clear();
-	
+
 	// Find the embedded DLL resource
 	HRSRC hRes = FindResourceA(NULL, MAKEINTRESOURCEA(IDR_PLUGIN_DLL), (LPCSTR)RT_RCDATA);
 	if (!hRes) {

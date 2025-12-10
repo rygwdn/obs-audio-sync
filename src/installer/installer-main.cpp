@@ -63,17 +63,24 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			errorMsg << L"Failed to extract plugin files from installer.\n\n";
 			if (!extractError.empty()) {
 				// Convert error details to wide string
-				int size_needed = MultiByteToWideChar(CP_UTF8, 0, extractError.c_str(), static_cast<int>(extractError.length()), NULL, 0);
+				int size_needed = MultiByteToWideChar(CP_UTF8, 0, extractError.c_str(),
+								      static_cast<int>(extractError.length()), NULL, 0);
 				if (size_needed > 0) {
 					std::wstring errorDetailsW(size_needed, 0);
-					MultiByteToWideChar(CP_UTF8, 0, extractError.c_str(), static_cast<int>(extractError.length()), &errorDetailsW[0], size_needed);
+					MultiByteToWideChar(CP_UTF8, 0, extractError.c_str(),
+							    static_cast<int>(extractError.length()), &errorDetailsW[0],
+							    size_needed);
 					errorMsg << errorDetailsW;
 				} else {
 					// Fallback: convert using ANSI if UTF-8 fails
-					size_needed = MultiByteToWideChar(CP_ACP, 0, extractError.c_str(), static_cast<int>(extractError.length()), NULL, 0);
+					size_needed = MultiByteToWideChar(CP_ACP, 0, extractError.c_str(),
+									  static_cast<int>(extractError.length()), NULL,
+									  0);
 					if (size_needed > 0) {
 						std::wstring errorDetailsW(size_needed, 0);
-						MultiByteToWideChar(CP_ACP, 0, extractError.c_str(), static_cast<int>(extractError.length()), &errorDetailsW[0], size_needed);
+						MultiByteToWideChar(CP_ACP, 0, extractError.c_str(),
+								    static_cast<int>(extractError.length()),
+								    &errorDetailsW[0], size_needed);
 						errorMsg << errorDetailsW;
 					} else {
 						errorMsg << L"Error details could not be converted to display format.";
