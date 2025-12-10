@@ -11,20 +11,30 @@ if(NOT DEFINED RESOURCE_OUT)
 endif()
 
 # The DLL path comes from generator expressions, so it should already be expanded
+# Strip any surrounding quotes first
+string(STRIP "${PLUGIN_DLL}" PLUGIN_DLL_STRIPPED)
+string(REGEX REPLACE "^\"(.*)\"$" "\\1" PLUGIN_DLL_CLEAN "${PLUGIN_DLL_STRIPPED}")
+
 # Normalize the path (handle both forward and backslashes)
-get_filename_component(PLUGIN_DLL_ABS "${PLUGIN_DLL}" ABSOLUTE)
+# Only make absolute if it's not already absolute
+if(IS_ABSOLUTE "${PLUGIN_DLL_CLEAN}")
+  set(PLUGIN_DLL_ABS "${PLUGIN_DLL_CLEAN}")
+else()
+  get_filename_component(PLUGIN_DLL_ABS "${PLUGIN_DLL_CLEAN}" ABSOLUTE)
+endif()
+
 file(TO_CMAKE_PATH "${PLUGIN_DLL_ABS}" PLUGIN_DLL_NORMALIZED)
 file(TO_NATIVE_PATH "${PLUGIN_DLL_NORMALIZED}" PLUGIN_DLL_NATIVE)
 
 # Verify the DLL file exists
 # Try multiple path formats in case of path issues
 set(ACTUAL_DLL_PATH "")
-if(EXISTS "${PLUGIN_DLL_ABS}")
+if(EXISTS "${PLUGIN_DLL_CLEAN}")
+  set(ACTUAL_DLL_PATH "${PLUGIN_DLL_CLEAN}")
+elseif(EXISTS "${PLUGIN_DLL_ABS}")
   set(ACTUAL_DLL_PATH "${PLUGIN_DLL_ABS}")
 elseif(EXISTS "${PLUGIN_DLL_NORMALIZED}")
   set(ACTUAL_DLL_PATH "${PLUGIN_DLL_NORMALIZED}")
-elseif(EXISTS "${PLUGIN_DLL}")
-  set(ACTUAL_DLL_PATH "${PLUGIN_DLL}")
 elseif(EXISTS "${PLUGIN_DLL_NATIVE}")
   set(ACTUAL_DLL_PATH "${PLUGIN_DLL_NATIVE}")
 endif()
@@ -33,10 +43,11 @@ endif()
 if(NOT ACTUAL_DLL_PATH OR NOT EXISTS "${ACTUAL_DLL_PATH}")
   message(STATUS "Plugin DLL path resolution:")
   message(STATUS "  Original: ${PLUGIN_DLL}")
+  message(STATUS "  Cleaned: ${PLUGIN_DLL_CLEAN}")
   message(STATUS "  Absolute: ${PLUGIN_DLL_ABS}")
   message(STATUS "  Normalized: ${PLUGIN_DLL_NORMALIZED}")
   message(STATUS "  Native: ${PLUGIN_DLL_NATIVE}")
-  message(FATAL_ERROR "Plugin DLL not found. The plugin target must be built before generating the installer resource. Expected DLL at: ${PLUGIN_DLL}")
+  message(FATAL_ERROR "Plugin DLL not found. The plugin target must be built before generating the installer resource. Expected DLL at: ${PLUGIN_DLL_CLEAN}")
 endif()
 
 # Get the directory where the resource file will be located
