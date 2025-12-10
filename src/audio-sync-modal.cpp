@@ -363,6 +363,8 @@ void AudioSyncModal::onFramesExtracted(const QVector<VideoFrame> &frames, double
 {
 	// This signal is emitted after all frames are extracted (for backward compatibility)
 	// The incremental signal handles the UI updates, so we just mark as complete
+	Q_UNUSED(frames);
+	Q_UNUSED(fps);
 	m_allFramesExtracted = true;
 	hideSpinner();
 }
