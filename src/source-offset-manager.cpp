@@ -21,12 +21,14 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <obs-frontend-api.h>
 #include <QDebug>
 #include <qlogging.h>
+#include <QSet>
 
 SourceOffsetManager::SourceOffsetManager(QObject *parent) : QObject(parent) {}
 
 struct EnumData {
 	QList<SourceInfo> *sources;
 	SourceOffsetManager *manager;
+	QSet<QString> *addedSources; // Track source names with type to prevent duplicates (format: "name:audio" or "name:video")
 };
 
 static void enumFilterCallback(obs_source_t *source, obs_source_t *filter, void *param)
@@ -77,12 +79,14 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 	blog(LOG_INFO, "[AudioSync] enumSourceCallback: Checking source: %s (id: %s, isGroup: %d)",
 	     sourceNameStr.toUtf8().constData(), sourceId ? sourceId : "(null)", isGroup);
 
-	// If this is a group, recursively enumerate its children
+	// If this is a group, recursively enumerate its children and skip processing the group itself
+	// Groups are containers and should not be treated as syncable sources
 	if (isGroup) {
 		blog(LOG_INFO, "[AudioSync] enumSourceCallback: Source %s is a group, enumerating children",
 		     sourceNameStr.toUtf8().constData());
 		obs_source_enum_active_sources(source, enumGroupSourceCallback, data);
-		// Continue processing the group itself (groups can have filters too, though less common)
+		// Return early - groups are containers, not sources to sync
+		return true; // Continue enumeration
 	}
 
 	// Get source type and output flags
@@ -101,65 +105,72 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 	}
 
 	// For audio sources: they have built-in sync offset, always include them
+	// Note: Don't return early if source also has video - we want to check both
 	if (isAudio) {
-		blog(LOG_INFO, "[AudioSync] enumSourceCallback: Source %s is audio source, adding to list",
-		     sourceNameStr.toUtf8().constData());
+		QString audioKey = QString("%1:audio").arg(sourceNameStr);
+		// Check if this source has already been added as audio (prevent duplicates)
+		if (!data->addedSources->contains(audioKey)) {
+			// Get current sync offset (in nanoseconds, convert to milliseconds)
+			int64_t syncOffsetNs = obs_source_get_sync_offset(source);
+			int syncOffsetMs = static_cast<int>(syncOffsetNs / 1000000LL);
 
-		// Get current sync offset (in nanoseconds, convert to milliseconds)
-		int64_t syncOffsetNs = obs_source_get_sync_offset(source);
-		int syncOffsetMs = static_cast<int>(syncOffsetNs / 1000000LL);
+			// Create source info
+			SourceInfo info;
+			info.name = sourceNameStr;
+			info.id = QString::fromUtf8(obs_source_get_id(source));
+			info.isAudio = true;
+			info.isVideo = false;
+			info.currentOffsetMs = syncOffsetMs;
+			info.hasAsyncDelayFilter = false; // Audio uses built-in sync offset
 
-		// Create source info
-		SourceInfo info;
-		info.name = sourceNameStr;
-		info.id = QString::fromUtf8(obs_source_get_id(source));
-		info.isAudio = true;
-		info.isVideo = false;
-		info.currentOffsetMs = syncOffsetMs;
-		info.hasAsyncDelayFilter = false; // Audio uses built-in sync offset
-
-		data->sources->append(info);
-		return true; // Continue enumeration
+			data->sources->append(info);
+			data->addedSources->insert(audioKey); // Mark as added (audio)
+		}
 	}
 
 	// For video sources: check if they have Video Delay (Async) filter (even if disabled)
+	// Note: This runs even if the source also has audio, allowing sources with both to sync either or both
 	if (isVideo) {
-		// Enumerate all filters to log them
-		blog(LOG_INFO, "[AudioSync] enumSourceCallback: Video source found: %s",
-		     sourceNameStr.toUtf8().constData());
-
-		// List all filters on this source
-		QByteArray sourceNameBytes = sourceNameStr.toUtf8();
-		obs_source_enum_filters(source, enumFilterCallback, const_cast<char *>(sourceNameBytes.constData()));
-
-		obs_source_t *filter = obs_source_get_filter_by_name(source, "Video Delay (Async)");
-		if (filter == nullptr) {
-			blog(LOG_INFO,
-			     "[AudioSync] enumSourceCallback: Source %s is video but has no Video Delay (Async) filter, skipping",
+		QString videoKey = QString("%1:video").arg(sourceNameStr);
+		// Check if this source has already been added as video (prevent duplicates)
+		if (!data->addedSources->contains(videoKey)) {
+			// Enumerate all filters to log them
+			blog(LOG_INFO, "[AudioSync] enumSourceCallback: Video source found: %s",
 			     sourceNameStr.toUtf8().constData());
-			return true; // Continue enumeration - video source needs filter
+
+			// List all filters on this source
+			QByteArray sourceNameBytes = sourceNameStr.toUtf8();
+			obs_source_enum_filters(source, enumFilterCallback, const_cast<char *>(sourceNameBytes.constData()));
+
+			obs_source_t *filter = obs_source_get_filter_by_name(source, "Video Delay (Async)");
+			if (filter == nullptr) {
+				blog(LOG_INFO,
+				     "[AudioSync] enumSourceCallback: Source %s is video but has no Video Delay (Async) filter, skipping video sync",
+				     sourceNameStr.toUtf8().constData());
+				// Don't return - if source has audio, it may still be added as audio above
+			} else {
+				// Get current offset from filter
+				obs_data_t *settings = obs_source_get_settings(filter);
+				int delayMs = obs_data_get_int(settings, "delay_ms");
+				obs_data_release(settings);
+
+				blog(LOG_INFO,
+				     "[AudioSync] enumSourceCallback: Source %s is video with Video Delay (Async) filter (offset: %d ms), adding to list",
+				     sourceNameStr.toUtf8().constData(), delayMs);
+
+				// Create source info
+				SourceInfo info;
+				info.name = sourceNameStr;
+				info.id = QString::fromUtf8(obs_source_get_id(source));
+				info.isAudio = false;
+				info.isVideo = true;
+				info.currentOffsetMs = delayMs;
+				info.hasAsyncDelayFilter = true;
+
+				data->sources->append(info);
+				data->addedSources->insert(videoKey); // Mark as added (video)
+			}
 		}
-
-		// Get current offset from filter
-		obs_data_t *settings = obs_source_get_settings(filter);
-		int delayMs = obs_data_get_int(settings, "delay_ms");
-		obs_data_release(settings);
-
-		blog(LOG_INFO,
-		     "[AudioSync] enumSourceCallback: Source %s is video with Video Delay (Async) filter (offset: %d ms), adding to list",
-		     sourceNameStr.toUtf8().constData(), delayMs);
-
-		// Create source info
-		SourceInfo info;
-		info.name = sourceNameStr;
-		info.id = QString::fromUtf8(obs_source_get_id(source));
-		info.isAudio = false;
-		info.isVideo = true;
-		info.currentOffsetMs = delayMs;
-		info.hasAsyncDelayFilter = true;
-
-		data->sources->append(info);
-		return true; // Continue enumeration
 	}
 
 	return true; // Continue enumeration
@@ -168,6 +179,7 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 QList<SourceInfo> SourceOffsetManager::enumerateSourcesWithAsyncDelay()
 {
 	QList<SourceInfo> sources;
+	QSet<QString> addedSources; // Track source names with type to prevent duplicates (format: "name:audio" or "name:video")
 
 	blog(LOG_INFO, "[AudioSync] enumerateSourcesWithAsyncDelay: Starting source enumeration");
 
@@ -175,6 +187,7 @@ QList<SourceInfo> SourceOffsetManager::enumerateSourcesWithAsyncDelay()
 	EnumData data;
 	data.sources = &sources;
 	data.manager = this;
+	data.addedSources = &addedSources;
 
 	obs_enum_sources(enumSourceCallback, &data);
 
@@ -326,9 +339,6 @@ QList<SourceInfo> SourceOffsetManager::getAudioSources()
 			audioSources.append(info);
 		}
 	}
-
-	int const AUDIO_COUNT = static_cast<int>(audioSources.size());
-	blog(LOG_INFO, "[AudioSync] getAudioSources: Found %d audio sources", AUDIO_COUNT);
 
 	return audioSources;
 }
