@@ -172,6 +172,19 @@ VideoExtractor::CodecContextData VideoExtractor::setupCodecContext(const FormatC
 		return data;
 	}
 
+	// Enable multi-threaded decoding for faster performance
+	// Use frame-level threading if supported, otherwise slice-level
+	unsigned int threadCount = 0; // 0 = auto-detect based on CPU count
+	if (codec->capabilities & AV_CODEC_CAP_FRAME_THREADS) {
+		codecContext->thread_type = FF_THREAD_FRAME;
+		codecContext->thread_count = threadCount;
+		qInfo() << "VideoExtractor::setupCodecContext: Enabled frame-level threading";
+	} else if (codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) {
+		codecContext->thread_type = FF_THREAD_SLICE;
+		codecContext->thread_count = threadCount;
+		qInfo() << "VideoExtractor::setupCodecContext: Enabled slice-level threading";
+	}
+
 	ret = avcodec_open2(codecContext, codec, nullptr);
 	if (ret < 0) {
 		avcodec_free_context(&codecContext);
@@ -808,6 +821,271 @@ VideoFrame VideoExtractor::convertSingleNativeFrameToRGB(const NativeFrame &nati
 	av_frame_free(&rgbFrame);
 
 	return videoFrame;
+}
+
+QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, double endTime, double cursorPosition)
+{
+	QElapsedTimer totalTimer;
+	totalTimer.start();
+	QVector<VideoFrame> frames;
+
+	if (!m_fileOpen || m_filePath.isEmpty() || m_fps <= 0.0) {
+		return frames;
+	}
+
+	qInfo() << "VideoExtractor::extractFramesPipelined: Starting pipelined extraction for range [" << startTime
+		<< "-" << endTime << "]s (cursor:" << cursorPosition << "s)";
+
+	// Setup format and codec context once
+	FormatContextData formatData = setupFormatContext(m_filePath);
+	if (formatData.formatContext == nullptr) {
+		return frames;
+	}
+
+	CodecContextData codecData = setupCodecContext(formatData);
+	if (codecData.codecContext == nullptr) {
+		cleanupFormatContext(formatData);
+		return frames;
+	}
+
+	// Seek to start time
+	double const TIME_BASE = av_q2d(formatData.videoStream->time_base);
+	auto seekTarget = (int64_t)(startTime / TIME_BASE);
+	int const SEEK_RET =
+		av_seek_frame(formatData.formatContext, formatData.videoStreamIndex, seekTarget, AVSEEK_FLAG_BACKWARD);
+	if (SEEK_RET < 0) {
+		char errbuf[AV_ERROR_MAX_STRING_SIZE];
+		av_strerror(SEEK_RET, errbuf, AV_ERROR_MAX_STRING_SIZE);
+		qWarning() << "VideoExtractor::extractFramesPipelined: Failed to seek:" << errbuf;
+		cleanupCodecContext(codecData);
+		cleanupFormatContext(formatData);
+		return frames;
+	}
+
+	avcodec_flush_buffers(codecData.codecContext);
+
+	double const FRAME_DURATION = 1.0 / m_fps;
+	double const TOLERANCE = FRAME_DURATION * 0.5;
+	const double PRIORITY_WINDOW = 1.0; // 1 second on each side of cursor
+	int frameNumber = 0;
+	bool eofReached = false;
+
+	// Pipeline: decode frames and convert priority zone as soon as available
+	QVector<NativeFrame> allNativeFrames;
+	QVector<NativeFrame> priorityNativeFrames;
+	QVector<NativeFrame> remainingNativeFrames;
+	QVector<QPair<int, VideoFrame>> convertedFrames; // index, frame
+
+	// Create SwsContext for priority zone (main thread)
+	int width = codecData.codecContext->width;
+	int height = codecData.codecContext->height;
+	AVPixelFormat srcFormat = codecData.codecContext->pix_fmt;
+	SwsContext *mainSwsContext = sws_getContext(width, height, srcFormat, width, height, AV_PIX_FMT_RGB24,
+						    SWS_BILINEAR, nullptr, nullptr, nullptr);
+	if (mainSwsContext == nullptr) {
+		cleanupCodecContext(codecData);
+		cleanupFormatContext(formatData);
+		return frames;
+	}
+
+	QElapsedTimer decodeTimer;
+	decodeTimer.start();
+	bool priorityConverted = false;
+
+	// Decode frames and convert priority zone as soon as we have enough
+	while (!eofReached) {
+		int readRet = av_read_frame(formatData.formatContext, codecData.packet);
+		if (readRet < 0) {
+			eofReached = true;
+			avcodec_send_packet(codecData.codecContext, nullptr);
+			break;
+		}
+
+		if (codecData.packet->stream_index == formatData.videoStreamIndex) {
+			int ret = avcodec_send_packet(codecData.codecContext, codecData.packet);
+			if (ret < 0) {
+				av_packet_unref(codecData.packet);
+				continue;
+			}
+
+			while (ret >= 0) {
+				ret = avcodec_receive_frame(codecData.codecContext, codecData.avFrame);
+				if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+					break;
+				}
+				if (ret < 0) {
+					break;
+				}
+
+				// Calculate frame timestamp
+				double frameTime = startTime + (frameNumber * FRAME_DURATION);
+				if (codecData.avFrame->pts != AV_NOPTS_VALUE) {
+					frameTime = codecData.avFrame->pts * TIME_BASE;
+				}
+
+				// If we've gone past endTime, we're done
+				if (frameTime > endTime + TOLERANCE) {
+					eofReached = true;
+					break;
+				}
+
+				// Only store frames within our range
+				if (frameTime >= startTime - TOLERANCE && frameTime <= endTime + TOLERANCE) {
+					NativeFrame nativeFrame;
+					nativeFrame.frame = av_frame_clone(codecData.avFrame);
+					nativeFrame.timestamp = frameTime;
+					nativeFrame.frameNumber = frameNumber;
+					allNativeFrames.append(nativeFrame);
+
+					// Check if this is in priority zone
+					double distance = qAbs(frameTime - cursorPosition);
+					if (distance <= PRIORITY_WINDOW) {
+						priorityNativeFrames.append(nativeFrame);
+					} else {
+						remainingNativeFrames.append(nativeFrame);
+					}
+
+					// Convert priority zone as soon as we have enough frames (or all priority frames are decoded)
+					// Start converting when we have at least 10 priority frames or we've decoded past priority window
+					if (!priorityConverted && priorityNativeFrames.size() >= 10) {
+						QElapsedTimer priorityTimer;
+						priorityTimer.start();
+						qInfo() << "VideoExtractor::extractFramesPipelined: Starting priority conversion early ("
+							<< priorityNativeFrames.size()
+							<< "frames) while decoding continues";
+
+						// Convert priority frames immediately
+						for (int i = 0; i < priorityNativeFrames.size(); i++) {
+							VideoFrame frame = convertSingleNativeFrameToRGB(
+								priorityNativeFrames[i], codecData.codecContext,
+								mainSwsContext);
+							// Find original index in allNativeFrames by matching timestamp
+							int origIdx = -1;
+							for (int j = 0; j < allNativeFrames.size(); j++) {
+								if (qAbs(allNativeFrames[j].timestamp -
+									 priorityNativeFrames[i].timestamp) < 0.001) {
+									origIdx = j;
+									break;
+								}
+							}
+							if (origIdx >= 0) {
+								convertedFrames.append(qMakePair(origIdx, frame));
+							}
+						}
+
+						qInfo() << "VideoExtractor::extractFramesPipelined: Priority conversion ("
+							<< priorityNativeFrames.size() << "frames) took"
+							<< priorityTimer.elapsed() << "ms (overlapped with decode)";
+						priorityConverted = true;
+					}
+				}
+
+				frameNumber++;
+			}
+		}
+		av_packet_unref(codecData.packet);
+	}
+
+	qInfo() << "VideoExtractor::extractFramesPipelined: Decoded" << allNativeFrames.size() << "native frames in"
+		<< decodeTimer.elapsed() << "ms";
+
+	// Convert remaining priority frames if we didn't convert them early
+	if (!priorityConverted && !priorityNativeFrames.isEmpty()) {
+		QElapsedTimer priorityTimer;
+		priorityTimer.start();
+		for (int i = 0; i < priorityNativeFrames.size(); i++) {
+			// Find original index
+			for (int j = 0; j < allNativeFrames.size(); j++) {
+				if (allNativeFrames[j].timestamp == priorityNativeFrames[i].timestamp) {
+					VideoFrame frame = convertSingleNativeFrameToRGB(
+						priorityNativeFrames[i], codecData.codecContext, mainSwsContext);
+					convertedFrames.append(qMakePair(j, frame));
+					break;
+				}
+			}
+		}
+		qInfo() << "VideoExtractor::extractFramesPipelined: Priority conversion ("
+			<< priorityNativeFrames.size() << "frames) took" << priorityTimer.elapsed() << "ms";
+	}
+
+	sws_freeContext(mainSwsContext);
+
+	// Convert remaining frames in parallel
+	if (!remainingNativeFrames.isEmpty()) {
+		QElapsedTimer parallelTimer;
+		parallelTimer.start();
+		QVector<QFuture<QPair<int, VideoFrame>>> futures;
+		for (const NativeFrame &nf : remainingNativeFrames) {
+			// Find original index
+			int origIdx = -1;
+			for (int j = 0; j < allNativeFrames.size(); j++) {
+				if (allNativeFrames[j].timestamp == nf.timestamp) {
+					origIdx = j;
+					break;
+				}
+			}
+			if (origIdx < 0) {
+				continue;
+			}
+
+			// Convert in parallel
+			AVCodecContext *codecCtx = codecData.codecContext;
+			QFuture<QPair<int, VideoFrame>> future = QtConcurrent::run([nf, codecCtx, origIdx, width,
+										    height, srcFormat]() {
+				SwsContext *threadSwsContext = sws_getContext(width, height, srcFormat, width, height,
+									      AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr,
+									      nullptr, nullptr);
+				if (threadSwsContext == nullptr) {
+					return qMakePair(origIdx, VideoFrame{});
+				}
+
+				VideoFrame frame = convertSingleNativeFrameToRGB(nf, codecCtx, threadSwsContext);
+				sws_freeContext(threadSwsContext);
+				return qMakePair(origIdx, frame);
+			});
+			futures.append(future);
+		}
+
+		// Wait for all conversions to complete
+		for (auto &future : futures) {
+			future.waitForFinished();
+			convertedFrames.append(future.result());
+		}
+		qInfo() << "VideoExtractor::extractFramesPipelined: Parallel conversion ("
+			<< remainingNativeFrames.size() << "frames) took" << parallelTimer.elapsed() << "ms";
+	}
+
+	// Sort by original index to maintain timestamp order
+	std::sort(convertedFrames.begin(), convertedFrames.end(),
+		  [](const QPair<int, VideoFrame> &a, const QPair<int, VideoFrame> &b) { return a.first < b.first; });
+
+	// Extract frames in order
+	for (const auto &pair : convertedFrames) {
+		frames.append(pair.second);
+	}
+
+	// Calculate frame differences
+	QElapsedTimer diffTimer;
+	diffTimer.start();
+	calculateFrameDifferences(frames);
+	qInfo() << "VideoExtractor::extractFramesPipelined: Frame difference calculation took" << diffTimer.elapsed()
+		<< "ms";
+
+	// Cleanup native frames
+	for (auto &nf : allNativeFrames) {
+		if (nf.frame) {
+			av_frame_free(&nf.frame);
+		}
+	}
+
+	cleanupCodecContext(codecData);
+	cleanupFormatContext(formatData);
+
+	qInfo() << "VideoExtractor::extractFramesPipelined: Completed pipelined extraction of" << frames.size()
+		<< "frames in" << totalTimer.elapsed() << "ms (range:" << startTime << "-" << endTime
+		<< "s, cursor:" << cursorPosition << "s)";
+
+	return frames;
 }
 
 QVector<VideoFrame> VideoExtractor::extractFramesOptimized(double startTime, double endTime, double cursorPosition)

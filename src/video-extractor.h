@@ -88,6 +88,10 @@ public:
 	// Returns frames sorted by timestamp, with priority zone converted first
 	QVector<VideoFrame> extractFramesOptimized(double startTime, double endTime, double cursorPosition);
 
+	// Pipelined extraction: decode frames in batches and start converting priority zone immediately
+	// This overlaps decode and convert operations for better performance
+	QVector<VideoFrame> extractFramesPipelined(double startTime, double endTime, double cursorPosition);
+
 	// Convert a single native frame to RGB (thread-safe helper)
 	// Note: Each thread must create its own SwsContext (not thread-safe)
 	static VideoFrame convertSingleNativeFrameToRGB(const NativeFrame &nativeFrame, AVCodecContext *codecContext,

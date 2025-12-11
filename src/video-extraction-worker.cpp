@@ -76,10 +76,10 @@ void VideoExtractionWorker::extractFramesIncremental(const QString &filePath, do
 
 		double fps = m_videoExtractor->getFPS();
 
-		// Use optimized extraction: single-pass decode, then parallel RGB conversion
-		// Priority zone (1 second around cursor) is converted first, then rest in parallel
+		// Use pipelined extraction: decode frames and start converting priority zone immediately
+		// This overlaps decode and convert operations for better performance
 		QVector<VideoFrame> allFrames =
-			m_videoExtractor->extractFramesOptimized(startTime, endTime, priorityCenter);
+			m_videoExtractor->extractFramesPipelined(startTime, endTime, priorityCenter);
 
 		// Split frames into priority zone and remaining for incremental emission
 		const double PRIORITY_WINDOW = 1.0;
