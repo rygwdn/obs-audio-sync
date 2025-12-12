@@ -87,7 +87,6 @@ private:
 	void showSpinner(const QString &message);
 	void hideSpinner();
 	void extractFrameOnDemand(double timestamp);
-	void mergeFrames(const QVector<VideoFrame> &newFrames);
 
 	TimelineWidget *m_timelineWidget{nullptr};
 	QPushButton *m_zoomInButton{nullptr};

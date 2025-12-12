@@ -259,8 +259,6 @@ void AudioSyncModal::setupWorkerThreads()
 	m_videoWorker->moveToThread(m_videoThread);
 	connect(m_videoThread, &QThread::finished, m_videoWorker, &QObject::deleteLater);
 	connect(m_videoWorker, &VideoExtractionWorker::framesExtracted, this, &AudioSyncModal::onFramesExtracted);
-	connect(m_videoWorker, &VideoExtractionWorker::framesExtractedIncremental, this,
-		&AudioSyncModal::onFramesExtractedIncremental);
 	connect(m_videoWorker, &VideoExtractionWorker::extractionError, this, &AudioSyncModal::onExtractionError);
 	m_videoThread->start();
 }
@@ -299,8 +297,8 @@ void AudioSyncModal::onAudioAnalyzed(const AudioSpike &spike, const QVector<Audi
 	m_zoomOutButton->setVisible(true);
 	m_resetZoomButton->setVisible(true);
 
-	// Start video extraction in background thread (incremental: priority zone first)
-	showSpinner("Extracting frames (priority zone)...");
+	// Start video extraction in background thread (single pass - all frames)
+	showSpinner("Extracting frames...");
 	m_frameExtractionStartTime = m_currentSpike.windowStart;
 	m_frameExtractionEndTime = m_currentSpike.windowEnd;
 	m_allFramesExtracted = false;
@@ -315,22 +313,19 @@ void AudioSyncModal::onAnalysisError(const QString &error)
 	QMessageBox::warning(this, "Analysis Failed", error);
 }
 
-void AudioSyncModal::onFramesExtractedIncremental(const QVector<VideoFrame> &frames, double fps, bool isPriorityPhase)
+void AudioSyncModal::onFramesExtracted(const QVector<VideoFrame> &frames, double fps)
 {
-	if (m_frames.isEmpty()) {
-		// First batch - initialize
-		m_videoFPS = fps;
-		m_frames = frames;
-		// Show UI components after first batch
-		m_frameLabel->setVisible(true);
-		m_prevFrameButton->setVisible(true);
-		m_nextFrameButton->setVisible(true);
-		m_syncOffsetLabel->setVisible(true);
-		m_snapToPeaksButton->setVisible(true);
-	} else {
-		// Merge new frames with existing ones
-		mergeFrames(frames);
-	}
+	// All frames extracted in single pass - update UI
+	m_videoFPS = fps;
+	m_frames = frames;
+	m_allFramesExtracted = true;
+
+	// Show UI components
+	m_frameLabel->setVisible(true);
+	m_prevFrameButton->setVisible(true);
+	m_nextFrameButton->setVisible(true);
+	m_syncOffsetLabel->setVisible(true);
+	m_snapToPeaksButton->setVisible(true);
 
 	// Update timeline with FPS
 	m_timelineWidget->setFPS(m_videoFPS);
@@ -345,8 +340,8 @@ void AudioSyncModal::onFramesExtractedIncremental(const QVector<VideoFrame> &fra
 	m_timelineWidget->setVideoFrames(frameTimestamps);
 	m_timelineWidget->setFrameDifferences(frameDifferences);
 
-	// If this is the priority phase, find the frame closest to the audio spike
-	if (isPriorityPhase && m_currentFrameIndex < 0) {
+	// Find the frame closest to the audio spike
+	if (m_currentFrameIndex < 0 && !m_frames.isEmpty()) {
 		double minDiff = 1e10;
 		int bestFrameIndex = 0;
 		for (int i = 0; i < m_frames.size(); i++) {
@@ -361,25 +356,6 @@ void AudioSyncModal::onFramesExtractedIncremental(const QVector<VideoFrame> &fra
 		updateSyncDisplay();
 	}
 
-	// Update spinner message
-	if (isPriorityPhase) {
-		// After priority phase, show message for remaining frames
-		// The worker will emit remaining frames if any exist, or framesExtracted when complete
-		showSpinner("Extracting frames (remaining)...");
-	} else {
-		// Remaining frames extracted, extraction is complete
-		m_allFramesExtracted = true;
-		hideSpinner();
-	}
-}
-
-void AudioSyncModal::onFramesExtracted(const QVector<VideoFrame> &frames, double fps)
-{
-	// This signal is emitted after all frames are extracted (for backward compatibility)
-	// The incremental signal handles the UI updates, so we just mark as complete
-	Q_UNUSED(frames);
-	Q_UNUSED(fps);
-	m_allFramesExtracted = true;
 	hideSpinner();
 }
 
@@ -721,31 +697,6 @@ void AudioSyncModal::onApplyOffsetClicked()
 		// Refresh offset displays and source list (to update offset values)
 		refreshSourceList();
 	}
-}
-
-void AudioSyncModal::mergeFrames(const QVector<VideoFrame> &newFrames)
-{
-	// Merge new frames with existing ones, maintaining sorted order by timestamp
-	for (const VideoFrame &newFrame : newFrames) {
-		// Check if frame already exists (by timestamp)
-		bool exists = false;
-		for (const VideoFrame &existingFrame : m_frames) {
-			if (qAbs(existingFrame.timestamp - newFrame.timestamp) < 0.001) {
-				exists = true;
-				break;
-			}
-		}
-		if (!exists) {
-			m_frames.append(newFrame);
-		}
-	}
-
-	// Sort by timestamp
-	std::sort(m_frames.begin(), m_frames.end(),
-		  [](const VideoFrame &a, const VideoFrame &b) { return a.timestamp < b.timestamp; });
-
-	// Recalculate frame differences for the complete set
-	VideoExtractor::calculateFrameDifferences(m_frames);
 }
 
 void AudioSyncModal::extractFrameOnDemand(double timestamp)

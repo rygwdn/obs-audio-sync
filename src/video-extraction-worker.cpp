@@ -78,40 +78,9 @@ void VideoExtractionWorker::extractFramesIncremental(const QString &filePath, do
 
 		// Use pipelined extraction: decode frames and start converting priority zone immediately
 		// This overlaps decode and convert operations for better performance
+		// All frames are processed in a single pass
 		QVector<VideoFrame> allFrames =
 			m_videoExtractor->extractFramesPipelined(startTime, endTime, priorityCenter);
-
-		// Split frames into priority zone and remaining for incremental emission
-		const double PRIORITY_WINDOW = 1.0;
-		QVector<VideoFrame> priorityFrames;
-		QVector<VideoFrame> remainingFrames;
-
-		for (const VideoFrame &frame : allFrames) {
-			double distance = qAbs(frame.timestamp - priorityCenter);
-			if (distance <= PRIORITY_WINDOW) {
-				priorityFrames.append(frame);
-			} else {
-				remainingFrames.append(frame);
-			}
-		}
-
-		// Sort priority frames by timestamp
-		std::sort(priorityFrames.begin(), priorityFrames.end(),
-			  [](const VideoFrame &a, const VideoFrame &b) { return a.timestamp < b.timestamp; });
-
-		// Emit priority frames first
-		if (!priorityFrames.isEmpty()) {
-			qInfo() << "VideoExtractionWorker::extractFramesIncremental: Emitting" << priorityFrames.size()
-				<< "priority frames";
-			emit framesExtractedIncremental(priorityFrames, fps, true);
-		}
-
-		// Emit remaining frames
-		if (!remainingFrames.isEmpty()) {
-			qInfo() << "VideoExtractionWorker::extractFramesIncremental: Emitting" << remainingFrames.size()
-				<< "remaining frames";
-			emit framesExtractedIncremental(remainingFrames, fps, false);
-		}
 
 		if (allFrames.isEmpty()) {
 			qWarning() << "VideoExtractionWorker::extractFramesIncremental: No frames extracted";
@@ -122,8 +91,7 @@ void VideoExtractionWorker::extractFramesIncremental(const QString &filePath, do
 		}
 
 		qInfo() << "VideoExtractionWorker::extractFramesIncremental: Completed extraction of"
-			<< allFrames.size() << "frames in" << totalTimer.elapsed()
-			<< "ms (priority:" << priorityFrames.size() << ", remaining:" << remainingFrames.size() << ")";
+			<< allFrames.size() << "frames in" << totalTimer.elapsed() << "ms (single pass)";
 		emit framesExtracted(allFrames, fps);
 	} catch (const std::exception &e) {
 		qWarning() << "VideoExtractionWorker::extractFramesIncremental: Exception:" << e.what();

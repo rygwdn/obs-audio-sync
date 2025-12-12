@@ -43,7 +43,6 @@ public slots:
 
 signals:
 	void framesExtracted(const QVector<VideoFrame> &frames, double fps);
-	void framesExtractedIncremental(const QVector<VideoFrame> &frames, double fps, bool isPriorityPhase);
 	void extractionError(const QString &error);
 
 private:
