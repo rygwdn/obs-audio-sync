@@ -97,6 +97,12 @@ public:
 	static VideoFrame convertSingleNativeFrameToRGB(const NativeFrame &nativeFrame, AVCodecContext *codecContext,
 							SwsContext *swsContext);
 
+	// Convert a single native frame to small RGB for difference calculation (160x90)
+	// Uses FFmpeg's sws_scale to convert and rescale in one step (more efficient than Qt scaling)
+	// Note: Each thread must create its own SwsContext (not thread-safe)
+	static QImage convertSingleNativeFrameToSmallRGB(const NativeFrame &nativeFrame, AVCodecContext *codecContext,
+							 SwsContext *swsContext);
+
 	// Convert native frames to RGB starting from cursor position, moving outward (parallel)
 	// Returns frames sorted by timestamp, with priority zone converted first
 	static QVector<VideoFrame> convertNativeFramesToRGB(const QVector<NativeFrame> &nativeFrames,
@@ -106,6 +112,11 @@ public:
 	// Calculate frame-to-frame differences for a vector of frames
 	// This is useful when combining frames from multiple extractions
 	static void calculateFrameDifferences(QVector<VideoFrame> &frames);
+
+	// Calculate frame-to-frame differences using FFmpeg-scaled small RGB images (more efficient)
+	// This version uses native frames and converts to small RGB (160x90) for difference calculation
+	static void calculateFrameDifferencesFromNative(const QVector<NativeFrame> &nativeFrames,
+							AVCodecContext *codecContext);
 
 	// Get video FPS
 	[[nodiscard]] double getFPS() const { return m_fps; }

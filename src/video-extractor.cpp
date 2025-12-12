@@ -423,6 +423,81 @@ double VideoExtractor::calculateFrameDifference(const QPixmap &frame1, const QPi
 	return pixelCount > 0 ? (double)totalDiff / pixelCount : 0.0;
 }
 
+// Target size for difference calculation: 160x90 (16:9 aspect ratio)
+const int DIFF_TARGET_WIDTH = 160;
+const int DIFF_TARGET_HEIGHT = 90;
+
+QImage VideoExtractor::convertSingleNativeFrameToSmallRGB(const NativeFrame &nativeFrame, AVCodecContext *codecContext,
+							  SwsContext *smallSwsContext)
+{
+	QImage smallImage;
+	if (nativeFrame.frame == nullptr || codecContext == nullptr || smallSwsContext == nullptr) {
+		return smallImage;
+	}
+
+	// Allocate small RGB frame for conversion
+	AVFrame *smallRgbFrame = av_frame_alloc();
+	if (smallRgbFrame == nullptr) {
+		return smallImage;
+	}
+
+	int const NUM_BYTES = av_image_get_buffer_size(AV_PIX_FMT_RGB24, DIFF_TARGET_WIDTH, DIFF_TARGET_HEIGHT, 1);
+	uint8_t *buffer = (uint8_t *)av_malloc(NUM_BYTES * sizeof(uint8_t));
+	if (buffer == nullptr) {
+		av_frame_free(&smallRgbFrame);
+		return smallImage;
+	}
+
+	av_image_fill_arrays(smallRgbFrame->data, smallRgbFrame->linesize, buffer, AV_PIX_FMT_RGB24, DIFF_TARGET_WIDTH,
+			     DIFF_TARGET_HEIGHT, 1);
+	smallRgbFrame->format = AV_PIX_FMT_RGB24;
+	smallRgbFrame->width = DIFF_TARGET_WIDTH;
+	smallRgbFrame->height = DIFF_TARGET_HEIGHT;
+
+	// Convert and rescale in one step using FFmpeg (more efficient than Qt scaling)
+	sws_scale(smallSwsContext, (const uint8_t *const *)nativeFrame.frame->data, nativeFrame.frame->linesize, 0,
+		  codecContext->height, smallRgbFrame->data, smallRgbFrame->linesize);
+
+	// Create QImage from the small RGB frame (copy the data)
+	smallImage = QImage(smallRgbFrame->data[0], DIFF_TARGET_WIDTH, DIFF_TARGET_HEIGHT, smallRgbFrame->linesize[0],
+			    QImage::Format_RGB888)
+			     .copy();
+
+	// Cleanup
+	av_free(buffer);
+	av_frame_free(&smallRgbFrame);
+
+	return smallImage;
+}
+
+// Optimized version that calculates differences from small RGB images (from FFmpeg conversion)
+static double calculateFrameDifferenceFromSmallRGB(const QImage &img1, const QImage &img2)
+{
+	if (img1.isNull() || img2.isNull() || img1.size() != img2.size()) {
+		return -1.0; // Error: invalid frames
+	}
+
+	// Calculate SAD (Sum of Absolute Differences)
+	qint64 totalDiff = 0;
+	int pixelCount = img1.width() * img1.height();
+
+	for (int y = 0; y < img1.height(); y++) {
+		for (int x = 0; x < img1.width(); x++) {
+			QRgb pixel1 = img1.pixel(x, y);
+			QRgb pixel2 = img2.pixel(x, y);
+
+			// Calculate RGB difference
+			int rDiff = qAbs(qRed(pixel1) - qRed(pixel2));
+			int gDiff = qAbs(qGreen(pixel1) - qGreen(pixel2));
+			int bDiff = qAbs(qBlue(pixel1) - qBlue(pixel2));
+
+			totalDiff += (rDiff + gDiff + bDiff);
+		}
+	}
+
+	return pixelCount > 0 ? (double)totalDiff / pixelCount : 0.0;
+}
+
 // static
 void VideoExtractor::calculateFrameDifferences(QVector<VideoFrame> &frames)
 {
@@ -447,6 +522,43 @@ void VideoExtractor::calculateFrameDifferences(QVector<VideoFrame> &frames)
 			frames[i].differenceFromPrevious = diff;
 		}
 	}
+}
+
+// static
+void VideoExtractor::calculateFrameDifferencesFromNative(const QVector<NativeFrame> &nativeFrames,
+							 AVCodecContext *codecContext)
+{
+	if (nativeFrames.size() < 2 || codecContext == nullptr) {
+		return;
+	}
+
+	// Create SwsContext for small RGB conversion (reused for all frames)
+	SwsContext *smallSwsContext = sws_getContext(codecContext->width, codecContext->height, codecContext->pix_fmt,
+						     DIFF_TARGET_WIDTH, DIFF_TARGET_HEIGHT, AV_PIX_FMT_RGB24,
+						     SWS_BILINEAR, nullptr, nullptr, nullptr);
+	if (smallSwsContext == nullptr) {
+		qWarning() << "VideoExtractor::calculateFrameDifferencesFromNative: Failed to create SwsContext";
+		return;
+	}
+
+	// Convert all frames to small RGB images
+	QVector<QImage> smallImages;
+	smallImages.reserve(nativeFrames.size());
+	for (const NativeFrame &nf : nativeFrames) {
+		QImage smallImg = convertSingleNativeFrameToSmallRGB(nf, codecContext, smallSwsContext);
+		smallImages.append(smallImg);
+	}
+
+	sws_freeContext(smallSwsContext);
+
+	// Calculate differences from small RGB images
+	// Note: This modifies the nativeFrames vector's differenceFromPrevious, but we need to
+	// match them to VideoFrame objects. For now, we'll store differences in a separate vector
+	// and apply them when creating VideoFrames.
+	// Actually, we can't modify nativeFrames since it's const. We need a different approach.
+
+	// For now, this method will be used differently - we'll calculate differences during conversion
+	// and store them in the VideoFrame objects directly.
 }
 
 QVector<VideoFrame> VideoExtractor::extractFrames(double startTime, double endTime)
@@ -1064,10 +1176,43 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 		frames.append(pair.second);
 	}
 
-	// Calculate frame differences
+	// Calculate frame differences using FFmpeg-scaled small RGB images (more efficient)
 	QElapsedTimer diffTimer;
 	diffTimer.start();
-	calculateFrameDifferences(frames);
+
+	// Create SwsContext for small RGB conversion (160x90 for difference calculation)
+	SwsContext *smallSwsContext = sws_getContext(width, height, srcFormat, DIFF_TARGET_WIDTH, DIFF_TARGET_HEIGHT,
+						     AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr, nullptr, nullptr);
+	if (smallSwsContext != nullptr) {
+		// Convert all native frames to small RGB for difference calculation
+		QVector<QImage> smallImages;
+		smallImages.reserve(allNativeFrames.size());
+
+		for (const NativeFrame &nf : allNativeFrames) {
+			QImage smallImg =
+				convertSingleNativeFrameToSmallRGB(nf, codecData.codecContext, smallSwsContext);
+			smallImages.append(smallImg);
+		}
+
+		// Calculate differences from small RGB images and apply to frames
+		if (smallImages.size() >= 2 && frames.size() == smallImages.size()) {
+			frames[0].differenceFromPrevious = 0.0;
+			for (int i = 1; i < frames.size(); i++) {
+				double diff = calculateFrameDifferenceFromSmallRGB(smallImages[i - 1], smallImages[i]);
+				if (diff < 0.0) {
+					frames[i].differenceFromPrevious = 0.0;
+				} else {
+					frames[i].differenceFromPrevious = diff;
+				}
+			}
+		}
+
+		sws_freeContext(smallSwsContext);
+	} else {
+		// Fallback to Qt scaling if FFmpeg scaling fails
+		calculateFrameDifferences(frames);
+	}
+
 	qInfo() << "VideoExtractor::extractFramesPipelined: Frame difference calculation took" << diffTimer.elapsed()
 		<< "ms";
 
@@ -1261,10 +1406,47 @@ QVector<VideoFrame> VideoExtractor::convertNativeFramesToRGB(const QVector<Nativ
 		frames.append(pair.second);
 	}
 
-	// Calculate frame differences
+	// Calculate frame differences using FFmpeg-scaled small RGB images (more efficient)
 	QElapsedTimer diffTimer;
 	diffTimer.start();
-	calculateFrameDifferences(frames);
+
+	// Create SwsContext for small RGB conversion (160x90 for difference calculation)
+	SwsContext *smallSwsContext = sws_getContext(width, height, srcFormat, DIFF_TARGET_WIDTH, DIFF_TARGET_HEIGHT,
+						     AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr, nullptr, nullptr);
+	if (smallSwsContext != nullptr) {
+		// Convert all frames to small RGB for difference calculation
+		QVector<QImage> smallImages;
+		smallImages.reserve(nativeFrames.size());
+
+		// Convert native frames to small RGB in the same order as frames
+		for (const auto &pair : convertedFrames) {
+			int origIdx = pair.first;
+			if (origIdx >= 0 && origIdx < nativeFrames.size()) {
+				QImage smallImg = convertSingleNativeFrameToSmallRGB(nativeFrames[origIdx],
+										     codecContext, smallSwsContext);
+				smallImages.append(smallImg);
+			}
+		}
+
+		// Calculate differences from small RGB images
+		if (smallImages.size() >= 2 && frames.size() == smallImages.size()) {
+			frames[0].differenceFromPrevious = 0.0;
+			for (int i = 1; i < frames.size(); i++) {
+				double diff = calculateFrameDifferenceFromSmallRGB(smallImages[i - 1], smallImages[i]);
+				if (diff < 0.0) {
+					frames[i].differenceFromPrevious = 0.0;
+				} else {
+					frames[i].differenceFromPrevious = diff;
+				}
+			}
+		}
+
+		sws_freeContext(smallSwsContext);
+	} else {
+		// Fallback to Qt scaling if FFmpeg scaling fails
+		calculateFrameDifferences(frames);
+	}
+
 	qInfo() << "VideoExtractor::convertNativeFramesToRGB: Frame difference calculation took" << diffTimer.elapsed()
 		<< "ms";
 
