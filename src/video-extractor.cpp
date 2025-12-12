@@ -679,10 +679,20 @@ QVector<VideoFrame> VideoExtractor::extractFramesInRange(double startTime, doubl
 					}
 					decodedFrameCount++;
 
-					// Calculate frame timestamp from PTS (or use calculated time if PTS unavailable)
+					// Calculate frame timestamp - use FFmpeg timing info when available
 					double frameTime = TARGET_TIME;
 					if (codecData.avFrame->pts != AV_NOPTS_VALUE) {
+						// Use presentation timestamp (most accurate)
 						frameTime = codecData.avFrame->pts * TIME_BASE;
+					} else if (codecData.avFrame->pkt_dts != AV_NOPTS_VALUE) {
+						// Fallback to packet DTS if PTS unavailable
+						frameTime = codecData.avFrame->pkt_dts * TIME_BASE;
+					} else if (codecData.packet->pts != AV_NOPTS_VALUE) {
+						// Fallback to packet PTS
+						frameTime = codecData.packet->pts * TIME_BASE;
+					} else if (codecData.packet->dts != AV_NOPTS_VALUE) {
+						// Fallback to packet DTS
+						frameTime = codecData.packet->dts * TIME_BASE;
 					} else {
 						// Fallback: calculate from frame number
 						frameTime = startTime + (decodedFrameCount * FRAME_DURATION);
@@ -852,11 +862,22 @@ QVector<VideoExtractor::NativeFrame> VideoExtractor::decodeFramesToNative(double
 					break;
 				}
 
-				// Calculate frame timestamp
+				// Calculate frame timestamp - use FFmpeg timing info when available
 				double frameTime = startTime + (frameNumber * FRAME_DURATION);
 				if (codecData.avFrame->pts != AV_NOPTS_VALUE) {
+					// Use presentation timestamp (most accurate)
 					frameTime = codecData.avFrame->pts * TIME_BASE;
+				} else if (codecData.avFrame->pkt_dts != AV_NOPTS_VALUE) {
+					// Fallback to packet DTS if PTS unavailable
+					frameTime = codecData.avFrame->pkt_dts * TIME_BASE;
+				} else if (codecData.packet->pts != AV_NOPTS_VALUE) {
+					// Fallback to packet PTS
+					frameTime = codecData.packet->pts * TIME_BASE;
+				} else if (codecData.packet->dts != AV_NOPTS_VALUE) {
+					// Fallback to packet DTS
+					frameTime = codecData.packet->dts * TIME_BASE;
 				}
+				// If all timing info is unavailable, use calculated time from frame number
 
 				// If we've gone past endTime, we're done
 				if (frameTime > endTime + TOLERANCE) {
@@ -1029,11 +1050,22 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 					break;
 				}
 
-				// Calculate frame timestamp
+				// Calculate frame timestamp - use FFmpeg timing info when available
 				double frameTime = startTime + (frameNumber * FRAME_DURATION);
 				if (codecData.avFrame->pts != AV_NOPTS_VALUE) {
+					// Use presentation timestamp (most accurate)
 					frameTime = codecData.avFrame->pts * TIME_BASE;
+				} else if (codecData.avFrame->pkt_dts != AV_NOPTS_VALUE) {
+					// Fallback to packet DTS if PTS unavailable
+					frameTime = codecData.avFrame->pkt_dts * TIME_BASE;
+				} else if (codecData.packet->pts != AV_NOPTS_VALUE) {
+					// Fallback to packet PTS
+					frameTime = codecData.packet->pts * TIME_BASE;
+				} else if (codecData.packet->dts != AV_NOPTS_VALUE) {
+					// Fallback to packet DTS
+					frameTime = codecData.packet->dts * TIME_BASE;
 				}
+				// If all timing info is unavailable, use calculated time from frame number
 
 				// If we've gone past endTime, we're done
 				if (frameTime > endTime + TOLERANCE) {
