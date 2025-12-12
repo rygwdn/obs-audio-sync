@@ -999,33 +999,16 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 
 	double const FRAME_DURATION = 1.0 / m_fps;
 	double const TOLERANCE = FRAME_DURATION * 0.5;
-	const double PRIORITY_WINDOW = 1.0; // 1 second on each side of cursor
 	int frameNumber = 0;
 	bool eofReached = false;
 
-	// Pipeline: decode frames and convert priority zone as soon as available
+	// Decode all frames to native format first
 	QVector<NativeFrame> allNativeFrames;
-	QVector<NativeFrame> priorityNativeFrames;
-	QVector<NativeFrame> remainingNativeFrames;
-	QVector<QPair<int, VideoFrame>> convertedFrames; // index, frame
-
-	// Create SwsContext for priority zone (main thread)
-	int width = codecData.codecContext->width;
-	int height = codecData.codecContext->height;
-	AVPixelFormat srcFormat = codecData.codecContext->pix_fmt;
-	SwsContext *mainSwsContext = sws_getContext(width, height, srcFormat, width, height, AV_PIX_FMT_RGB24,
-						    SWS_BILINEAR, nullptr, nullptr, nullptr);
-	if (mainSwsContext == nullptr) {
-		cleanupCodecContext(codecData);
-		cleanupFormatContext(formatData);
-		return frames;
-	}
 
 	QElapsedTimer decodeTimer;
 	decodeTimer.start();
-	bool priorityConverted = false;
 
-	// Decode frames and convert priority zone as soon as we have enough
+	// Decode all frames in range
 	while (!eofReached) {
 		int readRet = av_read_frame(formatData.formatContext, codecData.packet);
 		if (readRet < 0) {
@@ -1080,48 +1063,6 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 					nativeFrame.timestamp = frameTime;
 					nativeFrame.frameNumber = frameNumber;
 					allNativeFrames.append(nativeFrame);
-
-					// Check if this is in priority zone
-					double distance = qAbs(frameTime - cursorPosition);
-					if (distance <= PRIORITY_WINDOW) {
-						priorityNativeFrames.append(nativeFrame);
-					} else {
-						remainingNativeFrames.append(nativeFrame);
-					}
-
-					// Convert priority zone as soon as we have enough frames (or all priority frames are decoded)
-					// Start converting when we have at least 10 priority frames or we've decoded past priority window
-					if (!priorityConverted && priorityNativeFrames.size() >= 10) {
-						QElapsedTimer priorityTimer;
-						priorityTimer.start();
-						qInfo() << "VideoExtractor::extractFramesPipelined: Starting priority conversion early ("
-							<< priorityNativeFrames.size()
-							<< "frames) while decoding continues";
-
-						// Convert priority frames immediately
-						for (int i = 0; i < priorityNativeFrames.size(); i++) {
-							VideoFrame frame = convertSingleNativeFrameToRGB(
-								priorityNativeFrames[i], codecData.codecContext,
-								mainSwsContext);
-							// Find original index in allNativeFrames by matching timestamp
-							int origIdx = -1;
-							for (int j = 0; j < allNativeFrames.size(); j++) {
-								if (qAbs(allNativeFrames[j].timestamp -
-									 priorityNativeFrames[i].timestamp) < 0.001) {
-									origIdx = j;
-									break;
-								}
-							}
-							if (origIdx >= 0) {
-								convertedFrames.append(qMakePair(origIdx, frame));
-							}
-						}
-
-						qInfo() << "VideoExtractor::extractFramesPipelined: Priority conversion ("
-							<< priorityNativeFrames.size() << "frames) took"
-							<< priorityTimer.elapsed() << "ms (overlapped with decode)";
-						priorityConverted = true;
-					}
 				}
 
 				frameNumber++;
@@ -1133,71 +1074,43 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 	qInfo() << "VideoExtractor::extractFramesPipelined: Decoded" << allNativeFrames.size() << "native frames in"
 		<< decodeTimer.elapsed() << "ms";
 
-	// Convert remaining priority frames if we didn't convert them early
-	if (!priorityConverted && !priorityNativeFrames.isEmpty()) {
-		QElapsedTimer priorityTimer;
-		priorityTimer.start();
-		for (int i = 0; i < priorityNativeFrames.size(); i++) {
-			// Find original index
-			for (int j = 0; j < allNativeFrames.size(); j++) {
-				if (allNativeFrames[j].timestamp == priorityNativeFrames[i].timestamp) {
-					VideoFrame frame = convertSingleNativeFrameToRGB(
-						priorityNativeFrames[i], codecData.codecContext, mainSwsContext);
-					convertedFrames.append(qMakePair(j, frame));
-					break;
-				}
-			}
-		}
-		qInfo() << "VideoExtractor::extractFramesPipelined: Priority conversion ("
-			<< priorityNativeFrames.size() << "frames) took" << priorityTimer.elapsed() << "ms";
-	}
+	// Convert all frames to RGB in parallel
+	int width = codecData.codecContext->width;
+	int height = codecData.codecContext->height;
+	AVPixelFormat srcFormat = codecData.codecContext->pix_fmt;
 
-	sws_freeContext(mainSwsContext);
+	QElapsedTimer convertTimer;
+	convertTimer.start();
+	QVector<QFuture<QPair<int, VideoFrame>>> futures;
 
-	// Convert remaining frames in parallel
-	if (!remainingNativeFrames.isEmpty()) {
-		QElapsedTimer parallelTimer;
-		parallelTimer.start();
-		QVector<QFuture<QPair<int, VideoFrame>>> futures;
-		for (const NativeFrame &nf : remainingNativeFrames) {
-			// Find original index
-			int origIdx = -1;
-			for (int j = 0; j < allNativeFrames.size(); j++) {
-				if (allNativeFrames[j].timestamp == nf.timestamp) {
-					origIdx = j;
-					break;
-				}
-			}
-			if (origIdx < 0) {
-				continue;
-			}
-
-			// Convert in parallel
-			AVCodecContext *codecCtx = codecData.codecContext;
-			QFuture<QPair<int, VideoFrame>> future = QtConcurrent::run([nf, codecCtx, origIdx, width,
-										    height, srcFormat]() {
+	for (int i = 0; i < allNativeFrames.size(); i++) {
+		const NativeFrame &nf = allNativeFrames[i];
+		// Convert in parallel
+		AVCodecContext *codecCtx = codecData.codecContext;
+		QFuture<QPair<int, VideoFrame>> future =
+			QtConcurrent::run([nf, codecCtx, i, width, height, srcFormat]() {
 				SwsContext *threadSwsContext = sws_getContext(width, height, srcFormat, width, height,
 									      AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr,
 									      nullptr, nullptr);
 				if (threadSwsContext == nullptr) {
-					return qMakePair(origIdx, VideoFrame{});
+					return qMakePair(i, VideoFrame{});
 				}
 
 				VideoFrame frame = convertSingleNativeFrameToRGB(nf, codecCtx, threadSwsContext);
 				sws_freeContext(threadSwsContext);
-				return qMakePair(origIdx, frame);
+				return qMakePair(i, frame);
 			});
-			futures.append(future);
-		}
-
-		// Wait for all conversions to complete
-		for (auto &future : futures) {
-			future.waitForFinished();
-			convertedFrames.append(future.result());
-		}
-		qInfo() << "VideoExtractor::extractFramesPipelined: Parallel conversion ("
-			<< remainingNativeFrames.size() << "frames) took" << parallelTimer.elapsed() << "ms";
+		futures.append(future);
 	}
+
+	// Wait for all conversions to complete
+	QVector<QPair<int, VideoFrame>> convertedFrames;
+	for (auto &future : futures) {
+		future.waitForFinished();
+		convertedFrames.append(future.result());
+	}
+	qInfo() << "VideoExtractor::extractFramesPipelined: Converted all" << allNativeFrames.size()
+		<< "frames in parallel in" << convertTimer.elapsed() << "ms";
 
 	// Sort by original index to maintain timestamp order
 	std::sort(convertedFrames.begin(), convertedFrames.end(),
@@ -1206,6 +1119,16 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 	// Extract frames in order
 	for (const auto &pair : convertedFrames) {
 		frames.append(pair.second);
+	}
+
+	// Verify we have all frames
+	if (frames.size() != allNativeFrames.size()) {
+		qWarning() << "VideoExtractor::extractFramesPipelined: Frame count mismatch! Decoded"
+			   << allNativeFrames.size() << "native frames but only converted" << frames.size()
+			   << "frames. Missing" << (allNativeFrames.size() - frames.size()) << "frames.";
+	} else {
+		qInfo() << "VideoExtractor::extractFramesPipelined: Successfully converted all" << frames.size()
+			<< "frames in single pass";
 	}
 
 	// Calculate frame differences using FFmpeg-scaled small RGB images (more efficient)
