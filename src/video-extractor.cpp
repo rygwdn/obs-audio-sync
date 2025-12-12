@@ -26,6 +26,10 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QtConcurrent/QtConcurrentRun>
 #include <algorithm>
 #include <QElapsedTimer>
+#include <QMutex>
+#include <QWaitCondition>
+#include <QQueue>
+#include <QThread>
 
 // FFmpeg includes
 extern "C" {
@@ -1002,13 +1006,89 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 	int frameNumber = 0;
 	bool eofReached = false;
 
-	// Decode all frames to native format first
-	QVector<NativeFrame> allNativeFrames;
+	// Pipelined decode+convert: decode frames and start converting them as they become available
+	// Use a thread-safe queue to pass frames from decode thread to convert threads
+	QMutex frameQueueMutex;
+	QWaitCondition frameAvailable;
+	QQueue<QPair<int, NativeFrame>> frameQueue;      // index, native frame
+	QVector<QPair<int, VideoFrame>> convertedFrames; // index, converted frame
+	QMutex convertedMutex;
+	int totalFramesDecoded = 0;
+	bool decodeComplete = false;
+
+	int width = codecData.codecContext->width;
+	int height = codecData.codecContext->height;
+	AVPixelFormat srcFormat = codecData.codecContext->pix_fmt;
+	AVCodecContext *codecCtx = codecData.codecContext;
+
+	// Start conversion threads that will process frames as they become available
+	QElapsedTimer convertTimer;
+	convertTimer.start();
+	QVector<QFuture<void>> convertFutures;
+	const int NUM_CONVERT_THREADS = QThread::idealThreadCount();
+	qInfo() << "VideoExtractor::extractFramesPipelined: Starting" << NUM_CONVERT_THREADS
+		<< "conversion threads for pipelined processing";
+
+	// Launch conversion worker threads
+	for (int threadId = 0; threadId < NUM_CONVERT_THREADS; threadId++) {
+		QFuture<void> future =
+			QtConcurrent::run([&frameQueueMutex, &frameAvailable, &frameQueue, &convertedMutex,
+					   &convertedFrames, &decodeComplete, codecCtx, width, height, srcFormat]() {
+				while (true) {
+					QMutexLocker locker(&frameQueueMutex);
+					// Wait for frames to be available or decode to complete
+					while (frameQueue.isEmpty() && !decodeComplete) {
+						frameAvailable.wait(&frameQueueMutex);
+					}
+
+					// If queue is empty and decode is complete, we're done
+					if (frameQueue.isEmpty() && decodeComplete) {
+						break;
+					}
+
+					// Get a frame from the queue
+					if (!frameQueue.isEmpty()) {
+						QPair<int, NativeFrame> framePair = frameQueue.dequeue();
+						locker.unlock();
+
+						// Convert the frame
+						SwsContext *threadSwsContext = sws_getContext(
+							width, height, srcFormat, width, height, AV_PIX_FMT_RGB24,
+							SWS_BILINEAR, nullptr, nullptr, nullptr);
+						if (threadSwsContext != nullptr) {
+							VideoFrame frame = convertSingleNativeFrameToRGB(
+								framePair.second, codecCtx, threadSwsContext);
+							sws_freeContext(threadSwsContext);
+
+							// Free the native frame (we cloned it, so we own it)
+							if (framePair.second.frame) {
+								av_frame_free(&framePair.second.frame);
+							}
+
+							// Add to converted frames (thread-safe)
+							QMutexLocker convertedLocker(&convertedMutex);
+							convertedFrames.append(qMakePair(framePair.first, frame));
+						} else {
+							// Free native frame even if conversion failed
+							if (framePair.second.frame) {
+								av_frame_free(&framePair.second.frame);
+							}
+						}
+
+						// Continue to next iteration
+					} else {
+						break;
+					}
+				}
+			});
+		convertFutures.append(future);
+	}
 
 	QElapsedTimer decodeTimer;
 	decodeTimer.start();
 
-	// Decode all frames in range
+	// Decode frames and add them to the queue for conversion
+	int frameIndex = 0;
 	while (!eofReached) {
 		int readRet = av_read_frame(formatData.formatContext, codecData.packet);
 		if (readRet < 0) {
@@ -1062,7 +1142,15 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 					nativeFrame.frame = av_frame_clone(codecData.avFrame);
 					nativeFrame.timestamp = frameTime;
 					nativeFrame.frameNumber = frameNumber;
-					allNativeFrames.append(nativeFrame);
+
+					// Add to queue for conversion (pipelined)
+					{
+						QMutexLocker locker(&frameQueueMutex);
+						frameQueue.enqueue(qMakePair(frameIndex, nativeFrame));
+						totalFramesDecoded++;
+						frameIndex++;
+					}
+					frameAvailable.wakeOne(); // Notify a waiting conversion thread
 				}
 
 				frameNumber++;
@@ -1071,46 +1159,22 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 		av_packet_unref(codecData.packet);
 	}
 
-	qInfo() << "VideoExtractor::extractFramesPipelined: Decoded" << allNativeFrames.size() << "native frames in"
-		<< decodeTimer.elapsed() << "ms";
-
-	// Convert all frames to RGB in parallel
-	int width = codecData.codecContext->width;
-	int height = codecData.codecContext->height;
-	AVPixelFormat srcFormat = codecData.codecContext->pix_fmt;
-
-	QElapsedTimer convertTimer;
-	convertTimer.start();
-	QVector<QFuture<QPair<int, VideoFrame>>> futures;
-
-	for (int i = 0; i < allNativeFrames.size(); i++) {
-		const NativeFrame &nf = allNativeFrames[i];
-		// Convert in parallel
-		AVCodecContext *codecCtx = codecData.codecContext;
-		QFuture<QPair<int, VideoFrame>> future =
-			QtConcurrent::run([nf, codecCtx, i, width, height, srcFormat]() {
-				SwsContext *threadSwsContext = sws_getContext(width, height, srcFormat, width, height,
-									      AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr,
-									      nullptr, nullptr);
-				if (threadSwsContext == nullptr) {
-					return qMakePair(i, VideoFrame{});
-				}
-
-				VideoFrame frame = convertSingleNativeFrameToRGB(nf, codecCtx, threadSwsContext);
-				sws_freeContext(threadSwsContext);
-				return qMakePair(i, frame);
-			});
-		futures.append(future);
+	// Mark decode as complete and wake all waiting threads
+	{
+		QMutexLocker locker(&frameQueueMutex);
+		decodeComplete = true;
 	}
+	frameAvailable.wakeAll(); // Wake all conversion threads
 
-	// Wait for all conversions to complete
-	QVector<QPair<int, VideoFrame>> convertedFrames;
-	for (auto &future : futures) {
+	qInfo() << "VideoExtractor::extractFramesPipelined: Decoded" << totalFramesDecoded << "native frames in"
+		<< decodeTimer.elapsed() << "ms (pipelined with conversion)";
+
+	// Wait for all conversion threads to complete
+	for (auto &future : convertFutures) {
 		future.waitForFinished();
-		convertedFrames.append(future.result());
 	}
-	qInfo() << "VideoExtractor::extractFramesPipelined: Converted all" << allNativeFrames.size()
-		<< "frames in parallel in" << convertTimer.elapsed() << "ms";
+	qInfo() << "VideoExtractor::extractFramesPipelined: All conversion threads completed. Converted"
+		<< convertedFrames.size() << "frames in" << convertTimer.elapsed() << "ms (overlapped with decode)";
 
 	// Sort by original index to maintain timestamp order
 	std::sort(convertedFrames.begin(), convertedFrames.end(),
@@ -1122,61 +1186,23 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 	}
 
 	// Verify we have all frames
-	if (frames.size() != allNativeFrames.size()) {
+	if (frames.size() != totalFramesDecoded) {
 		qWarning() << "VideoExtractor::extractFramesPipelined: Frame count mismatch! Decoded"
-			   << allNativeFrames.size() << "native frames but only converted" << frames.size()
-			   << "frames. Missing" << (allNativeFrames.size() - frames.size()) << "frames.";
+			   << totalFramesDecoded << "native frames but only converted" << frames.size()
+			   << "frames. Missing" << (totalFramesDecoded - frames.size()) << "frames.";
 	} else {
 		qInfo() << "VideoExtractor::extractFramesPipelined: Successfully converted all" << frames.size()
-			<< "frames in single pass";
+			<< "frames in single pass (pipelined decode+convert)";
 	}
 
-	// Calculate frame differences using FFmpeg-scaled small RGB images (more efficient)
+	// Calculate frame differences
 	QElapsedTimer diffTimer;
 	diffTimer.start();
-
-	// Create SwsContext for small RGB conversion (160x90 for difference calculation)
-	SwsContext *smallSwsContext = sws_getContext(width, height, srcFormat, DIFF_TARGET_WIDTH, DIFF_TARGET_HEIGHT,
-						     AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr, nullptr, nullptr);
-	if (smallSwsContext != nullptr) {
-		// Convert all native frames to small RGB for difference calculation
-		QVector<QImage> smallImages;
-		smallImages.reserve(allNativeFrames.size());
-
-		for (const NativeFrame &nf : allNativeFrames) {
-			QImage smallImg =
-				convertSingleNativeFrameToSmallRGB(nf, codecData.codecContext, smallSwsContext);
-			smallImages.append(smallImg);
-		}
-
-		// Calculate differences from small RGB images and apply to frames
-		if (smallImages.size() >= 2 && frames.size() == smallImages.size()) {
-			frames[0].differenceFromPrevious = 0.0;
-			for (int i = 1; i < frames.size(); i++) {
-				double diff = calculateFrameDifferenceFromSmallRGB(smallImages[i - 1], smallImages[i]);
-				if (diff < 0.0) {
-					frames[i].differenceFromPrevious = 0.0;
-				} else {
-					frames[i].differenceFromPrevious = diff;
-				}
-			}
-		}
-
-		sws_freeContext(smallSwsContext);
-	} else {
-		// Fallback to Qt scaling if FFmpeg scaling fails
-		calculateFrameDifferences(frames);
-	}
-
+	calculateFrameDifferences(frames);
 	qInfo() << "VideoExtractor::extractFramesPipelined: Frame difference calculation took" << diffTimer.elapsed()
 		<< "ms";
 
-	// Cleanup native frames
-	for (auto &nf : allNativeFrames) {
-		if (nf.frame) {
-			av_frame_free(&nf.frame);
-		}
-	}
+	// Note: Native frames were freed by conversion threads after conversion, so no cleanup needed here
 
 	cleanupCodecContext(codecData);
 	cleanupFormatContext(formatData);
