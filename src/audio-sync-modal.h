@@ -70,7 +70,6 @@ private slots:
 	void onAudioAnalyzed(const AudioSpike &spike, const QVector<AudioSample> &samples);
 	void onAnalysisError(const QString &error);
 	void onFramesExtracted(const QVector<VideoFrame> &frames, double fps);
-	void onFramesExtractedIncremental(const QVector<VideoFrame> &frames, double fps, bool isPriorityPhase);
 	void onExtractionError(const QString &error);
 
 private:
