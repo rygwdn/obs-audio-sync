@@ -23,7 +23,6 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "realtime-audio-monitor.h"
 #include <obs-frontend-api.h>
 #include <obs-module.h>
-#include <obs-scene.h>
 #include <util/base.h>
 #include <QMessageBox>
 #include <QFileInfo>
@@ -264,19 +263,15 @@ static void enumerateSourceRecursive(obs_source_t *source, AudioSourceEnumData *
 	}
 }
 
-// Callback for enumerating scene items
-static bool enumSceneItemCallback(obs_scene_t *scene, obs_sceneitem_t *item, void *param)
+// Callback for enumerating all sources, filtering by scene
+static bool enumAllSourcesCallback(void *param, obs_source_t *source)
 {
-	Q_UNUSED(scene);
-	if (item == nullptr) {
-		return true;
-	}
-
-	obs_source_t *source = obs_sceneitem_get_source(item);
 	if (source == nullptr) {
 		return true;
 	}
 
+	// Get the scene this source belongs to (if any)
+	// We'll enumerate recursively to find audio sources
 	enumerateSourceRecursive(source, static_cast<AudioSourceEnumData *>(param));
 	return true;
 }
@@ -300,12 +295,14 @@ void AudioSyncPanel::populateAudioSources()
 	enumData.sourceNames = &sourceNames;
 	enumData.addedSources = &addedSources;
 
-	// Convert scene source to obs_scene_t to enumerate all items
-	obs_scene_t *obsScene = obs_scene_from_source(scene);
-	if (obsScene != nullptr) {
-		// Enumerate all scene items (not just active sources)
-		obs_scene_enum_items(obsScene, enumSceneItemCallback, &enumData);
-	}
+	// Enumerate all active sources in the scene (this includes sources in groups)
+	obs_source_enum_active_sources(
+		scene,
+		[](obs_source_t *parent, obs_source_t *child, void *param) {
+			Q_UNUSED(parent);
+			enumerateSourceRecursive(child, static_cast<AudioSourceEnumData *>(param));
+		},
+		&enumData);
 
 	obs_source_release(scene);
 
