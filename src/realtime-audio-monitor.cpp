@@ -65,7 +65,7 @@ bool RealTimeAudioMonitor::startMonitoring(const QString &sourceName)
 			uint32_t outputFlags = obs_source_get_output_flags(scene);
 			if ((outputFlags & OBS_SOURCE_AUDIO) != 0) {
 				source = scene;
-				obs_source_addref(source); // We'll release it in stopMonitoring
+				// scene already has a reference, we'll release it in stopMonitoring
 			} else {
 				obs_source_release(scene);
 			}
