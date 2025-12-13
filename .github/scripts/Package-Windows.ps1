@@ -61,17 +61,7 @@ function Package {
 
     Remove-Item @RemoveArgs
 
-    Log-Group "Archiving ${ProductName}..."
-    $CompressArgs = @{
-        Path = (Get-ChildItem -Path "${ProjectRoot}/release/${Configuration}" -Exclude "${OutputName}*.*")
-        CompressionLevel = 'Optimal'
-        DestinationPath = "${ProjectRoot}/release/${OutputName}.zip"
-        Verbose = ($Env:CI -ne $null)
-    }
-    Compress-Archive -Force @CompressArgs
-    Log-Group
-
-    # Build installer executable
+    # Build installer executable first (needed for zip)
     if (-not (Test-Path "${BuildDir}")) {
         throw "Build directory not found: ${BuildDir}. Run the build script first."
     }
@@ -158,6 +148,39 @@ function Package {
         Pop-Location
     }
 
+    Log-Group
+
+    # Create zip archive with both plugin folder and installer
+    Log-Group "Archiving ${ProductName} (plugin folder and installer)..."
+    
+    # Collect paths to include in zip
+    $ItemsToZip = @()
+    
+    # Add plugin folder contents
+    $PluginFolder = "${ProjectRoot}/release/${Configuration}"
+    if (Test-Path $PluginFolder) {
+        $ItemsToZip += (Get-ChildItem -Path $PluginFolder -Exclude "${OutputName}*.*")
+    }
+    
+    # Add installer executable
+    $InstallerPath = "${ProjectRoot}/release/${OutputName}-installer.exe"
+    if (Test-Path $InstallerPath) {
+        $ItemsToZip += Get-Item -Path $InstallerPath
+    } else {
+        Write-Warning "Installer not found at ${InstallerPath}, zip will not include installer"
+    }
+    
+    if ($ItemsToZip.Count -eq 0) {
+        throw "No items found to include in zip archive"
+    }
+    
+    $CompressArgs = @{
+        Path = $ItemsToZip
+        CompressionLevel = 'Optimal'
+        DestinationPath = "${ProjectRoot}/release/${OutputName}.zip"
+        Verbose = ($Env:CI -ne $null)
+    }
+    Compress-Archive -Force @CompressArgs
     Log-Group
 }
 
