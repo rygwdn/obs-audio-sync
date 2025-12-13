@@ -24,7 +24,9 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QString>
 #include <QVector>
 #include <QElapsedTimer>
+#include <QMutex>
 #include "audio-analyzer.h"
+#include <obs-module.h>
 #include <qtmetamacros.h>
 
 class RealTimeAudioMonitor : public QObject {
@@ -40,8 +42,9 @@ public:
 	RealTimeAudioMonitor(RealTimeAudioMonitor &&) = delete;
 	RealTimeAudioMonitor &operator=(RealTimeAudioMonitor &&) = delete;
 
-	// Start monitoring a recording file
-	bool startMonitoring(const QString &filePath);
+	// Start monitoring OBS audio output from the specified source
+	// If sourceName is empty, will try to find a default source
+	bool startMonitoring(const QString &sourceName = QString());
 
 	// Stop monitoring
 	void stopMonitoring();
@@ -56,11 +59,15 @@ signals:
 	void monitoringError(const QString &error);
 
 private slots:
-	void checkForSpike(); // Called periodically
+	void processVolumeData(); // Called periodically to process buffered volume samples
 
 private:
-	QTimer *m_checkTimer{nullptr};
-	QString m_filePath;
+	QTimer *m_processTimer{nullptr};
+	obs_source_t *m_audioSource{nullptr}; // Master audio source
+	obs_volmeter_t *m_volmeter{nullptr};  // Volume meter for audio monitoring
+	QMutex m_audioMutex;                  // Protects audio buffer
+	QVector<AudioSample> m_audioBuffer;   // Buffer for volume samples from volmeter
+	double m_currentTime{0.0};            // Current time in seconds since monitoring started
 	QVector<AudioSample> m_recentSamples; // Keep recent samples for threshold
 	double m_spikeThreshold{4.0};         // Threshold multiplier (4x average)
 	double m_baselineWindowSeconds{2.0};  // Window for baseline calculation (2 seconds)
@@ -75,7 +82,9 @@ private:
 	double m_spikeTimestamp{0.0};    // Timestamp when spike was detected
 	double m_spikeStartTime{0.0};    // Timestamp when current spike started
 	QElapsedTimer m_recordingStartTime;
-	double m_lastCheckPosition{0.0}; // Last audio position checked
+
+	// OBS volmeter callback (static, forwards to instance)
+	static void volmeterCallback(void *param, const float magnitude[], const float peak[], const float inputPeak[]);
 
 	// Calculate average amplitude of recent samples
 	double calculateBaselineAverage() const;

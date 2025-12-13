@@ -22,6 +22,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "audio-sync-modal.h"
 #include "realtime-audio-monitor.h"
 #include <obs-frontend-api.h>
+#include <obs-module.h>
 #include <util/base.h>
 #include <QMessageBox>
 #include <QFileInfo>
@@ -40,6 +41,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qthread.h>
 #include <qtimer.h>
 #include <qlabel.h>
+#include <qcombobox.h>
 
 AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent)
 {
@@ -59,6 +61,7 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent)
 	connect(m_audioMonitor, &RealTimeAudioMonitor::monitoringError, this, &AudioSyncPanel::onMonitoringError);
 
 	setupUI();
+	populateAudioSources();
 	refreshRecordings();
 }
 
@@ -137,6 +140,20 @@ void AudioSyncPanel::setupUI()
 	m_layout->addWidget(m_recordingList);
 
 	// Button layout
+	// Audio source selection dropdown
+	auto *sourceLayout = new QHBoxLayout();
+	auto *sourceLabel = new QLabel("Audio Source:", centralWidget);
+	sourceLayout->addWidget(sourceLabel);
+	m_audioSourceCombo = new QComboBox(centralWidget);
+	m_audioSourceCombo->setToolTip("Select audio source to monitor for clap detection");
+	sourceLayout->addWidget(m_audioSourceCombo);
+	auto *refreshSourcesButton = new QPushButton("Refresh", centralWidget);
+	refreshSourcesButton->setToolTip("Refresh list of audio sources from current scene");
+	refreshSourcesButton->setMaximumWidth(80);
+	connect(refreshSourcesButton, &QPushButton::clicked, this, &AudioSyncPanel::populateAudioSources);
+	sourceLayout->addWidget(refreshSourcesButton);
+	m_layout->addLayout(sourceLayout);
+
 	auto *buttonLayout = new QHBoxLayout();
 	m_refreshButton = new QPushButton("Refresh", centralWidget);
 	buttonLayout->addWidget(m_refreshButton);
@@ -200,6 +217,73 @@ void AudioSyncPanel::setupWorkerThreads()
 	connect(m_scanWorker, &RecordingScannerWorker::recordingsScanned, this, &AudioSyncPanel::onRecordingsScanned);
 	connect(m_scanWorker, &RecordingScannerWorker::scanError, this, &AudioSyncPanel::onScanError);
 	m_scanThread->start();
+}
+
+// Helper structure for enumerating audio sources
+struct AudioSourceEnumData {
+	QStringList *sourceNames;
+};
+
+static bool enumAudioSourceCallback(void *param, obs_source_t *source)
+{
+	auto *data = static_cast<AudioSourceEnumData *>(param);
+	if (source == nullptr) {
+		return true;
+	}
+
+	// Check if source has audio
+	uint32_t outputFlags = obs_source_get_output_flags(source);
+	if ((outputFlags & OBS_SOURCE_AUDIO) == 0) {
+		return true; // Skip sources without audio
+	}
+
+	const char *sourceName = obs_source_get_name(source);
+	if (sourceName != nullptr) {
+		data->sourceNames->append(QString::fromUtf8(sourceName));
+	}
+
+	return true;
+}
+
+// Helper callback for enumerating sources within groups
+static void enumGroupAudioSourceCallback(obs_source_t *parent, obs_source_t *child, void *param)
+{
+	Q_UNUSED(parent);
+	enumAudioSourceCallback(param, child);
+}
+
+void AudioSyncPanel::populateAudioSources()
+{
+	m_audioSourceCombo->clear();
+
+	// Get current scene
+	obs_source_t *scene = obs_frontend_get_current_scene();
+	if (scene == nullptr) {
+		blog(LOG_WARNING, "[AudioSync] populateAudioSources: No current scene");
+		m_audioSourceCombo->addItem("(No scene active)");
+		m_audioSourceCombo->setEnabled(false);
+		return;
+	}
+
+	QStringList sourceNames;
+	AudioSourceEnumData enumData;
+	enumData.sourceNames = &sourceNames;
+
+	// Enumerate audio sources in the scene
+	obs_source_enum_active_sources(scene, enumGroupAudioSourceCallback, &enumData);
+
+	obs_source_release(scene);
+
+	if (sourceNames.isEmpty()) {
+		m_audioSourceCombo->addItem("(No audio sources)");
+		m_audioSourceCombo->setEnabled(false);
+		blog(LOG_INFO, "[AudioSync] populateAudioSources: No audio sources found in scene");
+	} else {
+		m_audioSourceCombo->addItems(sourceNames);
+		m_audioSourceCombo->setEnabled(true);
+		blog(LOG_INFO, "[AudioSync] populateAudioSources: Found %lld audio sources",
+		     static_cast<long long>(sourceNames.size()));
+	}
 }
 
 void AudioSyncPanel::showSpinner(const QString &message)
@@ -325,6 +409,9 @@ void AudioSyncPanel::startAutoSyncRecording()
 		return;
 	}
 
+	// Refresh audio sources list before starting
+	populateAudioSources();
+
 	// Get recording directory to predict file path
 	const char *recordingPath = obs_frontend_get_current_record_output_path();
 	if (!recordingPath || strlen(recordingPath) == 0) {
@@ -387,92 +474,31 @@ void AudioSyncPanel::startAutoSyncRecording()
 	m_volumeLevelsLabel->setVisible(true);
 	m_volumeLevelsLabel->setText("Volume: -- | Baseline: -- | Threshold: --");
 
-	// Start monitoring after a short delay to allow file creation
-	QTimer::singleShot(1000, this, [this]() {
+	// Get selected audio source
+	QString selectedSource = m_audioSourceCombo->currentText();
+	if (selectedSource.isEmpty() || selectedSource.startsWith("(")) {
+		QMessageBox::warning(this, "No Audio Source Selected",
+				     "Please select an audio source from the dropdown.");
+		stopAutoSyncRecording();
+		return;
+	}
+
+	// Start monitoring OBS audio output from selected source
+	if (!m_audioMonitor->startMonitoring(selectedSource)) {
+		blog(LOG_ERROR, "[AudioSync] startAutoSyncRecording: Failed to start audio monitoring for source: %s",
+		     selectedSource.toUtf8().constData());
+		QMessageBox::warning(this, "Audio Monitoring Error",
+				     QString("Failed to start audio monitoring for source: %1").arg(selectedSource));
+		stopAutoSyncRecording();
+		return;
+	}
+
+	blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Started monitoring OBS audio output");
+
+	// Update UI after monitoring starts (baseline collection phase)
+	QTimer::singleShot(2100, this, [this]() {
 		if (m_autoSyncState == AutoSyncState::Recording) {
-			blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Attempting to find recording file...");
-
-			// Try to get the actual recording file path
-			const char *currentPath = obs_frontend_get_current_record_output_path();
-			QString pathToCheck;
-
-			if (currentPath && strlen(currentPath) > 0) {
-				pathToCheck = QString::fromUtf8(currentPath);
-				blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: OBS returned path: %s",
-				     pathToCheck.toUtf8().constData());
-
-				// Expand ~ to home directory
-				if (pathToCheck.startsWith("~/")) {
-					pathToCheck = QDir::homePath() + pathToCheck.mid(1);
-				} else if (pathToCheck == "~") {
-					pathToCheck = QDir::homePath();
-				}
-
-				// Normalize the path
-				pathToCheck = QDir::cleanPath(pathToCheck);
-			}
-
-			QFileInfo pathInfo(pathToCheck.isEmpty() ? m_autoSyncRecordingPath : pathToCheck);
-			QString dir = pathInfo.isDir() ? pathInfo.absoluteFilePath() : pathInfo.absolutePath();
-			blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Checking directory: %s",
-			     dir.toUtf8().constData());
-
-			// Always try to find the newest file in the directory (most reliable)
-			QDir directory(dir);
-			if (!directory.exists()) {
-				blog(LOG_WARNING, "[AudioSync] startAutoSyncRecording: Directory does not exist: %s",
-				     dir.toUtf8().constData());
-				return;
-			}
-
-			QStringList filters = {"*.mkv", "*.mp4", "*.flv", "*.mov", "*.avi", "*.webm"};
-			QFileInfoList files =
-				directory.entryInfoList(filters, QDir::Files, QDir::Time | QDir::Reversed);
-
-			blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Found %lld video files in directory",
-			     static_cast<long long>(files.size()));
-
-			if (!files.isEmpty()) {
-				// Get the newest file (first in list when sorted by time reversed)
-				QString newestFile = files.first().absoluteFilePath();
-				blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Using newest file: %s",
-				     newestFile.toUtf8().constData());
-
-				m_autoSyncRecordingPath = newestFile;
-				m_audioMonitor->startMonitoring(m_autoSyncRecordingPath);
-				blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Started monitoring file");
-
-				// Update UI after monitoring starts (baseline collection phase)
-				QTimer::singleShot(2100, this, [this]() {
-					if (m_autoSyncState == AutoSyncState::Recording) {
-						m_statusLabel->setText("Recording... (Waiting for clap)");
-					}
-				});
-			} else {
-				blog(LOG_WARNING,
-				     "[AudioSync] startAutoSyncRecording: No video files found in directory, will retry");
-				// Retry after another second
-				QTimer::singleShot(1000, this, [this]() {
-					if (m_autoSyncState == AutoSyncState::Recording) {
-						// Retry finding the file
-						QFileInfo pathInfo(m_autoSyncRecordingPath);
-						QString dir = pathInfo.isDir() ? pathInfo.absoluteFilePath()
-									       : pathInfo.absolutePath();
-						QDir directory(dir);
-						QStringList filters = {"*.mkv", "*.mp4", "*.flv",
-								       "*.mov", "*.avi", "*.webm"};
-						QFileInfoList files = directory.entryInfoList(
-							filters, QDir::Files, QDir::Time | QDir::Reversed);
-						if (!files.isEmpty()) {
-							m_autoSyncRecordingPath = files.first().absoluteFilePath();
-							blog(LOG_INFO,
-							     "[AudioSync] startAutoSyncRecording: Retry found file: %s",
-							     m_autoSyncRecordingPath.toUtf8().constData());
-							m_audioMonitor->startMonitoring(m_autoSyncRecordingPath);
-						}
-					}
-				});
-			}
+			m_statusLabel->setText("Recording... (Waiting for clap)");
 		}
 	});
 

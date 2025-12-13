@@ -26,6 +26,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QComboBox>
 #include <QProgressBar>
 #include <QThread>
 #include <QTimer>
@@ -128,6 +129,7 @@ private:
 	void setupWorkerThreads();
 	void showSpinner(const QString &message);
 	void hideSpinner();
+	void populateAudioSources();
 	void startAutoSyncRecording();
 	void stopAutoSyncRecording();
 	void handleAutoSyncRecordingStopped();
@@ -138,6 +140,7 @@ private:
 	QPushButton *m_refreshButton{nullptr};
 	QPushButton *m_startSyncButton{nullptr};
 	QPushButton *m_autoSyncButton{nullptr};
+	QComboBox *m_audioSourceCombo{nullptr}; // Dropdown for selecting audio source
 	QVBoxLayout *m_layout{nullptr};
 	QProgressBar *m_spinner{nullptr};
 	QLabel *m_spinnerLabel{nullptr};
