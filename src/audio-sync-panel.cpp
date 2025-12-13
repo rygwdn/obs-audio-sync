@@ -23,6 +23,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "realtime-audio-monitor.h"
 #include <obs-frontend-api.h>
 #include <obs-module.h>
+#include <obs-scene.h>
 #include <util/base.h>
 #include <QMessageBox>
 #include <QFileInfo>
@@ -37,6 +38,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qpushbutton.h>
 #include <qnamespace.h>
 #include <qlist.h>
+#include <qset.h>
 #include <qprogressbar.h>
 #include <qthread.h>
 #include <qtimer.h>
@@ -222,34 +224,61 @@ void AudioSyncPanel::setupWorkerThreads()
 // Helper structure for enumerating audio sources
 struct AudioSourceEnumData {
 	QStringList *sourceNames;
+	QSet<QString> *addedSources; // Track sources we've already added to avoid duplicates
 };
 
-static bool enumAudioSourceCallback(void *param, obs_source_t *source)
+// Recursively enumerate sources, including those in groups
+static void enumerateSourceRecursive(obs_source_t *source, AudioSourceEnumData *data)
 {
-	auto *data = static_cast<AudioSourceEnumData *>(param);
+	if (source == nullptr) {
+		return;
+	}
+
+	const char *sourceName = obs_source_get_name(source);
+	if (sourceName == nullptr) {
+		return;
+	}
+
+	QString sourceNameStr = QString::fromUtf8(sourceName);
+
+	// Check if source has audio
+	uint32_t outputFlags = obs_source_get_output_flags(source);
+	if ((outputFlags & OBS_SOURCE_AUDIO) != 0) {
+		// Check if we've already added this source
+		if (!data->addedSources->contains(sourceNameStr)) {
+			data->sourceNames->append(sourceNameStr);
+			data->addedSources->insert(sourceNameStr);
+		}
+	}
+
+	// Check if this is a group and enumerate its children
+	const char *sourceId = obs_source_get_id(source);
+	if (sourceId != nullptr && strcmp(sourceId, "group") == 0) {
+		obs_source_enum_active_sources(
+			source,
+			[](obs_source_t *parent, obs_source_t *child, void *param) {
+				Q_UNUSED(parent);
+				enumerateSourceRecursive(child, static_cast<AudioSourceEnumData *>(param));
+			},
+			data);
+	}
+}
+
+// Callback for enumerating scene items
+static bool enumSceneItemCallback(obs_scene_t *scene, obs_sceneitem_t *item, void *param)
+{
+	Q_UNUSED(scene);
+	if (item == nullptr) {
+		return true;
+	}
+
+	obs_source_t *source = obs_sceneitem_get_source(item);
 	if (source == nullptr) {
 		return true;
 	}
 
-	// Check if source has audio
-	uint32_t outputFlags = obs_source_get_output_flags(source);
-	if ((outputFlags & OBS_SOURCE_AUDIO) == 0) {
-		return true; // Skip sources without audio
-	}
-
-	const char *sourceName = obs_source_get_name(source);
-	if (sourceName != nullptr) {
-		data->sourceNames->append(QString::fromUtf8(sourceName));
-	}
-
+	enumerateSourceRecursive(source, static_cast<AudioSourceEnumData *>(param));
 	return true;
-}
-
-// Helper callback for enumerating sources within groups
-static void enumGroupAudioSourceCallback(obs_source_t *parent, obs_source_t *child, void *param)
-{
-	Q_UNUSED(parent);
-	enumAudioSourceCallback(param, child);
 }
 
 void AudioSyncPanel::populateAudioSources()
@@ -266,11 +295,17 @@ void AudioSyncPanel::populateAudioSources()
 	}
 
 	QStringList sourceNames;
+	QSet<QString> addedSources;
 	AudioSourceEnumData enumData;
 	enumData.sourceNames = &sourceNames;
+	enumData.addedSources = &addedSources;
 
-	// Enumerate audio sources in the scene
-	obs_source_enum_active_sources(scene, enumGroupAudioSourceCallback, &enumData);
+	// Convert scene source to obs_scene_t to enumerate all items
+	obs_scene_t *obsScene = obs_scene_from_source(scene);
+	if (obsScene != nullptr) {
+		// Enumerate all scene items (not just active sources)
+		obs_scene_enum_items(obsScene, enumSceneItemCallback, &enumData);
+	}
 
 	obs_source_release(scene);
 
