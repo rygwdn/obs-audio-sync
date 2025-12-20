@@ -283,24 +283,12 @@ if(APPLE AND ENABLE_QT AND (Qt6_FOUND OR _LINTING_MODE OR NOT CMAKE_EXPORT_COMPI
 
     if(_qtconcurrent_framework_path)
       # Install QtConcurrent.framework with the plugin bundle
-      # This will be copied during install, and we'll also copy it during POST_BUILD for development
+      # The install() command will copy it during package creation
+      # Note: We don't use POST_BUILD here because generator expressions don't work reliably in Xcode builds
       install(
         DIRECTORY "${_qtconcurrent_framework_path}"
         DESTINATION "$<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>/../Frameworks"
         USE_SOURCE_PERMISSIONS
-      )
-      # Also copy during POST_BUILD for development builds
-      # Use TARGET_BUNDLE_DIR which should work in both Xcode and regular builds
-      # The install() command will ensure it's copied during installation
-      add_custom_command(
-        TARGET ${CMAKE_PROJECT_NAME}
-        POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_BUNDLE_DIR:${CMAKE_PROJECT_NAME}>/Contents/Frameworks"
-        COMMAND
-          "${CMAKE_COMMAND}" -E copy_directory "${_qtconcurrent_framework_path}"
-          "$<TARGET_BUNDLE_DIR:${CMAKE_PROJECT_NAME}>/Contents/Frameworks/QtConcurrent.framework"
-        COMMENT "Copying QtConcurrent.framework to plugin bundle"
-        VERBATIM
       )
       # Update rpath to include plugin's Frameworks directory
       # QtConcurrent uses @rpath, so we need to add the Frameworks directory to rpath
