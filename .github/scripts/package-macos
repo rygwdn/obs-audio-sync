@@ -152,6 +152,13 @@ package() {
         return 2
       }
     }
+
+    # Create zip archive of the plugin bundle
+    log_group "Creating zip archive of ${product_name}..."
+    pushd ${project_root}/release/${config}
+    ditto -c -k --keepParent ${product_name}.plugin ${project_root}/release/${output_name}.zip
+    popd
+
     popd
   } else {
     log_group "Archiving ${product_name}..."
