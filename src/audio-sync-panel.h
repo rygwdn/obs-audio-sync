@@ -120,7 +120,8 @@ private slots:
 	// Real-time monitoring slots
 	void onSpikeDetected(double timestamp);
 	void onRecordingComplete(double spikeTimestamp);
-	void onVolumeLevelsUpdated(double baseline, double current, double threshold);
+	void onVolumeLevelsUpdated(double baseline, double current, double threshold, double minVol, double maxVol,
+				   double avgVol);
 	void onMonitoringError(const QString &error);
 
 private:
@@ -130,7 +131,7 @@ private:
 	void hideSpinner();
 	void populateAudioSources();
 	void startAutoSyncRecording();
-	void stopAutoSyncRecording();
+	void stopAutoSyncRecording(bool openModal = false);
 	void handleAutoSyncRecordingStopped();
 
 	QListWidget *m_recordingList{nullptr};
@@ -139,7 +140,9 @@ private:
 	QPushButton *m_refreshButton{nullptr};
 	QPushButton *m_startSyncButton{nullptr};
 	QPushButton *m_autoSyncButton{nullptr};
-	QComboBox *m_audioSourceCombo{nullptr}; // Dropdown for selecting audio source
+	QPushButton *m_cancelAutoSyncButton{nullptr}; // Cancel button (visible during auto-sync)
+	QPushButton *m_endAutoSyncButton{nullptr};    // End button (visible during auto-sync)
+	QComboBox *m_audioSourceCombo{nullptr};       // Dropdown for selecting audio source
 	QVBoxLayout *m_layout{nullptr};
 	QProgressBar *m_spinner{nullptr};
 	QLabel *m_spinnerLabel{nullptr};

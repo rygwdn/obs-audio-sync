@@ -87,6 +87,11 @@ bool RealTimeAudioMonitor::startMonitoring(const QString &sourceName)
 		return false;
 	}
 
+	// Log source information
+	const char *sourceId = obs_source_get_id(source);
+	blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: Source has audio - ID: %s, Name: %s, Flags: 0x%x",
+	     sourceId ? sourceId : "unknown", sourceName.toUtf8().constData(), outputFlags);
+
 	m_audioSource = source; // Don't release, we'll use it
 	m_recentSamples.clear();
 	m_audioBuffer.clear();
@@ -98,9 +103,18 @@ bool RealTimeAudioMonitor::startMonitoring(const QString &sourceName)
 	m_spikeTimestamp = 0.0;
 	m_spikeStartTime = 0.0;
 	m_recordingStartTime.start();
+	// Reset statistics
+	m_minVolume = 1.0;
+	m_maxVolume = 0.0;
+	m_volumeSum = 0.0;
+	m_volumeCount = 0;
+
+	blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: Monitoring initialized, waiting for audio callbacks...");
 
 	// Create and attach volmeter
-	m_volmeter = obs_volmeter_create(OBS_FADER_LOG);
+	// Use LINEAR fader type to get amplitude values (0.0 to 1.0)
+	// instead of logarithmic dB values which are negative
+	m_volmeter = obs_volmeter_create(OBS_FADER_LINEAR);
 	if (m_volmeter == nullptr) {
 		obs_source_release(m_audioSource);
 		m_audioSource = nullptr;
@@ -109,8 +123,21 @@ bool RealTimeAudioMonitor::startMonitoring(const QString &sourceName)
 		return false;
 	}
 
+	// Set update interval to 50ms for responsive monitoring
+	obs_volmeter_set_update_interval(m_volmeter, 50);
+
 	// Attach volmeter to source
-	obs_volmeter_attach_source(m_volmeter, m_audioSource);
+	if (!obs_volmeter_attach_source(m_volmeter, m_audioSource)) {
+		obs_volmeter_destroy(m_volmeter);
+		m_volmeter = nullptr;
+		obs_source_release(m_audioSource);
+		m_audioSource = nullptr;
+		blog(LOG_ERROR, "[AudioSync] RealTimeAudioMonitor: Failed to attach volmeter to source");
+		emit monitoringError("Failed to attach volume meter to audio source");
+		return false;
+	}
+
+	blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: Volmeter attached to source");
 
 	// Add volmeter callback
 	obs_volmeter_add_callback(m_volmeter, volmeterCallback, this);
@@ -183,6 +210,14 @@ void RealTimeAudioMonitor::volmeterCallback(void *param, const float magnitude[]
 	// Use elapsed time since recording started
 	double timestamp = monitor->m_recordingStartTime.elapsed() / 1000.0; // Convert ms to seconds
 
+	// Log first few samples for debugging
+	static int sampleCount = 0;
+	if (sampleCount < 10) {
+		blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: Sample #%d - timestamp: %.3fs, magnitude: %.6f",
+		     sampleCount, timestamp, channelMagnitude);
+		sampleCount++;
+	}
+
 	// Store in buffer for processing
 	AudioSample sample{};
 	sample.timestamp = timestamp;
@@ -201,6 +236,14 @@ void RealTimeAudioMonitor::processVolumeData()
 	{
 		QMutexLocker locker(&m_audioMutex);
 		if (m_audioBuffer.isEmpty()) {
+			// Log if we're not getting samples
+			static double lastWarningTime = 0.0;
+			double currentTime = m_recordingStartTime.elapsed() / 1000.0;
+			if (currentTime - lastWarningTime >= 2.0) {
+				blog(LOG_WARNING,
+				     "[AudioSync] RealTimeAudioMonitor: No audio samples received in last 2 seconds");
+				lastWarningTime = currentTime;
+			}
 			return;
 		}
 		newSamples = m_audioBuffer;
@@ -211,13 +254,30 @@ void RealTimeAudioMonitor::processVolumeData()
 		return;
 	}
 
+	blog(LOG_DEBUG, "[AudioSync] RealTimeAudioMonitor: Processing %lld samples",
+	     static_cast<long long>(newSamples.size()));
+
 	// Update last check position
 	double currentTime = newSamples.last().timestamp;
+
+	// Update statistics
+	for (const AudioSample &sample : newSamples) {
+		double amp = sample.amplitude;
+		if (amp < m_minVolume) {
+			m_minVolume = amp;
+		}
+		if (amp > m_maxVolume) {
+			m_maxVolume = amp;
+		}
+		m_volumeSum += amp;
+		m_volumeCount++;
+	}
 
 	// Calculate and emit volume levels for UI display
 	double baseline = 0.0;
 	double current = 0.0;
 	double threshold = 0.0;
+	double avgVol = m_volumeCount > 0 ? (m_volumeSum / m_volumeCount) : 0.0;
 
 	if (m_baselineCollected) {
 		baseline = calculateBaselineAverage();
@@ -237,7 +297,7 @@ void RealTimeAudioMonitor::processVolumeData()
 		}
 	}
 
-	emit volumeLevelsUpdated(baseline, current, threshold);
+	emit volumeLevelsUpdated(baseline, current, threshold, m_minVolume, m_maxVolume, avgVol);
 
 	if (m_spikeDetected) {
 		// Spike already detected, check if 2 seconds have passed
@@ -304,12 +364,20 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 				m_baselineCollected = true;
 				double baseline = calculateBaselineAverage();
 				blog(LOG_INFO,
-				     "[AudioSync] RealTimeAudioMonitor: Baseline collected (%.2fs), average: %.6f, threshold: %.6f",
-				     elapsed, baseline, baseline * m_spikeThreshold);
+				     "[AudioSync] RealTimeAudioMonitor: Baseline collected (%.2fs), average: %.6f, threshold: %.6f, samples: %lld",
+				     elapsed, baseline, baseline * m_spikeThreshold,
+				     static_cast<long long>(m_recentSamples.size()));
 			} else {
-				blog(LOG_DEBUG,
-				     "[AudioSync] RealTimeAudioMonitor: Collecting baseline: %.2fs / %.2fs, samples: %lld",
-				     elapsed, m_baselineWindowSeconds, static_cast<long long>(m_recentSamples.size()));
+				// Log baseline collection progress every 0.5 seconds
+				static double lastLogTime = 0.0;
+				if (currentTime - lastLogTime >= 0.5) {
+					double currentAvg = calculateBaselineAverage();
+					blog(LOG_INFO,
+					     "[AudioSync] RealTimeAudioMonitor: Collecting baseline: %.2fs / %.2fs, samples: %lld, current avg: %.6f",
+					     elapsed, m_baselineWindowSeconds, static_cast<long long>(m_recentSamples.size()),
+					     currentAvg);
+					lastLogTime = currentTime;
+				}
 			}
 		}
 		// Remove old samples outside baseline window
@@ -333,6 +401,15 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 
 	double threshold = baseline * m_spikeThreshold;
 	double spikeEndThreshold = baseline * m_spikeEndThreshold;
+
+	// Log spike detection parameters once per detection cycle
+	static bool loggedParams = false;
+	if (!loggedParams) {
+		blog(LOG_INFO,
+		     "[AudioSync] RealTimeAudioMonitor: Spike detection active - baseline: %.6f, threshold: %.6f, end threshold: %.6f",
+		     baseline, threshold, spikeEndThreshold);
+		loggedParams = true;
+	}
 
 	// Check new samples for spike
 	for (const AudioSample &sample : newSamples) {

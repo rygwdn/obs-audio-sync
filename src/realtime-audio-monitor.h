@@ -55,7 +55,8 @@ public:
 signals:
 	void spikeDetected(double timestamp);          // Spike detected at timestamp
 	void recordingComplete(double spikeTimestamp); // Recording complete (2s after spike)
-	void volumeLevelsUpdated(double baseline, double current, double threshold); // Volume levels for UI display
+	void volumeLevelsUpdated(double baseline, double current, double threshold, double minVol, double maxVol,
+				 double avgVol); // Volume levels for UI display
 	void monitoringError(const QString &error);
 
 private slots:
@@ -82,6 +83,11 @@ private:
 	double m_spikeTimestamp{0.0};    // Timestamp when spike was detected
 	double m_spikeStartTime{0.0};    // Timestamp when current spike started
 	QElapsedTimer m_recordingStartTime;
+	// Statistics tracking
+	double m_minVolume{1.0};  // Minimum volume seen (initialized to max)
+	double m_maxVolume{0.0};  // Maximum volume seen
+	double m_volumeSum{0.0};  // Sum of all volume samples
+	int m_volumeCount{0};     // Count of volume samples
 
 	// OBS volmeter callback (static, forwards to instance)
 	static void volmeterCallback(void *param, const float magnitude[], const float peak[], const float inputPeak[]);
