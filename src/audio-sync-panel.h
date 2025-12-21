@@ -20,7 +20,6 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #define AUDIO_SYNC_PANEL_H
 
 #include <QWidget>
-#include <QDockWidget>
 #include <QListWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -93,7 +92,7 @@ public:
 	}
 };
 
-class AudioSyncPanel : public QDockWidget {
+class AudioSyncPanel : public QWidget {
 	Q_OBJECT
 
 public:

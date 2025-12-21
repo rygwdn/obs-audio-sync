@@ -29,7 +29,6 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QDir>
 #include <QDateTime>
 #include <qwidget.h>
-#include <qdockwidget.h>
 #include <qboxlayout.h>
 #include <qfont.h>
 #include <qlistwidget.h>
@@ -44,14 +43,8 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qlabel.h>
 #include <qcombobox.h>
 
-AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QDockWidget(parent)
+AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QWidget(parent)
 {
-	setWindowTitle("Audio Sync");
-
-	// Create central widget for QDockWidget
-	QWidget *centralWidget = new QWidget(this); // NOLINT(cppcoreguidelines-init-variables)
-	setWidget(centralWidget);
-
 	// Initialize auto-sync state
 	m_autoSyncState = AutoSyncState::Idle;
 	m_audioMonitor = new RealTimeAudioMonitor(this);
@@ -115,13 +108,12 @@ AudioSyncPanel::~AudioSyncPanel()
 
 void AudioSyncPanel::setupUI()
 {
-	QWidget *centralWidget = widget();
-	m_layout = new QVBoxLayout(centralWidget);
+	m_layout = new QVBoxLayout(this);
 	m_layout->setContentsMargins(10, 10, 10, 10);
 	m_layout->setSpacing(10);
 
 	// Title
-	auto *titleLabel = new QLabel("Audio Sync", centralWidget);
+	auto *titleLabel = new QLabel("Audio Sync", this);
 	QFont titleFont = titleLabel->font();
 	titleFont.setPointSize(14);
 	titleFont.setBold(true);
@@ -129,11 +121,11 @@ void AudioSyncPanel::setupUI()
 	m_layout->addWidget(titleLabel);
 
 	// Recording list label
-	auto *listLabel = new QLabel("Recordings (< 15s):", centralWidget);
+	auto *listLabel = new QLabel("Recordings (< 15s):", this);
 	m_layout->addWidget(listLabel);
 
 	// Recording list (styled list items)
-	m_recordingList = new QListWidget(centralWidget);
+	m_recordingList = new QListWidget(this);
 	m_recordingList->setSelectionMode(QAbstractItemView::SingleSelection);
 	m_recordingList->setMaximumHeight(200);
 	m_recordingList->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -143,12 +135,12 @@ void AudioSyncPanel::setupUI()
 	// Button layout
 	// Audio source selection dropdown
 	auto *sourceLayout = new QHBoxLayout();
-	auto *sourceLabel = new QLabel("Audio Source:", centralWidget);
+	auto *sourceLabel = new QLabel("Audio Source:", this);
 	sourceLayout->addWidget(sourceLabel);
-	m_audioSourceCombo = new QComboBox(centralWidget);
+	m_audioSourceCombo = new QComboBox(this);
 	m_audioSourceCombo->setToolTip("Select audio source to monitor for clap detection");
 	sourceLayout->addWidget(m_audioSourceCombo);
-	auto *refreshSourcesButton = new QPushButton("Refresh", centralWidget);
+	auto *refreshSourcesButton = new QPushButton("Refresh", this);
 	refreshSourcesButton->setToolTip("Refresh list of audio sources from current scene");
 	refreshSourcesButton->setMaximumWidth(80);
 	connect(refreshSourcesButton, &QPushButton::clicked, this, &AudioSyncPanel::populateAudioSources);
@@ -156,35 +148,35 @@ void AudioSyncPanel::setupUI()
 	m_layout->addLayout(sourceLayout);
 
 	auto *buttonLayout = new QHBoxLayout();
-	m_refreshButton = new QPushButton("Refresh", centralWidget);
+	m_refreshButton = new QPushButton("Refresh", this);
 	buttonLayout->addWidget(m_refreshButton);
-	m_startSyncButton = new QPushButton("Start Sync", centralWidget);
+	m_startSyncButton = new QPushButton("Start Sync", this);
 	m_startSyncButton->setEnabled(false);
 	buttonLayout->addWidget(m_startSyncButton);
-	m_autoSyncButton = new QPushButton("Auto Sync", centralWidget);
+	m_autoSyncButton = new QPushButton("Auto Sync", this);
 	m_autoSyncButton->setToolTip("Start recording, detect clap, and automatically analyze");
 	buttonLayout->addWidget(m_autoSyncButton);
 	m_layout->addLayout(buttonLayout);
 
 	// Status label
-	m_statusLabel = new QLabel("Ready", centralWidget);
+	m_statusLabel = new QLabel("Ready", this);
 	m_statusLabel->setStyleSheet("color: gray;");
 	m_layout->addWidget(m_statusLabel);
 
 	// Volume levels label (initially hidden)
-	m_volumeLevelsLabel = new QLabel("", centralWidget);
+	m_volumeLevelsLabel = new QLabel("", this);
 	m_volumeLevelsLabel->setStyleSheet("color: blue; font-family: monospace;");
 	m_volumeLevelsLabel->setVisible(false);
 	m_layout->addWidget(m_volumeLevelsLabel);
 
 	// Spinner (initially hidden)
-	m_spinner = new QProgressBar(centralWidget);
+	m_spinner = new QProgressBar(this);
 	m_spinner->setRange(0, 0); // Indeterminate progress
 	m_spinner->setTextVisible(false);
 	m_spinner->setVisible(false);
 	m_layout->addWidget(m_spinner);
 
-	m_spinnerLabel = new QLabel("", centralWidget);
+	m_spinnerLabel = new QLabel("", this);
 	m_spinnerLabel->setStyleSheet("color: gray;");
 	m_spinnerLabel->setVisible(false);
 	m_layout->addWidget(m_spinnerLabel);
