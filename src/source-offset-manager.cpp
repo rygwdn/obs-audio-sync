@@ -25,9 +25,15 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 SourceOffsetManager::SourceOffsetManager(QObject *parent) : QObject(parent) {}
 
+struct EnumData {
+	QList<SourceInfo> *sources;
+	QSet<QString> *
+		addedSources; // Track source names with type to prevent duplicates (format: "name:audio" or "name:video")
+};
+
 // Helper: Get video delay filter (checks for both "Video Delay (Async)" and "Render Delay")
 // Returns the filter and sets filterType to the filter ID
-obs_source_t *SourceOffsetManager::getVideoDelayFilter(obs_source_t *source, QString &filterType)
+static obs_source_t *getVideoDelayFilter(obs_source_t *source, QString &filterType)
 {
 	if (source == nullptr) {
 		return nullptr;
@@ -49,13 +55,6 @@ obs_source_t *SourceOffsetManager::getVideoDelayFilter(obs_source_t *source, QSt
 
 	filterType = QString();
 	return nullptr;
-}
-
-struct EnumData {
-	QList<SourceInfo> *sources;
-	SourceOffsetManager *manager;
-	QSet<QString> *
-		addedSources; // Track source names with type to prevent duplicates (format: "name:audio" or "name:video")
 };
 
 static void enumFilterCallback(obs_source_t *source, obs_source_t *filter, void *param)
@@ -148,7 +147,7 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 			info.isAudio = true;
 			info.isVideo = false;
 			info.currentOffsetMs = syncOffsetMs;
-			info.hasAsyncDelayFilter = false; // Audio uses built-in sync offset
+			info.hasAsyncDelayFilter = false;      // Audio uses built-in sync offset
 			info.videoDelayFilterType = QString(); // Not a video source
 
 			data->sources->append(info);
@@ -172,7 +171,7 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 						const_cast<char *>(sourceNameBytes.constData()));
 
 			QString filterType;
-			obs_source_t *filter = data->manager->getVideoDelayFilter(source, filterType);
+			obs_source_t *filter = getVideoDelayFilter(source, filterType);
 			if (filter == nullptr) {
 				blog(LOG_INFO,
 				     "[AudioSync] enumSourceCallback: Source %s is video but has no video delay filter (Video Delay (Async) or Render Delay), skipping video sync",
@@ -218,7 +217,6 @@ QList<SourceInfo> SourceOffsetManager::enumerateSourcesWithAsyncDelay()
 	// Enumerate all sources (this will recursively handle groups via enumSourceCallback)
 	EnumData data;
 	data.sources = &sources;
-	data.manager = this;
 	data.addedSources = &addedSources;
 
 	obs_enum_sources(enumSourceCallback, &data);

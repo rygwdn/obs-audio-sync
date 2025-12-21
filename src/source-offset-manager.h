@@ -70,9 +70,4 @@ public:
 
 	// Get list of video sources with video delay filters (Video Delay (Async) or Render Delay)
 	QList<SourceInfo> getVideoSources();
-
-private:
-	// Helper: Get video delay filter (checks for both "Video Delay (Async)" and "Render Delay")
-	// Returns the filter and sets filterType to "async_delay_filter" or "gpu_delay"
-	obs_source_t *getVideoDelayFilter(obs_source_t *source, QString &filterType);
 };
