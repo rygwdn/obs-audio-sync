@@ -185,6 +185,7 @@ void RealTimeAudioMonitor::stopMonitoring()
 void RealTimeAudioMonitor::volmeterCallback(void *param, const float magnitude[], const float peak[],
 					    const float inputPeak[])
 {
+	Q_UNUSED(magnitude);
 	Q_UNUSED(inputPeak);
 	auto *monitor = static_cast<RealTimeAudioMonitor *>(param);
 	if (monitor == nullptr || !monitor->m_monitoring) {
