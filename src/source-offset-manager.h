@@ -23,6 +23,10 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qtmetamacros.h>
 #include <qobject.h>
 
+// Forward declaration
+struct obs_source;
+typedef struct obs_source obs_source_t;
+
 struct SourceInfo {
 	QString name;
 	QString id;
@@ -30,6 +34,7 @@ struct SourceInfo {
 	bool isVideo;
 	int currentOffsetMs;
 	bool hasAsyncDelayFilter;
+	QString videoDelayFilterType; // "async_delay_filter" or "gpu_delay" or empty if none
 };
 
 class SourceOffsetManager : public QObject {
@@ -63,6 +68,11 @@ public:
 	// Get list of audio sources with async delay filter
 	QList<SourceInfo> getAudioSources();
 
-	// Get list of video sources with async delay filter
+	// Get list of video sources with video delay filters (Video Delay (Async) or Render Delay)
 	QList<SourceInfo> getVideoSources();
+
+private:
+	// Helper: Get video delay filter (checks for both "Video Delay (Async)" and "Render Delay")
+	// Returns the filter and sets filterType to "async_delay_filter" or "gpu_delay"
+	obs_source_t *getVideoDelayFilter(obs_source_t *source, QString &filterType);
 };
