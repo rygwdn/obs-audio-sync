@@ -27,9 +27,34 @@ SourceOffsetManager::SourceOffsetManager(QObject *parent) : QObject(parent) {}
 
 struct EnumData {
 	QList<SourceInfo> *sources;
-	SourceOffsetManager *manager;
 	QSet<QString> *
 		addedSources; // Track source names with type to prevent duplicates (format: "name:audio" or "name:video")
+};
+
+// Helper: Get video delay filter (checks for both "Video Delay (Async)" and "Render Delay")
+// Returns the filter and sets filterType to the filter ID
+static obs_source_t *getVideoDelayFilter(obs_source_t *source, QString &filterType)
+{
+	if (source == nullptr) {
+		return nullptr;
+	}
+
+	// First check for "Video Delay (Async)" filter (async_delay_filter)
+	obs_source_t *filter = obs_source_get_filter_by_name(source, "Video Delay (Async)");
+	if (filter != nullptr) {
+		filterType = QString("async_delay_filter");
+		return filter;
+	}
+
+	// Then check for "Render Delay" filter (gpu_delay)
+	filter = obs_source_get_filter_by_name(source, "Render Delay");
+	if (filter != nullptr) {
+		filterType = QString("gpu_delay");
+		return filter;
+	}
+
+	filterType = QString();
+	return nullptr;
 };
 
 static void enumFilterCallback(obs_source_t *source, obs_source_t *filter, void *param)
@@ -122,14 +147,15 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 			info.isAudio = true;
 			info.isVideo = false;
 			info.currentOffsetMs = syncOffsetMs;
-			info.hasAsyncDelayFilter = false; // Audio uses built-in sync offset
+			info.hasAsyncDelayFilter = false;      // Audio uses built-in sync offset
+			info.videoDelayFilterType = QString(); // Not a video source
 
 			data->sources->append(info);
 			data->addedSources->insert(audioKey); // Mark as added (audio)
 		}
 	}
 
-	// For video sources: check if they have Video Delay (Async) filter (even if disabled)
+	// For video sources: check if they have a video delay filter (even if disabled)
 	// Note: This runs even if the source also has audio, allowing sources with both to sync either or both
 	if (isVideo) {
 		QString videoKey = QString("%1:video").arg(sourceNameStr);
@@ -144,10 +170,11 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 			obs_source_enum_filters(source, enumFilterCallback,
 						const_cast<char *>(sourceNameBytes.constData()));
 
-			obs_source_t *filter = obs_source_get_filter_by_name(source, "Video Delay (Async)");
+			QString filterType;
+			obs_source_t *filter = getVideoDelayFilter(source, filterType);
 			if (filter == nullptr) {
 				blog(LOG_INFO,
-				     "[AudioSync] enumSourceCallback: Source %s is video but has no Video Delay (Async) filter, skipping video sync",
+				     "[AudioSync] enumSourceCallback: Source %s is video but has no video delay filter (Video Delay (Async) or Render Delay), skipping video sync",
 				     sourceNameStr.toUtf8().constData());
 				// Don't return - if source has audio, it may still be added as audio above
 			} else {
@@ -157,8 +184,8 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 				obs_data_release(settings);
 
 				blog(LOG_INFO,
-				     "[AudioSync] enumSourceCallback: Source %s is video with Video Delay (Async) filter (offset: %d ms), adding to list",
-				     sourceNameStr.toUtf8().constData(), delayMs);
+				     "[AudioSync] enumSourceCallback: Source %s is video with %s filter (offset: %d ms), adding to list",
+				     sourceNameStr.toUtf8().constData(), filterType.toUtf8().constData(), delayMs);
 
 				// Create source info
 				SourceInfo info;
@@ -168,6 +195,7 @@ static bool enumSourceCallback(void *param, obs_source_t *source)
 				info.isVideo = true;
 				info.currentOffsetMs = delayMs;
 				info.hasAsyncDelayFilter = true;
+				info.videoDelayFilterType = filterType;
 
 				data->sources->append(info);
 				data->addedSources->insert(videoKey); // Mark as added (video)
@@ -189,14 +217,13 @@ QList<SourceInfo> SourceOffsetManager::enumerateSourcesWithAsyncDelay()
 	// Enumerate all sources (this will recursively handle groups via enumSourceCallback)
 	EnumData data;
 	data.sources = &sources;
-	data.manager = this;
 	data.addedSources = &addedSources;
 
 	obs_enum_sources(enumSourceCallback, &data);
 
 	int const SOURCE_COUNT = static_cast<int>(sources.size());
 	blog(LOG_INFO,
-	     "[AudioSync] enumerateSourcesWithAsyncDelay: Found %d sources (audio with built-in sync or video with Video Delay (Async) filter)",
+	     "[AudioSync] enumerateSourcesWithAsyncDelay: Found %d sources (audio with built-in sync or video with video delay filter)",
 	     SOURCE_COUNT);
 
 	return sources;
@@ -208,6 +235,7 @@ SourceInfo SourceOffsetManager::getSourceInfo(const QString &sourceName)
 	info.name = sourceName;
 	info.hasAsyncDelayFilter = false;
 	info.currentOffsetMs = 0;
+	info.videoDelayFilterType = QString();
 
 	// Find source by name
 	obs_source_t *source = obs_get_source_by_name(sourceName.toUtf8().constData());
@@ -227,10 +255,12 @@ SourceInfo SourceOffsetManager::getSourceInfo(const QString &sourceName)
 		info.currentOffsetMs = static_cast<int>(syncOffsetNs / 1000000LL);
 		info.hasAsyncDelayFilter = false;
 	} else if (info.isVideo) {
-		// For video sources: check if source has async delay filter
-		obs_source_t *filter = obs_source_get_filter_by_name(source, "Video Delay (Async)");
+		// For video sources: check if source has a video delay filter
+		QString filterType;
+		obs_source_t *filter = getVideoDelayFilter(source, filterType);
 		if (filter != nullptr) {
 			info.hasAsyncDelayFilter = true;
+			info.videoDelayFilterType = filterType;
 			obs_data_t *settings = obs_source_get_settings(filter);
 			info.currentOffsetMs = obs_data_get_int(settings, "delay_ms");
 			obs_data_release(settings);
@@ -293,12 +323,13 @@ bool SourceOffsetManager::setSourceOffset(const QString &sourceName, int offsetM
 
 	// Apply to video if requested and source supports video
 	if (!applyToAudio && isVideo) {
-		// For video sources: use Video Delay (Async) filter
-		obs_source_t *filter = obs_source_get_filter_by_name(source, "Video Delay (Async)");
+		// For video sources: use video delay filter (Video Delay (Async) or Render Delay)
+		QString filterType;
+		obs_source_t *filter = getVideoDelayFilter(source, filterType);
 		if (filter == nullptr) {
 			obs_source_release(source);
 			qWarning()
-				<< "SourceOffsetManager::setSourceOffset: Video source does not have Video Delay (Async) filter:"
+				<< "SourceOffsetManager::setSourceOffset: Video source does not have a video delay filter (Video Delay (Async) or Render Delay):"
 				<< sourceName;
 			return false;
 		}
