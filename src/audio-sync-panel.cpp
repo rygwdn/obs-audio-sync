@@ -162,18 +162,18 @@ void AudioSyncPanel::setupUI()
 	m_autoSyncButton = new QPushButton("Auto Sync", this);
 	m_autoSyncButton->setToolTip("Start recording, detect clap, and automatically analyze");
 	buttonLayout->addWidget(m_autoSyncButton);
-	
+
 	// Cancel and End buttons (initially hidden, shown during auto-sync)
 	m_cancelAutoSyncButton = new QPushButton("Cancel", this);
 	m_cancelAutoSyncButton->setToolTip("Stop recording without opening analysis modal");
 	m_cancelAutoSyncButton->setVisible(false);
 	buttonLayout->addWidget(m_cancelAutoSyncButton);
-	
+
 	m_endAutoSyncButton = new QPushButton("End", this);
 	m_endAutoSyncButton->setToolTip("Stop recording and open analysis modal");
 	m_endAutoSyncButton->setVisible(false);
 	buttonLayout->addWidget(m_endAutoSyncButton);
-	
+
 	m_layout->addLayout(buttonLayout);
 
 	// Status label
@@ -294,7 +294,7 @@ void AudioSyncPanel::populateAudioSources()
 {
 	// Preserve current selection
 	QString currentSelection = m_audioSourceCombo->currentText();
-	
+
 	m_audioSourceCombo->clear();
 
 	// Get current scene
@@ -330,7 +330,7 @@ void AudioSyncPanel::populateAudioSources()
 	} else {
 		m_audioSourceCombo->addItems(sourceNames);
 		m_audioSourceCombo->setEnabled(true);
-		
+
 		// Restore previous selection if it still exists
 		if (!currentSelection.isEmpty() && sourceNames.contains(currentSelection)) {
 			int index = m_audioSourceCombo->findText(currentSelection);
@@ -338,7 +338,7 @@ void AudioSyncPanel::populateAudioSources()
 				m_audioSourceCombo->setCurrentIndex(index);
 			}
 		}
-		
+
 		blog(LOG_INFO, "[AudioSync] populateAudioSources: Found %lld audio sources",
 		     static_cast<long long>(sourceNames.size()));
 	}
@@ -531,16 +531,17 @@ void AudioSyncPanel::startAutoSyncRecording()
 	m_statusLabel->setText("Recording... (Collecting baseline)");
 	m_statusLabel->setStyleSheet("color: orange;");
 	m_volumeLevelsLabel->setVisible(true);
-	m_volumeLevelsLabel->setText("Current: -- | Baseline: collecting... | Threshold: --\nMin: -- | Max: -- | Avg: --");
+	m_volumeLevelsLabel->setText(
+		"Current: -- | Baseline: collecting... | Threshold: --\nMin: -- | Max: -- | Avg: --");
 
 	// Get selected audio source
 	QString selectedSource = m_audioSourceCombo->currentText();
-		if (selectedSource.isEmpty() || selectedSource.startsWith("(")) {
-			QMessageBox::warning(this, "No Audio Source Selected",
-					     "Please select an audio source from the dropdown.");
-			stopAutoSyncRecording(false);
-			return;
-		}
+	if (selectedSource.isEmpty() || selectedSource.startsWith("(")) {
+		QMessageBox::warning(this, "No Audio Source Selected",
+				     "Please select an audio source from the dropdown.");
+		stopAutoSyncRecording(false);
+		return;
+	}
 
 	// Start monitoring OBS audio output from selected source
 	if (!m_audioMonitor->startMonitoring(selectedSource)) {
@@ -601,7 +602,7 @@ void AudioSyncPanel::stopAutoSyncRecording(bool openModal)
 	m_statusLabel->setText(shouldOpenModal ? "Stopping recording..." : "Recording cancelled");
 	m_statusLabel->setStyleSheet("color: gray;");
 	m_volumeLevelsLabel->setVisible(false);
-	
+
 	// If we're not opening modal and recording has stopped, just refresh
 	if (!shouldOpenModal && m_autoSyncState == AutoSyncState::Idle) {
 		scheduleDelayedRefresh();

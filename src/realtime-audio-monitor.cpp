@@ -112,9 +112,8 @@ bool RealTimeAudioMonitor::startMonitoring(const QString &sourceName)
 	blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: Monitoring initialized, waiting for audio callbacks...");
 
 	// Create and attach volmeter
-	// Use LINEAR fader type to get amplitude values (0.0 to 1.0)
-	// instead of logarithmic dB values which are negative
-	m_volmeter = obs_volmeter_create(OBS_FADER_LINEAR);
+	// Use CUBIC fader type for better amplitude representation
+	m_volmeter = obs_volmeter_create(OBS_FADER_CUBIC);
 	if (m_volmeter == nullptr) {
 		obs_source_release(m_audioSource);
 		m_audioSource = nullptr;
@@ -122,9 +121,6 @@ bool RealTimeAudioMonitor::startMonitoring(const QString &sourceName)
 		emit monitoringError("Failed to create OBS volume meter");
 		return false;
 	}
-
-	// Set update interval to 50ms for responsive monitoring
-	obs_volmeter_set_update_interval(m_volmeter, 50);
 
 	// Attach volmeter to source
 	if (!obs_volmeter_attach_source(m_volmeter, m_audioSource)) {
@@ -189,7 +185,6 @@ void RealTimeAudioMonitor::stopMonitoring()
 void RealTimeAudioMonitor::volmeterCallback(void *param, const float magnitude[], const float peak[],
 					    const float inputPeak[])
 {
-	Q_UNUSED(peak);
 	Q_UNUSED(inputPeak);
 	auto *monitor = static_cast<RealTimeAudioMonitor *>(param);
 	if (monitor == nullptr || !monitor->m_monitoring) {
@@ -199,11 +194,11 @@ void RealTimeAudioMonitor::volmeterCallback(void *param, const float magnitude[]
 	// Lock mutex to protect audio buffer
 	QMutexLocker locker(&monitor->m_audioMutex);
 
-	// magnitude[] contains magnitude values per channel (0.0 to 1.0)
-	// We'll use the first channel
-	float channelMagnitude = 0.0f;
-	if (magnitude != nullptr) {
-		channelMagnitude = magnitude[0];
+	// Use peak values which are in 0.0 to 1.0 range (amplitude)
+	// peak[] contains peak amplitude values per channel
+	float channelPeak = 0.0f;
+	if (peak != nullptr) {
+		channelPeak = peak[0]; // Use first channel
 	}
 
 	// Calculate timestamp (volmeter updates at audio rate, typically ~20ms intervals)
@@ -213,15 +208,15 @@ void RealTimeAudioMonitor::volmeterCallback(void *param, const float magnitude[]
 	// Log first few samples for debugging
 	static int sampleCount = 0;
 	if (sampleCount < 10) {
-		blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: Sample #%d - timestamp: %.3fs, magnitude: %.6f",
-		     sampleCount, timestamp, channelMagnitude);
+		blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: Sample #%d - timestamp: %.3fs, peak: %.6f",
+		     sampleCount, timestamp, channelPeak);
 		sampleCount++;
 	}
 
 	// Store in buffer for processing
 	AudioSample sample{};
 	sample.timestamp = timestamp;
-	sample.amplitude = static_cast<double>(channelMagnitude);
+	sample.amplitude = static_cast<double>(channelPeak);
 	monitor->m_audioBuffer.append(sample);
 }
 
@@ -374,8 +369,8 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 					double currentAvg = calculateBaselineAverage();
 					blog(LOG_INFO,
 					     "[AudioSync] RealTimeAudioMonitor: Collecting baseline: %.2fs / %.2fs, samples: %lld, current avg: %.6f",
-					     elapsed, m_baselineWindowSeconds, static_cast<long long>(m_recentSamples.size()),
-					     currentAvg);
+					     elapsed, m_baselineWindowSeconds,
+					     static_cast<long long>(m_recentSamples.size()), currentAvg);
 					lastLogTime = currentTime;
 				}
 			}

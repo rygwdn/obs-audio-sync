@@ -1,2 +1,0 @@
-/usr/bin/ar qc libplugin-support.a "CMakeFiles/plugin-support.dir/plugin-support.c.o"
-/usr/bin/ranlib libplugin-support.a
