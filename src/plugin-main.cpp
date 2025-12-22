@@ -110,7 +110,7 @@ bool connectSourceSignals(void *data, obs_source_t *source)
 		return true;
 	}
 
-	obs_signal_handler_t *handler = obs_source_get_signal_handler(source);
+	signal_handler_t *handler = obs_source_get_signal_handler(source);
 	if (handler == nullptr) {
 		return true;
 	}
@@ -135,7 +135,7 @@ bool disconnectSourceSignals(void *data, obs_source_t *source)
 		return true;
 	}
 
-	obs_signal_handler_t *handler = obs_source_get_signal_handler(source);
+	signal_handler_t *handler = obs_source_get_signal_handler(source);
 	if (handler == nullptr) {
 		return true;
 	}

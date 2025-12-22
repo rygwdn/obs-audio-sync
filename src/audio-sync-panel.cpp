@@ -262,7 +262,7 @@ static void enumerateSourceRecursive(obs_source_t *source, AudioSourceEnumData *
 		// 2. Must not be hidden
 		// 3. Must have audio data available
 		// 4. Must output to track 0
-		
+
 		// Check if source is active
 		if (!obs_source_active(source)) {
 			return;
@@ -554,7 +554,8 @@ void AudioSyncPanel::startAutoSyncRecording()
 	m_statusLabel->setStyleSheet("color: orange;");
 	m_volumeLevelsLabel->setVisible(true);
 	m_volumeLevelsLabel->setText(
-		"Current: -- | Baseline: collecting... | Threshold: --\nMin: -- | Max: -- | Avg: --");
+		"Current: -- | Baseline: collecting... | Threshold: --\n"
+		"Min: -- | Max: -- | Avg: --");
 
 	// Get selected audio source
 	QString selectedSource = m_audioSourceCombo->currentText();
@@ -668,7 +669,8 @@ void AudioSyncPanel::onVolumeLevelsUpdated(double baseline, double current, doub
 	if (baseline > 0.0) {
 		// Baseline collected, show all values
 		double currentPercent = threshold > 0.0 ? (current / threshold * 100.0) : 0.0;
-		text = QString("Current: %1 (%2%) | Baseline: %3 | Threshold: %4\nMin: %5 | Max: %6 | Avg: %7")
+		text = QString("Current: %1 (%2%) | Baseline: %3 | Threshold: %4\n"
+			       "Min: %5 | Max: %6 | Avg: %7")
 			       .arg(current, 0, 'f', 6)
 			       .arg(currentPercent, 0, 'f', 1)
 			       .arg(baseline, 0, 'f', 6)
@@ -678,7 +680,8 @@ void AudioSyncPanel::onVolumeLevelsUpdated(double baseline, double current, doub
 			       .arg(avgVol, 0, 'f', 6);
 	} else {
 		// Still collecting baseline
-		text = QString("Current: %1 | Baseline: collecting... | Threshold: --\nMin: %2 | Max: %3 | Avg: %4")
+		text = QString("Current: %1 | Baseline: collecting... | Threshold: --\n"
+			       "Min: %2 | Max: %3 | Avg: %4")
 			       .arg(current, 0, 'f', 6)
 			       .arg(minVol, 0, 'f', 6)
 			       .arg(maxVol, 0, 'f', 6)
