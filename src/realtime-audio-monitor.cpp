@@ -218,7 +218,8 @@ void RealTimeAudioMonitor::volmeterCallback(void *param, const float magnitude[]
 	// Log first few samples for debugging
 	static int sampleCount = 0;
 	if (sampleCount < 10) {
-		blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: Sample #%d - timestamp: %.3fs, peak_dB: %.6f, amplitude: %.6f",
+		blog(LOG_INFO,
+		     "[AudioSync] RealTimeAudioMonitor: Sample #%d - timestamp: %.3fs, peak_dB: %.6f, amplitude: %.6f",
 		     sampleCount, timestamp, channelPeakDB, channelAmplitude);
 		sampleCount++;
 	}
