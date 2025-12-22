@@ -195,11 +195,20 @@ void RealTimeAudioMonitor::volmeterCallback(void *param, const float magnitude[]
 	// Lock mutex to protect audio buffer
 	QMutexLocker locker(&monitor->m_audioMutex);
 
-	// Use peak values which are in 0.0 to 1.0 range (amplitude)
-	// peak[] contains peak amplitude values per channel
-	float channelPeak = 0.0f;
+	// OBS volmeter returns peak values in decibels (dB), not linear amplitude
+	// peak[] contains peak dB values per channel
+	// Need to convert from dB to linear amplitude (0.0 to 1.0)
+	float channelPeakDB = -INFINITY;
 	if (peak != nullptr) {
-		channelPeak = peak[0]; // Use first channel
+		channelPeakDB = peak[0]; // Use first channel (in dB)
+	}
+
+	// Convert from dB to linear amplitude
+	// Formula: amplitude = 10^(dB / 20)
+	// Handle -inf dB (silence) as 0.0 amplitude
+	float channelAmplitude = 0.0f;
+	if (std::isfinite(channelPeakDB)) {
+		channelAmplitude = std::pow(10.0f, channelPeakDB / 20.0f);
 	}
 
 	// Calculate timestamp (volmeter updates at audio rate, typically ~20ms intervals)
@@ -209,15 +218,15 @@ void RealTimeAudioMonitor::volmeterCallback(void *param, const float magnitude[]
 	// Log first few samples for debugging
 	static int sampleCount = 0;
 	if (sampleCount < 10) {
-		blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: Sample #%d - timestamp: %.3fs, peak: %.6f",
-		     sampleCount, timestamp, channelPeak);
+		blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: Sample #%d - timestamp: %.3fs, peak_dB: %.6f, amplitude: %.6f",
+		     sampleCount, timestamp, channelPeakDB, channelAmplitude);
 		sampleCount++;
 	}
 
 	// Store in buffer for processing
 	AudioSample sample{};
 	sample.timestamp = timestamp;
-	sample.amplitude = static_cast<double>(channelPeak);
+	sample.amplitude = static_cast<double>(channelAmplitude);
 	monitor->m_audioBuffer.append(sample);
 }
 
