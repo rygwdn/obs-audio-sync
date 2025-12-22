@@ -257,6 +257,28 @@ static void enumerateSourceRecursive(obs_source_t *source, AudioSourceEnumData *
 	// Check if source has audio
 	uint32_t outputFlags = obs_source_get_output_flags(source);
 	if ((outputFlags & OBS_SOURCE_AUDIO) != 0) {
+		// Filter out sources that don't meet requirements:
+		// 1. Must be active (currently rendering)
+		// 2. Must not be hidden
+		// 3. Must have audio data available
+		// 4. Must output to track 0
+		
+		// Check if source is active
+		if (!obs_source_active(source)) {
+			return;
+		}
+
+		// Check if source is showing (not hidden)
+		if (!obs_source_showing(source)) {
+			return;
+		}
+
+		// Check audio mixers - must output to track 0 (bit 0 set)
+		uint32_t mixers = obs_source_get_audio_mixers(source);
+		if ((mixers & (1 << 0)) == 0) {
+			return;
+		}
+
 		// Check if we've already added this source
 		if (!data->addedSources->contains(sourceNameStr)) {
 			data->sourceNames->append(sourceNameStr);

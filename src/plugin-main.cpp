@@ -73,10 +73,82 @@ void onFrontendEvent(enum obs_frontend_event event, void *private_data)
 		// Use QMetaObject::invokeMethod to ensure we're on the correct thread
 		QMetaObject::invokeMethod(panel, "scheduleDelayedRefresh", Qt::QueuedConnection);
 		break;
+	case OBS_FRONTEND_EVENT_SCENE_CHANGED:
+	case OBS_FRONTEND_EVENT_SCENE_LIST_CHANGED:
+		obsLog(LOG_INFO, "Scene change detected, refreshing audio sources");
+		// Scene changed - refresh audio source list
+		QMetaObject::invokeMethod(panel, "populateAudioSources", Qt::QueuedConnection);
+		break;
 	default:
 		// Ignore other events
 		break;
 	}
+}
+
+// OBS signal handler for source events (show/hide/activate/deactivate/audio_mixers/destroy)
+void onSourceEvent(void *data, calldata_t *cd)
+{
+	Q_UNUSED(data);
+	Q_UNUSED(cd);
+
+	// Only refresh if panel exists
+	if (panel == nullptr) {
+		return;
+	}
+
+	obsLog(LOG_INFO, "Source event detected, refreshing audio sources");
+	// Source changed - refresh audio source list
+	QMetaObject::invokeMethod(panel, "populateAudioSources", Qt::QueuedConnection);
+}
+
+// Callback to connect signal handlers for a source
+bool connectSourceSignals(void *data, obs_source_t *source)
+{
+	Q_UNUSED(data);
+
+	if (source == nullptr) {
+		return true;
+	}
+
+	obs_signal_handler_t *handler = obs_source_get_signal_handler(source);
+	if (handler == nullptr) {
+		return true;
+	}
+
+	// Connect to source signals that affect audio source visibility
+	signal_handler_connect(handler, "show", onSourceEvent, nullptr);
+	signal_handler_connect(handler, "hide", onSourceEvent, nullptr);
+	signal_handler_connect(handler, "activate", onSourceEvent, nullptr);
+	signal_handler_connect(handler, "deactivate", onSourceEvent, nullptr);
+	signal_handler_connect(handler, "audio_mixers", onSourceEvent, nullptr);
+	signal_handler_connect(handler, "destroy", onSourceEvent, nullptr);
+
+	return true;
+}
+
+// Disconnect signal handlers for a source
+bool disconnectSourceSignals(void *data, obs_source_t *source)
+{
+	Q_UNUSED(data);
+
+	if (source == nullptr) {
+		return true;
+	}
+
+	obs_signal_handler_t *handler = obs_source_get_signal_handler(source);
+	if (handler == nullptr) {
+		return true;
+	}
+
+	// Disconnect from source signals
+	signal_handler_disconnect(handler, "show", onSourceEvent, nullptr);
+	signal_handler_disconnect(handler, "hide", onSourceEvent, nullptr);
+	signal_handler_disconnect(handler, "activate", onSourceEvent, nullptr);
+	signal_handler_disconnect(handler, "deactivate", onSourceEvent, nullptr);
+	signal_handler_disconnect(handler, "audio_mixers", onSourceEvent, nullptr);
+	signal_handler_disconnect(handler, "destroy", onSourceEvent, nullptr);
+
+	return true;
 }
 } // namespace
 
@@ -92,9 +164,12 @@ bool obs_module_load(void)
 	obs_frontend_add_dock_by_id("obs-audio-sync", "Audio Sync", panel);
 	dockRegistered = true;
 
-	// Register event callback for recording events
+	// Register event callback for recording and scene events
 	obs_frontend_add_event_callback(onFrontendEvent, nullptr);
 	eventCallbackRegistered = true;
+
+	// Connect signal handlers for all existing sources
+	obs_enum_sources(connectSourceSignals, nullptr);
 
 	obsLog(LOG_INFO, "Audio Sync panel registered");
 	return true;
@@ -102,6 +177,9 @@ bool obs_module_load(void)
 
 void obs_module_unload(void)
 {
+	// Disconnect signal handlers from all sources
+	obs_enum_sources(disconnectSourceSignals, nullptr);
+
 	// Unregister event callback only if it was registered
 	if (eventCallbackRegistered) {
 		obs_frontend_remove_event_callback(onFrontendEvent, nullptr);
