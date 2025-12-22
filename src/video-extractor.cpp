@@ -1031,9 +1031,9 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 
 	// Launch conversion worker threads
 	for (int threadId = 0; threadId < NUM_CONVERT_THREADS; threadId++) {
-		std::future<void> future =
-			std::async(std::launch::async, [&frameQueueMutex, &frameAvailable, &frameQueue, &convertedMutex,
-					   &convertedFrames, &decodeComplete, codecCtx, width, height, srcFormat]() {
+		std::future<void> future = std::async(
+			std::launch::async, [&frameQueueMutex, &frameAvailable, &frameQueue, &convertedMutex,
+					     &convertedFrames, &decodeComplete, codecCtx, width, height, srcFormat]() {
 				while (true) {
 					QMutexLocker locker(&frameQueueMutex);
 					// Wait for frames to be available or decode to complete
@@ -1348,24 +1348,25 @@ QVector<VideoFrame> VideoExtractor::convertNativeFramesToRGB(const QVector<Nativ
 		std::vector<std::future<QPair<int, VideoFrame>>> futures;
 		for (int idx : remainingIndices) {
 			// Convert in parallel - create SwsContext inside the thread (it's not thread-safe)
-			std::future<QPair<int, VideoFrame>> future = std::async(std::launch::async, [&nativeFrames, idx, codecContext,
-										    width, height, srcFormat]() {
-				// Create SwsContext for this thread
-				SwsContext *threadSwsContext = sws_getContext(width, height, srcFormat, width, height,
-									      AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr,
-									      nullptr, nullptr);
-				if (threadSwsContext == nullptr) {
-					return qMakePair(idx, VideoFrame{});
-				}
+			std::future<QPair<int, VideoFrame>> future = std::async(
+				std::launch::async, [&nativeFrames, idx, codecContext, width, height, srcFormat]() {
+					// Create SwsContext for this thread
+					SwsContext *threadSwsContext = sws_getContext(width, height, srcFormat, width,
+										      height, AV_PIX_FMT_RGB24,
+										      SWS_BILINEAR, nullptr, nullptr,
+										      nullptr);
+					if (threadSwsContext == nullptr) {
+						return qMakePair(idx, VideoFrame{});
+					}
 
-				VideoFrame frame = convertSingleNativeFrameToRGB(nativeFrames[idx], codecContext,
-										 threadSwsContext);
+					VideoFrame frame = convertSingleNativeFrameToRGB(
+						nativeFrames[idx], codecContext, threadSwsContext);
 
-				// Cleanup thread-local SwsContext
-				sws_freeContext(threadSwsContext);
+					// Cleanup thread-local SwsContext
+					sws_freeContext(threadSwsContext);
 
-				return qMakePair(idx, frame);
-			});
+					return qMakePair(idx, frame);
+				});
 			futures.push_back(std::move(future));
 		}
 
