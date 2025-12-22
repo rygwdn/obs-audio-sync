@@ -70,7 +70,7 @@ private:
 	QVector<AudioSample> m_audioBuffer;   // Buffer for volume samples from volmeter
 	double m_currentTime{0.0};            // Current time in seconds since monitoring started
 	QVector<AudioSample> m_recentSamples; // Keep recent samples for threshold
-	double m_spikeThreshold{4.0};         // Threshold multiplier (4x average)
+	double m_spikeThreshold{2.0};         // Threshold multiplier (2x average)
 	double m_baselineWindowSeconds{2.0};  // Window for baseline calculation (2 seconds)
 	double m_minSpikeDuration{0.05};      // Minimum spike duration (50ms)
 	double m_maxSpikeDuration{0.2};       // Maximum duration for valid clap (200ms)
