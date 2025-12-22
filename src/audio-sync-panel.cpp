@@ -42,6 +42,8 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qtimer.h>
 #include <qlabel.h>
 #include <qcombobox.h>
+#include <qpalette.h>
+#include <qcolor.h>
 
 AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QWidget(parent)
 {
@@ -178,12 +180,18 @@ void AudioSyncPanel::setupUI()
 
 	// Status label
 	m_statusLabel = new QLabel("Ready", this);
-	m_statusLabel->setStyleSheet("color: gray;");
+	// Use theme's dim text color
+	QPalette statusPalette = m_statusLabel->palette();
+	statusPalette.setColor(QPalette::WindowText, statusPalette.color(QPalette::Disabled, QPalette::WindowText));
+	m_statusLabel->setPalette(statusPalette);
 	m_layout->addWidget(m_statusLabel);
 
 	// Volume levels label (initially hidden)
 	m_volumeLevelsLabel = new QLabel("", this);
-	m_volumeLevelsLabel->setStyleSheet("color: blue; font-family: monospace;");
+	// Use theme color with monospace font
+	QFont monoFont("monospace");
+	monoFont.setStyleHint(QFont::Monospace);
+	m_volumeLevelsLabel->setFont(monoFont);
 	m_volumeLevelsLabel->setVisible(false);
 	m_layout->addWidget(m_volumeLevelsLabel);
 
@@ -195,7 +203,10 @@ void AudioSyncPanel::setupUI()
 	m_layout->addWidget(m_spinner);
 
 	m_spinnerLabel = new QLabel("", this);
-	m_spinnerLabel->setStyleSheet("color: gray;");
+	// Use theme's dim text color
+	QPalette spinnerPalette = m_spinnerLabel->palette();
+	spinnerPalette.setColor(QPalette::WindowText, spinnerPalette.color(QPalette::Disabled, QPalette::WindowText));
+	m_spinnerLabel->setPalette(spinnerPalette);
 	m_spinnerLabel->setVisible(false);
 	m_layout->addWidget(m_spinnerLabel);
 
@@ -551,7 +562,10 @@ void AudioSyncPanel::startAutoSyncRecording()
 	m_refreshButton->setEnabled(false);
 	m_startSyncButton->setEnabled(false);
 	m_statusLabel->setText("Recording... (Collecting baseline)");
-	m_statusLabel->setStyleSheet("color: orange;");
+	// Use theme's warning/orange color
+	QPalette palette = m_statusLabel->palette();
+	palette.setColor(QPalette::WindowText, QColor(255, 140, 0)); // Orange
+	m_statusLabel->setPalette(palette);
 	m_volumeLevelsLabel->setVisible(true);
 	m_volumeLevelsLabel->setText(
 		"Current: -- | Baseline: collecting... | Threshold: --\n"
@@ -623,7 +637,10 @@ void AudioSyncPanel::stopAutoSyncRecording(bool openModal)
 	m_endAutoSyncButton->setVisible(false);
 	m_refreshButton->setEnabled(true);
 	m_statusLabel->setText(shouldOpenModal ? "Stopping recording..." : "Recording cancelled");
-	m_statusLabel->setStyleSheet("color: gray;");
+	// Reset to theme's dim text color
+	QPalette palette = m_statusLabel->palette();
+	palette.setColor(QPalette::WindowText, palette.color(QPalette::Disabled, QPalette::WindowText));
+	m_statusLabel->setPalette(palette);
 	m_volumeLevelsLabel->setVisible(false);
 
 	// If we're not opening modal and recording has stopped, just refresh
@@ -643,7 +660,10 @@ void AudioSyncPanel::onSpikeDetected(double timestamp)
 
 	// Update UI
 	m_statusLabel->setText("Clap detected! Recording 2 more seconds...");
-	m_statusLabel->setStyleSheet("color: green;");
+	// Use theme's success/green color
+	QPalette palette = m_statusLabel->palette();
+	palette.setColor(QPalette::WindowText, QColor(0, 170, 0)); // Green
+	m_statusLabel->setPalette(palette);
 }
 
 void AudioSyncPanel::onRecordingComplete(double spikeTimestamp)
@@ -666,9 +686,14 @@ void AudioSyncPanel::onVolumeLevelsUpdated(double baseline, double current, doub
 	}
 
 	QString text;
-	if (baseline > 0.0) {
+	// Check if baseline has been collected by seeing if threshold is set
+	// Threshold is only calculated when baseline is collected (threshold = baseline * spikeThreshold)
+	// Since spikeThreshold > 1.0, threshold will be > 0.0 if baseline > 0.0 and collected
+	// However, baseline could be very small but still valid, so use a small epsilon
+	const double epsilon = 0.000001;
+	if (baseline >= epsilon || threshold >= epsilon) {
 		// Baseline collected, show all values
-		double currentPercent = threshold > 0.0 ? (current / threshold * 100.0) : 0.0;
+		double currentPercent = threshold > epsilon ? (current / threshold * 100.0) : 0.0;
 		text = QString("Current: %1 (%2%) | Baseline: %3 | Threshold: %4\n"
 			       "Min: %5 | Max: %6 | Avg: %7")
 			       .arg(current, 0, 'f', 6)
@@ -742,6 +767,9 @@ void AudioSyncPanel::handleAutoSyncRecordingStopped()
 
 		// Reset UI
 		m_statusLabel->setText("Ready");
-		m_statusLabel->setStyleSheet("color: gray;");
+		// Reset to theme's dim text color
+		QPalette palette = m_statusLabel->palette();
+		palette.setColor(QPalette::WindowText, palette.color(QPalette::Disabled, QPalette::WindowText));
+		m_statusLabel->setPalette(palette);
 	});
 }
