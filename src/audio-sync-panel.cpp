@@ -567,9 +567,8 @@ void AudioSyncPanel::startAutoSyncRecording()
 	palette.setColor(QPalette::WindowText, QColor(255, 140, 0)); // Orange
 	m_statusLabel->setPalette(palette);
 	m_volumeLevelsLabel->setVisible(true);
-	m_volumeLevelsLabel->setText(
-		"Current: -- | Baseline: collecting... | Threshold: --\n"
-		"Min: -- | Max: -- | Avg: --");
+	m_volumeLevelsLabel->setText("Current: -- | Baseline: collecting... | Threshold: --\n"
+				     "Min: -- | Max: -- | Avg: --");
 
 	// Get selected audio source
 	QString selectedSource = m_audioSourceCombo->currentText();
