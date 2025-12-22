@@ -108,6 +108,7 @@ public:
 public slots:
 	void refreshRecordings();
 	void scheduleDelayedRefresh();
+	void populateAudioSources();
 
 private slots:
 	void onRecordingSelected(QListWidgetItem *item);
@@ -129,7 +130,6 @@ private:
 	void setupWorkerThreads();
 	void showSpinner(const QString &message);
 	void hideSpinner();
-	void populateAudioSources();
 	void startAutoSyncRecording();
 	void stopAutoSyncRecording(bool openModal = false);
 	void handleAutoSyncRecordingStopped();
