@@ -404,12 +404,18 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 		return false;
 	}
 
-	double threshold = baseline * m_spikeThreshold;
+	double threshold = std::min(baseline * m_spikeThreshold, 0.9); // Clamp to 90% to ensure detectability
 	double spikeEndThreshold = baseline * m_spikeEndThreshold;
 
 	// Log spike detection parameters once per detection cycle
 	static bool loggedParams = false;
 	if (!loggedParams) {
+		double unclamped_threshold = baseline * m_spikeThreshold;
+		if (unclamped_threshold > 0.9) {
+			blog(LOG_WARNING,
+			     "[AudioSync] RealTimeAudioMonitor: Noisy environment detected - baseline: %.6f, threshold clamped from %.6f to %.6f",
+			     baseline, unclamped_threshold, threshold);
+		}
 		blog(LOG_INFO,
 		     "[AudioSync] RealTimeAudioMonitor: Spike detection active - baseline: %.6f, threshold: %.6f, end threshold: %.6f",
 		     baseline, threshold, spikeEndThreshold);
