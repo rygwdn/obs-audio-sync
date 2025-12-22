@@ -41,9 +41,9 @@ if(_LINTING_MODE OR CMAKE_EXPORT_COMPILE_COMMANDS)
   endif()
 
   if(ENABLE_QT)
-    find_package(Qt6 QUIET COMPONENTS Widgets Core Concurrent)
+    find_package(Qt6 QUIET COMPONENTS Widgets Core)
     if(Qt6_FOUND)
-      target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Core Qt6::Widgets Qt6::Concurrent)
+      target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Core Qt6::Widgets)
     endif()
   endif()
 else()
@@ -56,8 +56,8 @@ else()
   endif()
 
   if(ENABLE_QT)
-    find_package(Qt6 COMPONENTS Widgets Core Concurrent)
-    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Core Qt6::Widgets Qt6::Concurrent)
+    find_package(Qt6 COMPONENTS Widgets Core)
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt6::Core Qt6::Widgets)
   endif()
 endif()
 
@@ -231,80 +231,6 @@ if(AVCODEC_FOUND AND AVFORMAT_FOUND AND AVUTIL_FOUND AND SWSCALE_FOUND)
     ${CMAKE_PROJECT_NAME}
     PRIVATE ${AVCODEC_LIBRARIES} ${AVFORMAT_LIBRARIES} ${AVUTIL_LIBRARIES} ${SWSCALE_LIBRARIES}
   )
-endif()
-
-# macOS: Bundle QtConcurrent.framework with plugin if using QtConcurrent
-# OBS's Qt frameworks may not include QtConcurrent, so we need to bundle it
-if(APPLE AND ENABLE_QT AND (Qt6_FOUND OR _LINTING_MODE OR NOT CMAKE_EXPORT_COMPILE_COMMANDS))
-  # Check if QtConcurrent is linked
-  get_target_property(_linked_libs ${CMAKE_PROJECT_NAME} LINK_LIBRARIES)
-  set(_needs_qtconcurrent FALSE)
-  if(_linked_libs)
-    foreach(_lib IN LISTS _linked_libs)
-      if(_lib MATCHES "Qt6::Concurrent" OR _lib MATCHES "QtConcurrent")
-        set(_needs_qtconcurrent TRUE)
-        break()
-      endif()
-    endforeach()
-  endif()
-
-  if(_needs_qtconcurrent)
-    # Find QtConcurrent.framework location
-    set(_qtconcurrent_framework_path "")
-
-    # First check OBS's Qt frameworks
-    foreach(_framework_path IN LISTS CMAKE_FRAMEWORK_PATH)
-      set(_qtconcurrent_path "${_framework_path}/QtConcurrent.framework")
-      if(EXISTS "${_qtconcurrent_path}/QtConcurrent")
-        set(_qtconcurrent_framework_path "${_qtconcurrent_path}")
-        message(STATUS "Found QtConcurrent.framework in OBS Qt: ${_qtconcurrent_framework_path}")
-        break()
-      endif()
-    endforeach()
-
-    # If not found in OBS's Qt, check downloaded Qt6
-    if(NOT _qtconcurrent_framework_path)
-      foreach(_prefix_path IN LISTS CMAKE_PREFIX_PATH)
-        set(_qtconcurrent_path "${_prefix_path}/lib/QtConcurrent.framework")
-        if(EXISTS "${_qtconcurrent_path}/QtConcurrent")
-          set(_qtconcurrent_framework_path "${_qtconcurrent_path}")
-          message(STATUS "Found QtConcurrent.framework in downloaded Qt6: ${_qtconcurrent_framework_path}")
-          break()
-        endif()
-        # Also check Frameworks subdirectory
-        set(_qtconcurrent_path "${_prefix_path}/Frameworks/QtConcurrent.framework")
-        if(EXISTS "${_qtconcurrent_path}/QtConcurrent")
-          set(_qtconcurrent_framework_path "${_qtconcurrent_path}")
-          message(STATUS "Found QtConcurrent.framework in downloaded Qt6 Frameworks: ${_qtconcurrent_framework_path}")
-          break()
-        endif()
-      endforeach()
-    endif()
-
-    if(_qtconcurrent_framework_path)
-      # Install QtConcurrent.framework with the plugin bundle
-      # The install() command will copy it during package creation
-      # Note: We don't use POST_BUILD here because generator expressions don't work reliably in Xcode builds
-      install(
-        DIRECTORY "${_qtconcurrent_framework_path}"
-        DESTINATION "$<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>/../Frameworks"
-        USE_SOURCE_PERMISSIONS
-      )
-      # Update rpath to include plugin's Frameworks directory
-      # QtConcurrent uses @rpath, so we need to add the Frameworks directory to rpath
-      # Use @loader_path for plugins (points to the plugin's MacOS directory)
-      # @loader_path/../Frameworks resolves to the plugin's Frameworks directory
-      set_target_properties(
-        ${CMAKE_PROJECT_NAME}
-        PROPERTIES
-          BUILD_RPATH "$<TARGET_BUNDLE_DIR:${CMAKE_PROJECT_NAME}>/Contents/Frameworks"
-          INSTALL_RPATH "@loader_path/../Frameworks"
-      )
-      message(STATUS "QtConcurrent.framework will be bundled with plugin")
-    else()
-      message(WARNING "QtConcurrent.framework not found - plugin may fail to load on macOS")
-    endif()
-  endif()
 endif()
 
 # AGL framework is deprecated and not available on newer macOS

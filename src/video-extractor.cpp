@@ -22,14 +22,14 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <qlogging.h>
 #include <cstdint>
 #include <qpixmap.h>
-#include <QFuture>
-#include <QtConcurrent/QtConcurrentRun>
 #include <algorithm>
 #include <QElapsedTimer>
 #include <QMutex>
 #include <QWaitCondition>
 #include <QQueue>
 #include <QThread>
+#include <future>
+#include <vector>
 
 // FFmpeg includes
 extern "C" {
@@ -1024,15 +1024,15 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 	// Start conversion threads that will process frames as they become available
 	QElapsedTimer convertTimer;
 	convertTimer.start();
-	QVector<QFuture<void>> convertFutures;
+	std::vector<std::future<void>> convertFutures;
 	const int NUM_CONVERT_THREADS = QThread::idealThreadCount();
 	qInfo() << "VideoExtractor::extractFramesPipelined: Starting" << NUM_CONVERT_THREADS
 		<< "conversion threads for pipelined processing";
 
 	// Launch conversion worker threads
 	for (int threadId = 0; threadId < NUM_CONVERT_THREADS; threadId++) {
-		QFuture<void> future =
-			QtConcurrent::run([&frameQueueMutex, &frameAvailable, &frameQueue, &convertedMutex,
+		std::future<void> future =
+			std::async(std::launch::async, [&frameQueueMutex, &frameAvailable, &frameQueue, &convertedMutex,
 					   &convertedFrames, &decodeComplete, codecCtx, width, height, srcFormat]() {
 				while (true) {
 					QMutexLocker locker(&frameQueueMutex);
@@ -1081,7 +1081,7 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 					}
 				}
 			});
-		convertFutures.append(future);
+		convertFutures.push_back(std::move(future));
 	}
 
 	QElapsedTimer decodeTimer;
@@ -1171,7 +1171,7 @@ QVector<VideoFrame> VideoExtractor::extractFramesPipelined(double startTime, dou
 
 	// Wait for all conversion threads to complete
 	for (auto &future : convertFutures) {
-		future.waitForFinished();
+		future.get();
 	}
 	qInfo() << "VideoExtractor::extractFramesPipelined: All conversion threads completed. Converted"
 		<< convertedFrames.size() << "frames in" << convertTimer.elapsed() << "ms (overlapped with decode)";
@@ -1306,7 +1306,7 @@ QVector<VideoFrame> VideoExtractor::convertNativeFramesToRGB(const QVector<Nativ
 		  [](const QPair<int, double> &a, const QPair<int, double> &b) { return a.second < b.second; });
 
 	// Convert frames in parallel, starting from cursor and moving outward
-	// Use QtConcurrent to parallelize RGB conversion
+	// Use std::async to parallelize RGB conversion
 	QVector<QPair<int, VideoFrame>> convertedFrames;
 
 	// Convert frames in batches: priority zone first (synchronous), then rest (parallel)
@@ -1345,10 +1345,10 @@ QVector<VideoFrame> VideoExtractor::convertNativeFramesToRGB(const QVector<Nativ
 	if (!remainingIndices.isEmpty()) {
 		QElapsedTimer parallelTimer;
 		parallelTimer.start();
-		QVector<QFuture<QPair<int, VideoFrame>>> futures;
+		std::vector<std::future<QPair<int, VideoFrame>>> futures;
 		for (int idx : remainingIndices) {
 			// Convert in parallel - create SwsContext inside the thread (it's not thread-safe)
-			QFuture<QPair<int, VideoFrame>> future = QtConcurrent::run([&nativeFrames, idx, codecContext,
+			std::future<QPair<int, VideoFrame>> future = std::async(std::launch::async, [&nativeFrames, idx, codecContext,
 										    width, height, srcFormat]() {
 				// Create SwsContext for this thread
 				SwsContext *threadSwsContext = sws_getContext(width, height, srcFormat, width, height,
@@ -1366,13 +1366,12 @@ QVector<VideoFrame> VideoExtractor::convertNativeFramesToRGB(const QVector<Nativ
 
 				return qMakePair(idx, frame);
 			});
-			futures.append(future);
+			futures.push_back(std::move(future));
 		}
 
 		// Wait for all conversions to complete
 		for (auto &future : futures) {
-			future.waitForFinished();
-			convertedFrames.append(future.result());
+			convertedFrames.append(future.get());
 		}
 		qInfo() << "VideoExtractor::convertNativeFramesToRGB: Parallel conversion (" << remainingIndices.size()
 			<< "frames) took" << parallelTimer.elapsed() << "ms";
