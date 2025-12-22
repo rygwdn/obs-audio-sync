@@ -86,6 +86,12 @@ AudioSyncPanel::~AudioSyncPanel()
 	if (m_autoSyncButton) {
 		disconnect(m_autoSyncButton, nullptr, this, nullptr);
 	}
+	if (m_cancelAutoSyncButton) {
+		disconnect(m_cancelAutoSyncButton, nullptr, this, nullptr);
+	}
+	if (m_endAutoSyncButton) {
+		disconnect(m_endAutoSyncButton, nullptr, this, nullptr);
+	}
 	if (m_audioMonitor) {
 		disconnect(m_audioMonitor, nullptr, this, nullptr);
 	}
@@ -156,6 +162,18 @@ void AudioSyncPanel::setupUI()
 	m_autoSyncButton = new QPushButton("Auto Sync", this);
 	m_autoSyncButton->setToolTip("Start recording, detect clap, and automatically analyze");
 	buttonLayout->addWidget(m_autoSyncButton);
+
+	// Cancel and End buttons (initially hidden, shown during auto-sync)
+	m_cancelAutoSyncButton = new QPushButton("Cancel", this);
+	m_cancelAutoSyncButton->setToolTip("Stop recording without opening analysis modal");
+	m_cancelAutoSyncButton->setVisible(false);
+	buttonLayout->addWidget(m_cancelAutoSyncButton);
+
+	m_endAutoSyncButton = new QPushButton("End", this);
+	m_endAutoSyncButton->setToolTip("Stop recording and open analysis modal");
+	m_endAutoSyncButton->setVisible(false);
+	buttonLayout->addWidget(m_endAutoSyncButton);
+
 	m_layout->addLayout(buttonLayout);
 
 	// Status label
@@ -188,6 +206,10 @@ void AudioSyncPanel::setupUI()
 	connect(m_refreshButton, &QPushButton::clicked, this, &AudioSyncPanel::onRefreshClicked);
 	connect(m_startSyncButton, &QPushButton::clicked, this, &AudioSyncPanel::onStartSyncClicked);
 	connect(m_autoSyncButton, &QPushButton::clicked, this, &AudioSyncPanel::onAutoSyncClicked);
+	connect(m_cancelAutoSyncButton, &QPushButton::clicked, this,
+		[this]() { stopAutoSyncRecording(false); }); // Cancel without modal
+	connect(m_endAutoSyncButton, &QPushButton::clicked, this,
+		[this]() { stopAutoSyncRecording(true); }); // End with modal
 
 	// Setup refresh timer for delayed refresh after recording events
 	// This ensures the file is ready after muxing completes
@@ -270,6 +292,9 @@ static bool enumAllSourcesCallback(void *param, obs_source_t *source)
 
 void AudioSyncPanel::populateAudioSources()
 {
+	// Preserve current selection
+	QString currentSelection = m_audioSourceCombo->currentText();
+
 	m_audioSourceCombo->clear();
 
 	// Get current scene
@@ -305,6 +330,15 @@ void AudioSyncPanel::populateAudioSources()
 	} else {
 		m_audioSourceCombo->addItems(sourceNames);
 		m_audioSourceCombo->setEnabled(true);
+
+		// Restore previous selection if it still exists
+		if (!currentSelection.isEmpty() && sourceNames.contains(currentSelection)) {
+			int index = m_audioSourceCombo->findText(currentSelection);
+			if (index >= 0) {
+				m_audioSourceCombo->setCurrentIndex(index);
+			}
+		}
+
 		blog(LOG_INFO, "[AudioSync] populateAudioSources: Found %lld audio sources",
 		     static_cast<long long>(sourceNames.size()));
 	}
@@ -414,10 +448,8 @@ void AudioSyncPanel::scheduleDelayedRefresh()
 void AudioSyncPanel::onAutoSyncClicked()
 {
 	if (m_autoSyncState != AutoSyncState::Idle) {
-		// Cancel if already recording
-		if (m_autoSyncState == AutoSyncState::Recording || m_autoSyncState == AutoSyncState::PostSpike) {
-			stopAutoSyncRecording();
-		}
+		// If clicking Auto Sync button again during recording, treat it as Cancel
+		stopAutoSyncRecording(false);
 		return;
 	}
 
@@ -489,21 +521,25 @@ void AudioSyncPanel::startAutoSyncRecording()
 	m_spikeTimestamp = 0.0;
 
 	// Update UI
-	m_autoSyncButton->setText("Cancel Auto Sync");
-	m_autoSyncButton->setEnabled(true);
+	m_autoSyncButton->setVisible(false); // Hide Auto Sync button
+	m_cancelAutoSyncButton->setVisible(true);
+	m_cancelAutoSyncButton->setEnabled(true);
+	m_endAutoSyncButton->setVisible(true);
+	m_endAutoSyncButton->setEnabled(true);
 	m_refreshButton->setEnabled(false);
 	m_startSyncButton->setEnabled(false);
 	m_statusLabel->setText("Recording... (Collecting baseline)");
 	m_statusLabel->setStyleSheet("color: orange;");
 	m_volumeLevelsLabel->setVisible(true);
-	m_volumeLevelsLabel->setText("Volume: -- | Baseline: -- | Threshold: --");
+	m_volumeLevelsLabel->setText(
+		"Current: -- | Baseline: collecting... | Threshold: --\nMin: -- | Max: -- | Avg: --");
 
 	// Get selected audio source
 	QString selectedSource = m_audioSourceCombo->currentText();
 	if (selectedSource.isEmpty() || selectedSource.startsWith("(")) {
 		QMessageBox::warning(this, "No Audio Source Selected",
 				     "Please select an audio source from the dropdown.");
-		stopAutoSyncRecording();
+		stopAutoSyncRecording(false);
 		return;
 	}
 
@@ -513,7 +549,7 @@ void AudioSyncPanel::startAutoSyncRecording()
 		     selectedSource.toUtf8().constData());
 		QMessageBox::warning(this, "Audio Monitoring Error",
 				     QString("Failed to start audio monitoring for source: %1").arg(selectedSource));
-		stopAutoSyncRecording();
+		stopAutoSyncRecording(false);
 		return;
 	}
 
@@ -529,19 +565,22 @@ void AudioSyncPanel::startAutoSyncRecording()
 	// Set timeout (30 seconds)
 	QTimer::singleShot(30000, this, [this]() {
 		if (m_autoSyncState == AutoSyncState::Recording) {
-			// Timeout reached
-			stopAutoSyncRecording();
+			// Timeout reached - stop without modal
+			stopAutoSyncRecording(false);
 			QMessageBox::information(this, "Auto Sync Timeout",
 						 "No audio spike detected within 30 seconds. Recording stopped.");
 		}
 	});
 }
 
-void AudioSyncPanel::stopAutoSyncRecording()
+void AudioSyncPanel::stopAutoSyncRecording(bool openModal)
 {
 	if (m_autoSyncState == AutoSyncState::Idle) {
 		return;
 	}
+
+	// Store whether we should open modal
+	bool shouldOpenModal = openModal || (m_autoSyncState == AutoSyncState::PostSpike);
 
 	// Stop monitoring
 	m_audioMonitor->stopMonitoring();
@@ -549,18 +588,25 @@ void AudioSyncPanel::stopAutoSyncRecording()
 	// Stop recording if still active
 	if (obs_frontend_recording_active()) {
 		obs_frontend_recording_stop();
-		m_autoSyncState = AutoSyncState::Stopping;
+		m_autoSyncState = shouldOpenModal ? AutoSyncState::Stopping : AutoSyncState::Idle;
 	} else {
 		m_autoSyncState = AutoSyncState::Idle;
 	}
 
 	// Update UI
-	m_autoSyncButton->setText("Auto Sync");
+	m_autoSyncButton->setVisible(true);
 	m_autoSyncButton->setEnabled(true);
+	m_cancelAutoSyncButton->setVisible(false);
+	m_endAutoSyncButton->setVisible(false);
 	m_refreshButton->setEnabled(true);
-	m_statusLabel->setText("Stopping recording...");
+	m_statusLabel->setText(shouldOpenModal ? "Stopping recording..." : "Recording cancelled");
 	m_statusLabel->setStyleSheet("color: gray;");
 	m_volumeLevelsLabel->setVisible(false);
+
+	// If we're not opening modal and recording has stopped, just refresh
+	if (!shouldOpenModal && m_autoSyncState == AutoSyncState::Idle) {
+		scheduleDelayedRefresh();
+	}
 }
 
 void AudioSyncPanel::onSpikeDetected(double timestamp)
@@ -585,11 +631,12 @@ void AudioSyncPanel::onRecordingComplete(double spikeTimestamp)
 
 	m_spikeTimestamp = spikeTimestamp;
 
-	// Stop recording immediately
-	stopAutoSyncRecording();
+	// Stop recording and open modal automatically
+	stopAutoSyncRecording(true);
 }
 
-void AudioSyncPanel::onVolumeLevelsUpdated(double baseline, double current, double threshold)
+void AudioSyncPanel::onVolumeLevelsUpdated(double baseline, double current, double threshold, double minVol,
+					   double maxVol, double avgVol)
 {
 	if (m_autoSyncState != AutoSyncState::Recording && m_autoSyncState != AutoSyncState::PostSpike) {
 		return;
@@ -599,14 +646,21 @@ void AudioSyncPanel::onVolumeLevelsUpdated(double baseline, double current, doub
 	if (baseline > 0.0) {
 		// Baseline collected, show all values
 		double currentPercent = threshold > 0.0 ? (current / threshold * 100.0) : 0.0;
-		text = QString("Volume: %1 (%.1f%%) | Baseline: %2 | Threshold: %3")
+		text = QString("Current: %1 (%2%) | Baseline: %3 | Threshold: %4\nMin: %5 | Max: %6 | Avg: %7")
 			       .arg(current, 0, 'f', 6)
-			       .arg(currentPercent)
+			       .arg(currentPercent, 0, 'f', 1)
 			       .arg(baseline, 0, 'f', 6)
-			       .arg(threshold, 0, 'f', 6);
+			       .arg(threshold, 0, 'f', 6)
+			       .arg(minVol, 0, 'f', 6)
+			       .arg(maxVol, 0, 'f', 6)
+			       .arg(avgVol, 0, 'f', 6);
 	} else {
 		// Still collecting baseline
-		text = QString("Volume: %1 | Baseline: collecting... | Threshold: --").arg(current, 0, 'f', 6);
+		text = QString("Current: %1 | Baseline: collecting... | Threshold: --\nMin: %2 | Max: %3 | Avg: %4")
+			       .arg(current, 0, 'f', 6)
+			       .arg(minVol, 0, 'f', 6)
+			       .arg(maxVol, 0, 'f', 6)
+			       .arg(avgVol, 0, 'f', 6);
 	}
 	m_volumeLevelsLabel->setText(text);
 }
