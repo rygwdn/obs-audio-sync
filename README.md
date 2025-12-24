@@ -4,7 +4,7 @@ A plugin for OBS Studio that helps users identify and correct audio/video synchr
 
 ## Features
 
-- **Recording Discovery**: Automatically scans and lists recordings under a configurable duration threshold (default: 15 seconds)
+- **Recording Discovery**: Automatically scans and lists recordings under a configurable duration threshold (default: 30 seconds)
 - **Audio Spike Detection**: Automatically finds the largest audio spike in recordings using FFmpeg
 - **Timeline Visualization**: Interactive timeline showing:
   - Audio waveform visualization
@@ -66,7 +66,7 @@ The plugin will be built to `rundir/RelWithDebInfo/` (or your build configuratio
 
 1. **Open OBS Studio** and ensure the plugin is loaded
 2. **Access the panel**: The "Audio Sync" panel should appear in OBS (View → Docks → Audio Sync)
-3. **Select a recording**: Double-click on a recording from the list (recordings under 15 seconds)
+3. **Select a recording**: Double-click on a recording from the list (recordings under 30 seconds)
 4. **Review the analysis**:
    - The timeline shows the audio waveform and detected spike
    - Navigate through video frames using Previous/Next buttons

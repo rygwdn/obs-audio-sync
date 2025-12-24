@@ -40,7 +40,7 @@ public:
 	RecordingScanner(RecordingScanner &&) = delete;
 	RecordingScanner &operator=(RecordingScanner &&) = delete;
 
-	static QList<RecordingInfo> scanRecordings(double maxDurationSeconds = 15.0);
+	static QList<RecordingInfo> scanRecordings(double maxDurationSeconds = 30.0);
 	static bool isValidVideoFile(const QString &filePath); // Public for testing
 
 private:

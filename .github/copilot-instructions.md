@@ -5,7 +5,7 @@
 **OBS Audio Sync Plugin** is a Qt-based plugin for OBS Studio that helps users identify and correct audio/video synchronization issues in recordings.
 
 **Key Features:**
-- Scans and lists short recordings (< 15 seconds by default)
+- Scans and lists short recordings (< 30 seconds by default)
 - Detects audio spikes using FFmpeg
 - Visualizes audio waveforms and video frames on an interactive timeline
 - Calculates and displays sync offsets between audio spikes and video frames
