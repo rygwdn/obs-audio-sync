@@ -53,7 +53,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
     obs-studio \
     libobs-dev \
-    libobs0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Qt6 dependencies (including Qt6 Test and private headers)
