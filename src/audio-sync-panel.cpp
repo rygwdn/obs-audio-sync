@@ -56,6 +56,12 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QWidget(parent)
 		&AudioSyncPanel::onVolumeLevelsUpdated);
 	connect(m_audioMonitor, &RealTimeAudioMonitor::monitoringError, this, &AudioSyncPanel::onMonitoringError);
 
+	// Initialize auto-sync timers
+	m_autoSyncStatusTimer = new QTimer(this);
+	m_autoSyncStatusTimer->setSingleShot(true);
+	m_autoSyncTimeoutTimer = new QTimer(this);
+	m_autoSyncTimeoutTimer->setSingleShot(true);
+
 	setupUI();
 	populateAudioSources();
 	refreshRecordings();
@@ -102,6 +108,16 @@ AudioSyncPanel::~AudioSyncPanel()
 	if (m_refreshTimer) {
 		m_refreshTimer->stop();
 		disconnect(m_refreshTimer, nullptr, this, nullptr);
+	}
+
+	// Stop auto-sync timers
+	if (m_autoSyncStatusTimer) {
+		m_autoSyncStatusTimer->stop();
+		disconnect(m_autoSyncStatusTimer, nullptr, this, nullptr);
+	}
+	if (m_autoSyncTimeoutTimer) {
+		m_autoSyncTimeoutTimer->stop();
+		disconnect(m_autoSyncTimeoutTimer, nullptr, this, nullptr);
 	}
 
 	// Stop and cleanup worker threads
@@ -592,14 +608,17 @@ void AudioSyncPanel::startAutoSyncRecording()
 	blog(LOG_INFO, "[AudioSync] startAutoSyncRecording: Started monitoring OBS audio output");
 
 	// Update UI after monitoring starts (baseline collection phase)
-	QTimer::singleShot(2100, this, [this]() {
+	disconnect(m_autoSyncStatusTimer, nullptr, this, nullptr);
+	connect(m_autoSyncStatusTimer, &QTimer::timeout, this, [this]() {
 		if (m_autoSyncState == AutoSyncState::Recording) {
 			m_statusLabel->setText("Recording... (Waiting for clap)");
 		}
 	});
+	m_autoSyncStatusTimer->start(2100);
 
 	// Set timeout (30 seconds)
-	QTimer::singleShot(30000, this, [this]() {
+	disconnect(m_autoSyncTimeoutTimer, nullptr, this, nullptr);
+	connect(m_autoSyncTimeoutTimer, &QTimer::timeout, this, [this]() {
 		if (m_autoSyncState == AutoSyncState::Recording) {
 			// Timeout reached - stop without modal
 			stopAutoSyncRecording(false);
@@ -607,6 +626,7 @@ void AudioSyncPanel::startAutoSyncRecording()
 						 "No audio spike detected within 30 seconds. Recording stopped.");
 		}
 	});
+	m_autoSyncTimeoutTimer->start(30000);
 }
 
 void AudioSyncPanel::stopAutoSyncRecording(bool openModal)
@@ -617,6 +637,14 @@ void AudioSyncPanel::stopAutoSyncRecording(bool openModal)
 
 	// Store whether we should open modal
 	bool shouldOpenModal = openModal || (m_autoSyncState == AutoSyncState::PostSpike);
+
+	// Stop auto-sync timers to prevent them from firing after we've stopped
+	if (m_autoSyncStatusTimer) {
+		m_autoSyncStatusTimer->stop();
+	}
+	if (m_autoSyncTimeoutTimer) {
+		m_autoSyncTimeoutTimer->stop();
+	}
 
 	// Stop monitoring
 	m_audioMonitor->stopMonitoring();
