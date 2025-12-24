@@ -165,6 +165,10 @@ private:
 	QString m_autoSyncRecordingPath;
 	RealTimeAudioMonitor *m_audioMonitor{nullptr};
 	double m_spikeTimestamp{0.0};
+
+	// Auto-sync timers (need to be tracked to properly cancel them)
+	QTimer *m_autoSyncStatusTimer{nullptr};  // Timer for status update after baseline collection
+	QTimer *m_autoSyncTimeoutTimer{nullptr}; // Timer for 30-second timeout
 };
 
 #endif // AUDIO_SYNC_PANEL_H
