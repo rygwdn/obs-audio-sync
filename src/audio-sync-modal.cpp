@@ -415,17 +415,18 @@ void AudioSyncModal::updateSyncDisplay()
 					  .arg(FRAME_DIFF, 0, 'f', 2)
 					  .arg(distanceMeters, 0, 'f', 2);
 
-	// Best practice color coding:
-	// Green: < 1 frame difference (perfect sync)
-	// Yellow: 1-2 frames difference (acceptable)
-	// Red: > 2 frames difference (needs correction)
+	// Best practice color coding based on ITU/ATSC standards:
+	// Green: < 22ms in either direction (film standard)
+	// Yellow: 45ms lead to 125ms lag (ITU detectability threshold)
+	// Red: outside of the above (requires correction)
 	QString color = "white";
-	if (qAbs(FRAME_DIFF) < 1.0) {
-		color = "green"; // In sync
-	} else if (qAbs(FRAME_DIFF) < 2.0) {
-		color = "yellow"; // Close
+	double absOffsetMs = qAbs(m_calculatedOffsetMs);
+	if (absOffsetMs < 22.0) {
+		color = "green"; // In sync (film standard)
+	} else if (m_calculatedOffsetMs >= -45.0 && m_calculatedOffsetMs <= 125.0) {
+		color = "yellow"; // Acceptable (ITU threshold)
 	} else {
-		color = "red"; // Out of sync
+		color = "red"; // Out of sync (needs correction)
 	}
 
 	m_syncOffsetLabel->setText(SYNC_TEXT);
