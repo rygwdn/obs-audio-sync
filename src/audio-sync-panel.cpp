@@ -387,7 +387,7 @@ void AudioSyncPanel::refreshRecordings()
 	m_recordingList->clear();
 
 	// Start scanning in background thread
-	QMetaObject::invokeMethod(m_scanWorker, "scanRecordings", Qt::QueuedConnection, Q_ARG(double, 15.0));
+	QMetaObject::invokeMethod(m_scanWorker, "scanRecordings", Qt::QueuedConnection, Q_ARG(double, 30.0));
 }
 
 void AudioSyncPanel::onRecordingsScanned(const QList<RecordingInfo> &recordings)
