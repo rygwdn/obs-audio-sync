@@ -45,14 +45,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsimde-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Add OBS PPA and install OBS Studio development packages
+# Add OBS PPA and install OBS Studio packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
     && add-apt-repository --yes ppa:obsproject/obs-studio \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
     obs-studio \
-    libobs-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Qt6 dependencies (including Qt6 Test and private headers)
