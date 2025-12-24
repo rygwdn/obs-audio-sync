@@ -112,8 +112,6 @@ public slots:
 
 private slots:
 	void onRecordingSelected(QListWidgetItem *item);
-	void onRefreshClicked();
-	void onStartSyncClicked();
 	void onAutoSyncClicked();
 	// Worker slots
 	void onRecordingsScanned(const QList<RecordingInfo> &recordings);
@@ -137,8 +135,6 @@ private:
 	QListWidget *m_recordingList{nullptr};
 	QLabel *m_statusLabel{nullptr};
 	QLabel *m_volumeLevelsLabel{nullptr}; // Volume levels display during auto sync
-	QPushButton *m_refreshButton{nullptr};
-	QPushButton *m_startSyncButton{nullptr};
 	QPushButton *m_autoSyncButton{nullptr};
 	QPushButton *m_cancelAutoSyncButton{nullptr}; // Cancel button (visible during auto-sync)
 	QPushButton *m_endAutoSyncButton{nullptr};    // End button (visible during auto-sync)
@@ -146,6 +142,7 @@ private:
 	QVBoxLayout *m_layout{nullptr};
 	QProgressBar *m_spinner{nullptr};
 	QLabel *m_spinnerLabel{nullptr};
+	QTimer *m_statsThrottleTimer{nullptr}; // Timer to throttle stats updates
 
 	// Worker threads
 	QThread *m_scanThread{nullptr};
