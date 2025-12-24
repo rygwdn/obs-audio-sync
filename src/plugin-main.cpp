@@ -125,31 +125,6 @@ bool connectSourceSignals(void *data, obs_source_t *source)
 
 	return true;
 }
-
-// Disconnect signal handlers for a source
-bool disconnectSourceSignals(void *data, obs_source_t *source)
-{
-	Q_UNUSED(data);
-
-	if (source == nullptr) {
-		return true;
-	}
-
-	signal_handler_t *handler = obs_source_get_signal_handler(source);
-	if (handler == nullptr) {
-		return true;
-	}
-
-	// Disconnect from source signals
-	signal_handler_disconnect(handler, "show", onSourceEvent, nullptr);
-	signal_handler_disconnect(handler, "hide", onSourceEvent, nullptr);
-	signal_handler_disconnect(handler, "activate", onSourceEvent, nullptr);
-	signal_handler_disconnect(handler, "deactivate", onSourceEvent, nullptr);
-	signal_handler_disconnect(handler, "audio_mixers", onSourceEvent, nullptr);
-	signal_handler_disconnect(handler, "destroy", onSourceEvent, nullptr);
-
-	return true;
-}
 } // namespace
 
 bool obs_module_load(void)
@@ -177,8 +152,9 @@ bool obs_module_load(void)
 
 void obs_module_unload(void)
 {
-	// Disconnect signal handlers from all sources
-	obs_enum_sources(disconnectSourceSignals, nullptr);
+	// Do NOT enumerate sources during unload - they may already be destroyed
+	// during OBS shutdown, causing crashes. Signal handlers will be cleaned up
+	// automatically when sources are destroyed.
 
 	// Unregister event callback only if it was registered
 	if (eventCallbackRegistered) {
