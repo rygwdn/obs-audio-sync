@@ -61,6 +61,9 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QWidget(parent)
 	m_autoSyncStatusTimer->setSingleShot(true);
 	m_autoSyncTimeoutTimer = new QTimer(this);
 	m_autoSyncTimeoutTimer->setSingleShot(true);
+	m_statsThrottleTimer = new QTimer(this);
+	m_statsThrottleTimer->setSingleShot(true);
+	m_statsThrottleTimer->setInterval(100); // Throttle to 10 updates per second
 
 	setupUI();
 	populateAudioSources();
@@ -84,12 +87,6 @@ AudioSyncPanel::~AudioSyncPanel()
 	// Disconnect UI widget signals (safety measure - prevents signals during destruction)
 	if (m_recordingList) {
 		disconnect(m_recordingList, nullptr, this, nullptr);
-	}
-	if (m_refreshButton) {
-		disconnect(m_refreshButton, nullptr, this, nullptr);
-	}
-	if (m_startSyncButton) {
-		disconnect(m_startSyncButton, nullptr, this, nullptr);
 	}
 	if (m_autoSyncButton) {
 		disconnect(m_autoSyncButton, nullptr, this, nullptr);
@@ -119,6 +116,10 @@ AudioSyncPanel::~AudioSyncPanel()
 		m_autoSyncTimeoutTimer->stop();
 		disconnect(m_autoSyncTimeoutTimer, nullptr, this, nullptr);
 	}
+	if (m_statsThrottleTimer) {
+		m_statsThrottleTimer->stop();
+		disconnect(m_statsThrottleTimer, nullptr, this, nullptr);
+	}
 
 	// Stop and cleanup worker threads
 	// Workers will be automatically deleted via deleteLater when threads finish
@@ -136,19 +137,7 @@ void AudioSyncPanel::setupUI()
 	m_layout->setContentsMargins(10, 10, 10, 10);
 	m_layout->setSpacing(10);
 
-	// Title
-	auto *titleLabel = new QLabel("Audio Sync", this);
-	QFont titleFont = titleLabel->font();
-	titleFont.setPointSize(14);
-	titleFont.setBold(true);
-	titleLabel->setFont(titleFont);
-	m_layout->addWidget(titleLabel);
-
-	// Recording list label
-	auto *listLabel = new QLabel("Recordings (< 15s):", this);
-	m_layout->addWidget(listLabel);
-
-	// Recording list (styled list items)
+	// Recording list (styled list items) - no header
 	m_recordingList = new QListWidget(this);
 	m_recordingList->setSelectionMode(QAbstractItemView::SingleSelection);
 	m_recordingList->setMaximumHeight(200);
@@ -156,43 +145,28 @@ void AudioSyncPanel::setupUI()
 	m_recordingList->setItemDelegate(new HtmlListDelegate(m_recordingList));
 	m_layout->addWidget(m_recordingList);
 
-	// Button layout
-	// Audio source selection dropdown
-	auto *sourceLayout = new QHBoxLayout();
-	auto *sourceLabel = new QLabel("Audio Source:", this);
-	sourceLayout->addWidget(sourceLabel);
+	// Auto Sync controls layout - source dropdown next to Auto Sync button
+	auto *autoSyncLayout = new QHBoxLayout();
 	m_audioSourceCombo = new QComboBox(this);
 	m_audioSourceCombo->setToolTip("Select audio source to monitor for clap detection");
-	sourceLayout->addWidget(m_audioSourceCombo);
-	auto *refreshSourcesButton = new QPushButton("Refresh", this);
-	refreshSourcesButton->setToolTip("Refresh list of audio sources from current scene");
-	refreshSourcesButton->setMaximumWidth(80);
-	connect(refreshSourcesButton, &QPushButton::clicked, this, &AudioSyncPanel::populateAudioSources);
-	sourceLayout->addWidget(refreshSourcesButton);
-	m_layout->addLayout(sourceLayout);
+	autoSyncLayout->addWidget(m_audioSourceCombo);
 
-	auto *buttonLayout = new QHBoxLayout();
-	m_refreshButton = new QPushButton("Refresh", this);
-	buttonLayout->addWidget(m_refreshButton);
-	m_startSyncButton = new QPushButton("Start Sync", this);
-	m_startSyncButton->setEnabled(false);
-	buttonLayout->addWidget(m_startSyncButton);
 	m_autoSyncButton = new QPushButton("Auto Sync", this);
 	m_autoSyncButton->setToolTip("Start recording, detect clap, and automatically analyze");
-	buttonLayout->addWidget(m_autoSyncButton);
+	autoSyncLayout->addWidget(m_autoSyncButton);
 
 	// Cancel and End buttons (initially hidden, shown during auto-sync)
 	m_cancelAutoSyncButton = new QPushButton("Cancel", this);
 	m_cancelAutoSyncButton->setToolTip("Stop recording without opening analysis modal");
 	m_cancelAutoSyncButton->setVisible(false);
-	buttonLayout->addWidget(m_cancelAutoSyncButton);
+	autoSyncLayout->addWidget(m_cancelAutoSyncButton);
 
 	m_endAutoSyncButton = new QPushButton("End", this);
 	m_endAutoSyncButton->setToolTip("Stop recording and open analysis modal");
 	m_endAutoSyncButton->setVisible(false);
-	buttonLayout->addWidget(m_endAutoSyncButton);
+	autoSyncLayout->addWidget(m_endAutoSyncButton);
 
-	m_layout->addLayout(buttonLayout);
+	m_layout->addLayout(autoSyncLayout);
 
 	// Status label
 	m_statusLabel = new QLabel("Ready", this);
@@ -202,12 +176,16 @@ void AudioSyncPanel::setupUI()
 	m_statusLabel->setPalette(statusPalette);
 	m_layout->addWidget(m_statusLabel);
 
-	// Volume levels label (initially hidden)
+	// Volume levels label (initially hidden) - dimmed with smaller font
 	m_volumeLevelsLabel = new QLabel("", this);
-	// Use theme color with monospace font
+	// Use theme color with monospace font, dimmed
 	QFont monoFont("monospace");
 	monoFont.setStyleHint(QFont::Monospace);
+	monoFont.setPointSizeF(monoFont.pointSizeF() * 0.9); // Slightly smaller
 	m_volumeLevelsLabel->setFont(monoFont);
+	QPalette volumePalette = m_volumeLevelsLabel->palette();
+	volumePalette.setColor(QPalette::WindowText, volumePalette.color(QPalette::Disabled, QPalette::WindowText));
+	m_volumeLevelsLabel->setPalette(volumePalette);
 	m_volumeLevelsLabel->setVisible(false);
 	m_layout->addWidget(m_volumeLevelsLabel);
 
@@ -226,12 +204,8 @@ void AudioSyncPanel::setupUI()
 	m_spinnerLabel->setVisible(false);
 	m_layout->addWidget(m_spinnerLabel);
 
-	// Connect signals
-	connect(m_recordingList, &QListWidget::itemSelectionChanged, this,
-		[this]() { m_startSyncButton->setEnabled(m_recordingList->currentItem() != nullptr); });
+	// Connect signals - only double-click to open recordings
 	connect(m_recordingList, &QListWidget::itemDoubleClicked, this, &AudioSyncPanel::onRecordingSelected);
-	connect(m_refreshButton, &QPushButton::clicked, this, &AudioSyncPanel::onRefreshClicked);
-	connect(m_startSyncButton, &QPushButton::clicked, this, &AudioSyncPanel::onStartSyncClicked);
 	connect(m_autoSyncButton, &QPushButton::clicked, this, &AudioSyncPanel::onAutoSyncClicked);
 	connect(m_cancelAutoSyncButton, &QPushButton::clicked, this,
 		[this]() { stopAutoSyncRecording(false); }); // Cancel without modal
@@ -411,7 +385,6 @@ void AudioSyncPanel::refreshRecordings()
 {
 	showSpinner("Scanning recordings...");
 	m_recordingList->clear();
-	m_refreshButton->setEnabled(false);
 
 	// Start scanning in background thread
 	QMetaObject::invokeMethod(m_scanWorker, "scanRecordings", Qt::QueuedConnection, Q_ARG(double, 15.0));
@@ -439,9 +412,7 @@ void AudioSyncPanel::onRecordingsScanned(const QList<RecordingInfo> &recordings)
 	}
 
 	hideSpinner();
-	m_statusLabel->setText(QString("Found %1 recordings").arg(m_recordingList->count()));
-	m_refreshButton->setEnabled(true);
-	m_startSyncButton->setEnabled(m_recordingList->currentItem() != nullptr);
+	m_statusLabel->setText("Ready");
 }
 
 void AudioSyncPanel::onScanError(const QString &error)
@@ -449,22 +420,10 @@ void AudioSyncPanel::onScanError(const QString &error)
 	hideSpinner();
 	m_statusLabel->setText("Scan failed");
 	QMessageBox::warning(this, "Scan Error", error);
-	m_refreshButton->setEnabled(true);
 }
 
-void AudioSyncPanel::onRecordingSelected(QListWidgetItem *item) // NOLINT(readability-convert-member-functions-to-static)
+void AudioSyncPanel::onRecordingSelected(QListWidgetItem *item)
 {
-	if (item == nullptr) {
-		return;
-	}
-
-	QString const FILE_PATH = item->data(Qt::UserRole).toString();
-	onStartSyncClicked();
-}
-
-void AudioSyncPanel::onStartSyncClicked()
-{
-	QListWidgetItem *item = m_recordingList->currentItem();
 	if (item == nullptr) {
 		return;
 	}
@@ -473,11 +432,6 @@ void AudioSyncPanel::onStartSyncClicked()
 	auto *modal = new AudioSyncModal(FILE_PATH, this);
 	modal->exec();
 	delete modal;
-}
-
-void AudioSyncPanel::onRefreshClicked()
-{
-	refreshRecordings();
 }
 
 void AudioSyncPanel::scheduleDelayedRefresh()
@@ -575,16 +529,13 @@ void AudioSyncPanel::startAutoSyncRecording()
 	m_cancelAutoSyncButton->setEnabled(true);
 	m_endAutoSyncButton->setVisible(true);
 	m_endAutoSyncButton->setEnabled(true);
-	m_refreshButton->setEnabled(false);
-	m_startSyncButton->setEnabled(false);
-	m_statusLabel->setText("Recording... (Collecting baseline)");
+	m_statusLabel->setText("Collecting baseline");
 	// Use theme's warning/orange color
 	QPalette palette = m_statusLabel->palette();
 	palette.setColor(QPalette::WindowText, QColor(255, 140, 0)); // Orange
 	m_statusLabel->setPalette(palette);
 	m_volumeLevelsLabel->setVisible(true);
-	m_volumeLevelsLabel->setText("Current: -- | Baseline: collecting... | Threshold: --\n"
-				     "Min: -- | Max: -- | Avg: --");
+	m_volumeLevelsLabel->setText("Current: -- | Min: -- | Baseline: -- | Max: --");
 
 	// Get selected audio source
 	QString selectedSource = m_audioSourceCombo->currentText();
@@ -611,7 +562,8 @@ void AudioSyncPanel::startAutoSyncRecording()
 	disconnect(m_autoSyncStatusTimer, nullptr, this, nullptr);
 	connect(m_autoSyncStatusTimer, &QTimer::timeout, this, [this]() {
 		if (m_autoSyncState == AutoSyncState::Recording) {
-			m_statusLabel->setText("Recording... (Waiting for clap)");
+			m_statusLabel->setText("Waiting for clap");
+			// Keep orange color
 		}
 	});
 	m_autoSyncStatusTimer->start(2100);
@@ -662,8 +614,7 @@ void AudioSyncPanel::stopAutoSyncRecording(bool openModal)
 	m_autoSyncButton->setEnabled(true);
 	m_cancelAutoSyncButton->setVisible(false);
 	m_endAutoSyncButton->setVisible(false);
-	m_refreshButton->setEnabled(true);
-	m_statusLabel->setText(shouldOpenModal ? "Stopping recording..." : "Recording cancelled");
+	m_statusLabel->setText(shouldOpenModal ? "Stopping..." : "Cancelled");
 	// Reset to theme's dim text color
 	QPalette palette = m_statusLabel->palette();
 	palette.setColor(QPalette::WindowText, palette.color(QPalette::Disabled, QPalette::WindowText));
@@ -686,10 +637,10 @@ void AudioSyncPanel::onSpikeDetected(double timestamp)
 	m_autoSyncState = AutoSyncState::PostSpike;
 
 	// Update UI
-	m_statusLabel->setText("Clap detected! Recording 2 more seconds...");
+	m_statusLabel->setText("Clap detected");
 	// Use theme's success/green color
 	QPalette palette = m_statusLabel->palette();
-	palette.setColor(QPalette::WindowText, QColor(0, 170, 0)); // Green
+	palette.setColor(QPalette::WindowText, QColor(0, 200, 0)); // Bright green
 	m_statusLabel->setPalette(palette);
 }
 
@@ -708,38 +659,37 @@ void AudioSyncPanel::onRecordingComplete(double spikeTimestamp)
 void AudioSyncPanel::onVolumeLevelsUpdated(double baseline, double current, double threshold, double minVol,
 					   double maxVol, double avgVol)
 {
+	Q_UNUSED(avgVol);
 	if (m_autoSyncState != AutoSyncState::Recording && m_autoSyncState != AutoSyncState::PostSpike) {
 		return;
 	}
 
-	QString text;
+	// Throttle updates - only update UI every 100ms
+	if (m_statsThrottleTimer->isActive()) {
+		return;
+	}
+
 	// Check if baseline has been collected by seeing if threshold is set
-	// Threshold is only calculated when baseline is collected (threshold = baseline * spikeThreshold)
-	// Since spikeThreshold > 1.0, threshold will be > 0.0 if baseline > 0.0 and collected
-	// However, baseline could be very small but still valid, so use a small epsilon
 	const double epsilon = 0.000001;
+	QString text;
 	if (baseline >= epsilon || threshold >= epsilon) {
-		// Baseline collected, show all values
-		double currentPercent = threshold > epsilon ? (current / threshold * 100.0) : 0.0;
-		text = QString("Current: %1 (%2%) | Baseline: %3 | Threshold: %4\n"
-			       "Min: %5 | Max: %6 | Avg: %7")
-			       .arg(current, 0, 'f', 6)
-			       .arg(currentPercent, 0, 'f', 1)
-			       .arg(baseline, 0, 'f', 6)
-			       .arg(threshold, 0, 'f', 6)
-			       .arg(minVol, 0, 'f', 6)
-			       .arg(maxVol, 0, 'f', 6)
-			       .arg(avgVol, 0, 'f', 6);
+		// Baseline collected - show compact inline stats with reduced precision
+		text = QString("Current: %1 | Min: %2 | Baseline: %3 | Max: %4")
+			       .arg(current, 0, 'f', 3)
+			       .arg(minVol, 0, 'f', 3)
+			       .arg(baseline, 0, 'f', 3)
+			       .arg(maxVol, 0, 'f', 3);
 	} else {
-		// Still collecting baseline
-		text = QString("Current: %1 | Baseline: collecting... | Threshold: --\n"
-			       "Min: %2 | Max: %3 | Avg: %4")
-			       .arg(current, 0, 'f', 6)
-			       .arg(minVol, 0, 'f', 6)
-			       .arg(maxVol, 0, 'f', 6)
-			       .arg(avgVol, 0, 'f', 6);
+		// Still collecting baseline - show placeholder
+		text = QString("Current: %1 | Min: %2 | Baseline: -- | Max: %3")
+			       .arg(current, 0, 'f', 3)
+			       .arg(minVol, 0, 'f', 3)
+			       .arg(maxVol, 0, 'f', 3);
 	}
 	m_volumeLevelsLabel->setText(text);
+
+	// Start throttle timer
+	m_statsThrottleTimer->start();
 }
 
 void AudioSyncPanel::onMonitoringError(const QString &error)
