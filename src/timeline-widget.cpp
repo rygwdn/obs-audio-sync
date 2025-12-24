@@ -409,10 +409,11 @@ void TimelineWidget::drawFrameDifferenceBars(QPainter &painter)
 		double normalized = diff / maxDiff; // 0.0 to 1.0
 
 		// Bar height (max 20 pixels, centered)
+		// Always show at least a minimal marker (2 pixels) even if no difference
 		int barHeight = (int)(normalized * MAX_BAR_HEIGHT);
-
-		if (barHeight <= 0) {
-			continue; // Skip zero-height bars
+		const int MIN_BAR_HEIGHT = 2;
+		if (barHeight < MIN_BAR_HEIGHT) {
+			barHeight = MIN_BAR_HEIGHT;
 		}
 
 		// Color based on difference intensity
