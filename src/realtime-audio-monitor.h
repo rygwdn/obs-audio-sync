@@ -99,6 +99,9 @@ private:
 	// Calculate average amplitude of recent samples
 	double calculateBaselineAverage() const;
 
+	// Calculate p99 (99th percentile) of audio samples
+	double calculateP99(const QVector<AudioSample> &samples) const;
+
 	// Collect baseline samples and check if baseline collection is complete
 	// Returns true if baseline collection just completed
 	bool collectBaseline(const QVector<AudioSample> &newSamples);

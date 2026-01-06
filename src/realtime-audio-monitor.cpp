@@ -293,22 +293,18 @@ void RealTimeAudioMonitor::processVolumeData()
 		baseline = m_cachedBaseline;
 		threshold = m_cachedThreshold;
 
-		// Get current level from most recent sample
+		// Get current level using p99 of recent samples
 		if (!newSamples.isEmpty()) {
-		    // TODO: calculate p99 of newSamples
-			current = newSamples.last().amplitude;
+			current = calculateP99(newSamples);
 		} else if (!m_recentSamples.isEmpty()) {
-			// TODO: calculate p99 of last interval of m_recentSamples
-			current = m_recentSamples.last().amplitude;
+			current = calculateP99(m_recentSamples);
 		}
 	} else {
-		// During baseline collection, show current level
+		// During baseline collection, show current level using p99
 		if (!newSamples.isEmpty()) {
-			// TODO: calculate p99 of newSamples
-			current = newSamples.last().amplitude;
+			current = calculateP99(newSamples);
 		} else if (!m_recentSamples.isEmpty()) {
-			// TODO: calculate p99 of last interval of m_recentSamples
-			current = m_recentSamples.last().amplitude;
+			current = calculateP99(m_recentSamples);
 		}
 	}
 
@@ -360,6 +356,30 @@ double RealTimeAudioMonitor::calculateBaselineAverage() const
 	}
 
 	return count > 0 ? (sum / count) : 0.0;
+}
+
+double RealTimeAudioMonitor::calculateP99(const QVector<AudioSample> &samples) const
+{
+	if (samples.isEmpty()) {
+		return 0.0;
+	}
+
+	// Extract amplitudes from samples
+	QVector<double> amplitudes;
+	amplitudes.reserve(samples.size());
+	for (const AudioSample &sample : samples) {
+		amplitudes.append(sample.amplitude);
+	}
+
+	// Sort amplitudes to find percentile
+	std::sort(amplitudes.begin(), amplitudes.end());
+
+	// Calculate p99 index (99th percentile)
+	// Use ceiling to be conservative (prefer higher values for spike detection)
+	int p99Index = static_cast<int>(std::ceil(amplitudes.size() * 0.99)) - 1;
+	p99Index = std::max(0, std::min(p99Index, amplitudes.size() - 1));
+
+	return amplitudes[p99Index];
 }
 
 bool RealTimeAudioMonitor::collectBaseline(const QVector<AudioSample> &newSamples)
