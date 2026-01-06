@@ -288,10 +288,11 @@ void RealTimeAudioMonitor::processVolumeData()
 	double avgVol = m_volumeCount > 0 ? (m_volumeSum / m_volumeCount) : 0.0;
 
 	if (m_baselineCollected) {
-		// calculate threshold as something like:
-		// if baseline p99 < -30db then threshold = -20db
-		// if baselind p99 < -20db then threshold = -15db
-		// else threshold = -5db
+		// Use adaptive threshold based on baseline noise floor:
+		// - Very quiet (< -30dB): 1.5x multiplier
+		// - Quiet (-30dB to -20dB): 2.0x multiplier
+		// - Moderate (-20dB to -10dB): 2.5x multiplier
+		// - Noisy (> -10dB): 3.0x multiplier
 		baseline = m_cachedBaseline;
 		threshold = m_cachedThreshold;
 
@@ -412,6 +413,40 @@ double RealTimeAudioMonitor::calculateP99(const QVector<AudioSample> &samples) c
 	return amplitudes[p99Index];
 }
 
+double RealTimeAudioMonitor::amplitudeToDb(double amplitude) const
+{
+	if (amplitude <= 0.0) {
+		return -INFINITY;
+	}
+	// Convert linear amplitude to dB: dB = 20 * log10(amplitude)
+	return 20.0 * std::log10(amplitude);
+}
+
+double RealTimeAudioMonitor::calculateAdaptiveThreshold(double baselineAmplitude) const
+{
+	// Convert baseline to dB for adaptive threshold calculation
+	double baselineDb = amplitudeToDb(baselineAmplitude);
+
+	// Adaptive threshold multiplier based on baseline noise floor:
+	// - Very quiet environment (< -30dB): use lower multiplier (1.5x) since spikes stand out more
+	// - Quiet environment (-30dB to -20dB): use moderate multiplier (2.0x)
+	// - Moderate environment (-20dB to -10dB): use higher multiplier (2.5x)
+	// - Noisy environment (> -10dB): use very high multiplier (3.0x)
+
+	double thresholdMultiplier;
+	if (baselineDb < -30.0) {
+		thresholdMultiplier = 1.5;
+	} else if (baselineDb < -20.0) {
+		thresholdMultiplier = 2.0;
+	} else if (baselineDb < -10.0) {
+		thresholdMultiplier = 2.5;
+	} else {
+		thresholdMultiplier = 3.0;
+	}
+
+	return thresholdMultiplier;
+}
+
 bool RealTimeAudioMonitor::collectBaseline(const QVector<AudioSample> &newSamples)
 {
 	// Add new samples to recent samples buffer
@@ -429,21 +464,24 @@ bool RealTimeAudioMonitor::collectBaseline(const QVector<AudioSample> &newSample
 		// Baseline collection complete
 		m_baselineCollected = true;
 
-		// Calculate and cache baseline and thresholds
+		// Calculate and cache baseline and thresholds using adaptive multiplier
 		m_cachedBaseline = calculateBaselineAverage();
-		m_cachedThreshold = std::min(m_cachedBaseline * m_spikeThreshold, 0.9);
+		double adaptiveMultiplier = calculateAdaptiveThreshold(m_cachedBaseline);
+		m_cachedThreshold = std::min(m_cachedBaseline * adaptiveMultiplier, 0.9);
 		m_cachedSpikeEndThreshold = m_cachedBaseline * m_spikeEndThreshold;
 
-		double unclamped_threshold = m_cachedBaseline * m_spikeThreshold;
+		double baselineDb = amplitudeToDb(m_cachedBaseline);
+		double unclamped_threshold = m_cachedBaseline * adaptiveMultiplier;
 		if (unclamped_threshold > 0.9) {
 			blog(LOG_WARNING,
-			     "[AudioSync] RealTimeAudioMonitor: Noisy environment detected - baseline: %.6f, threshold clamped from %.6f to %.6f",
-			     m_cachedBaseline, unclamped_threshold, m_cachedThreshold);
+			     "[AudioSync] RealTimeAudioMonitor: Noisy environment detected - baseline: %.6f (%.1f dB), threshold clamped from %.6f to %.6f",
+			     m_cachedBaseline, baselineDb, unclamped_threshold, m_cachedThreshold);
 		}
 
 		blog(LOG_INFO,
-		     "[AudioSync] RealTimeAudioMonitor: Baseline collected (%.2fs), average: %.6f, threshold: %.6f, samples: %lld",
-		     elapsed, m_cachedBaseline, m_cachedThreshold, static_cast<long long>(m_recentSamples.size()));
+		     "[AudioSync] RealTimeAudioMonitor: Baseline collected (%.2fs), average: %.6f (%.1f dB), multiplier: %.1fx, threshold: %.6f, samples: %lld",
+		     elapsed, m_cachedBaseline, baselineDb, adaptiveMultiplier, m_cachedThreshold,
+		     static_cast<long long>(m_recentSamples.size()));
 
 		// Remove old samples outside baseline window
 		m_recentSamples.erase(std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),

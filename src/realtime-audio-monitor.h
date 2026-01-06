@@ -103,6 +103,12 @@ private:
 	// Calculate p99 (99th percentile) of audio samples
 	double calculateP99(const QVector<AudioSample> &samples) const;
 
+	// Convert linear amplitude (0.0-1.0) to decibels
+	double amplitudeToDb(double amplitude) const;
+
+	// Calculate adaptive threshold multiplier based on baseline noise level
+	double calculateAdaptiveThreshold(double baselineAmplitude) const;
+
 	// Collect baseline samples and check if baseline collection is complete
 	// Returns true if baseline collection just completed
 	bool collectBaseline(const QVector<AudioSample> &newSamples);
