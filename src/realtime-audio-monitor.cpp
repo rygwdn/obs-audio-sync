@@ -286,19 +286,28 @@ void RealTimeAudioMonitor::processVolumeData()
 	double avgVol = m_volumeCount > 0 ? (m_volumeSum / m_volumeCount) : 0.0;
 
 	if (m_baselineCollected) {
-		baseline = calculateBaselineAverage();
-		threshold = baseline * m_spikeThreshold;
+		// calculate threshold as something like:
+		// if baseline p99 < -30db then threshold = -20db
+		// if baselind p99 < -20db then threshold = -15db
+		// else threshold = -5db
+		baseline = m_cachedBaseline;
+		threshold = m_cachedThreshold;
+
 		// Get current level from most recent sample
 		if (!newSamples.isEmpty()) {
+		    // TODO: calculate p99 of newSamples
 			current = newSamples.last().amplitude;
 		} else if (!m_recentSamples.isEmpty()) {
+			// TODO: calculate p99 of last interval of m_recentSamples
 			current = m_recentSamples.last().amplitude;
 		}
 	} else {
 		// During baseline collection, show current level
 		if (!newSamples.isEmpty()) {
+			// TODO: calculate p99 of newSamples
 			current = newSamples.last().amplitude;
 		} else if (!m_recentSamples.isEmpty()) {
+			// TODO: calculate p99 of last interval of m_recentSamples
 			current = m_recentSamples.last().amplitude;
 		}
 	}
@@ -307,6 +316,7 @@ void RealTimeAudioMonitor::processVolumeData()
 
 	if (m_spikeDetected) {
 		// Spike already detected, check if 2 seconds have passed
+		// TODO: if spikes keep happening during the 2s, then reclcualte the baseline and try again
 		double elapsedSinceSpike = currentTime - m_spikeTimestamp;
 		if (elapsedSinceSpike >= m_postSpikeDuration) {
 			// 2 seconds have passed, stop monitoring
@@ -360,6 +370,7 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 
 	// Check if baseline has been collected (2 seconds of data)
 	if (!m_baselineCollected) {
+		// TODO: split baseline logic into a separate function
 		// Still collecting baseline - add samples and check if we have 2 seconds
 		m_recentSamples.append(newSamples);
 		if (!m_recentSamples.isEmpty()) {
@@ -368,10 +379,21 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 			double elapsed = currentTime - firstTime;
 			if (elapsed >= m_baselineWindowSeconds) {
 				m_baselineCollected = true;
-				double baseline = calculateBaselineAverage();
+				// Calculate and cache baseline and thresholds
+				m_cachedBaseline = calculateBaselineAverage();
+				m_cachedThreshold = std::min(m_cachedBaseline * m_spikeThreshold, 0.9);
+				m_cachedSpikeEndThreshold = m_cachedBaseline * m_spikeEndThreshold;
+
+				double unclamped_threshold = m_cachedBaseline * m_spikeThreshold;
+				if (unclamped_threshold > 0.9) {
+					blog(LOG_WARNING,
+					     "[AudioSync] RealTimeAudioMonitor: Noisy environment detected - baseline: %.6f, threshold clamped from %.6f to %.6f",
+					     m_cachedBaseline, unclamped_threshold, m_cachedThreshold);
+				}
+
 				blog(LOG_INFO,
 				     "[AudioSync] RealTimeAudioMonitor: Baseline collected (%.2fs), average: %.6f, threshold: %.6f, samples: %lld",
-				     elapsed, baseline, baseline * m_spikeThreshold,
+				     elapsed, m_cachedBaseline, m_cachedThreshold,
 				     static_cast<long long>(m_recentSamples.size()));
 			} else {
 				// Log baseline collection progress every 0.5 seconds
@@ -397,34 +419,29 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 		return false;
 	}
 
-	// Baseline collected, now detect spikes
-	double baseline = calculateBaselineAverage();
-	if (baseline <= 0.0) {
+	// Baseline collected, now detect spikes using cached thresholds
+	if (m_cachedBaseline <= 0.0) {
 		// Should not happen if baseline is collected, but handle gracefully
 		m_recentSamples.append(newSamples);
 		return false;
 	}
 
-	double threshold = std::min(baseline * m_spikeThreshold, 0.9); // Clamp to 90% to ensure detectability
-	double spikeEndThreshold = baseline * m_spikeEndThreshold;
+	// Use cached threshold values instead of recalculating
+	double threshold = m_cachedThreshold;
+	double spikeEndThreshold = m_cachedSpikeEndThreshold;
 
 	// Log spike detection parameters once per detection cycle
 	static bool loggedParams = false;
 	if (!loggedParams) {
-		double unclamped_threshold = baseline * m_spikeThreshold;
-		if (unclamped_threshold > 0.9) {
-			blog(LOG_WARNING,
-			     "[AudioSync] RealTimeAudioMonitor: Noisy environment detected - baseline: %.6f, threshold clamped from %.6f to %.6f",
-			     baseline, unclamped_threshold, threshold);
-		}
 		blog(LOG_INFO,
 		     "[AudioSync] RealTimeAudioMonitor: Spike detection active - baseline: %.6f, threshold: %.6f, end threshold: %.6f",
-		     baseline, threshold, spikeEndThreshold);
+		     m_cachedBaseline, threshold, spikeEndThreshold);
 		loggedParams = true;
 	}
 
 	// Check new samples for spike
 	for (const AudioSample &sample : newSamples) {
+		// TODO: can we average amplitudes over small windows, or is the volmeter already doing that?
 		if (m_spikeInProgress) {
 			// Check if spike has exceeded maximum duration
 			double spikeDuration = sample.timestamp - m_spikeStartTime;
@@ -465,7 +482,7 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 
 					blog(LOG_INFO,
 					     "[AudioSync] RealTimeAudioMonitor: Valid clap detected! Time: %.3fs, Duration: %.3fs, Peak: %.6f (%.1fx baseline)",
-					     m_spikeTimestamp, spikeDuration, peakAmplitude, peakAmplitude / baseline);
+					     m_spikeTimestamp, spikeDuration, peakAmplitude, peakAmplitude / m_cachedBaseline);
 
 					// Add samples to recent for baseline maintenance
 					m_recentSamples.append(newSamples);
