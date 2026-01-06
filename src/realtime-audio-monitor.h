@@ -99,6 +99,10 @@ private:
 	// Calculate average amplitude of recent samples
 	double calculateBaselineAverage() const;
 
+	// Collect baseline samples and check if baseline collection is complete
+	// Returns true if baseline collection just completed
+	bool collectBaseline(const QVector<AudioSample> &newSamples);
+
 	// Check if current samples indicate a spike
 	bool detectSpike(const QVector<AudioSample> &newSamples);
 };

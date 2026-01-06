@@ -362,6 +362,70 @@ double RealTimeAudioMonitor::calculateBaselineAverage() const
 	return count > 0 ? (sum / count) : 0.0;
 }
 
+bool RealTimeAudioMonitor::collectBaseline(const QVector<AudioSample> &newSamples)
+{
+	// Add new samples to recent samples buffer
+	m_recentSamples.append(newSamples);
+
+	if (m_recentSamples.isEmpty()) {
+		return false;
+	}
+
+	double currentTime = m_recentSamples.last().timestamp;
+	double firstTime = m_recentSamples.first().timestamp;
+	double elapsed = currentTime - firstTime;
+
+	if (elapsed >= m_baselineWindowSeconds) {
+		// Baseline collection complete
+		m_baselineCollected = true;
+
+		// Calculate and cache baseline and thresholds
+		m_cachedBaseline = calculateBaselineAverage();
+		m_cachedThreshold = std::min(m_cachedBaseline * m_spikeThreshold, 0.9);
+		m_cachedSpikeEndThreshold = m_cachedBaseline * m_spikeEndThreshold;
+
+		double unclamped_threshold = m_cachedBaseline * m_spikeThreshold;
+		if (unclamped_threshold > 0.9) {
+			blog(LOG_WARNING,
+			     "[AudioSync] RealTimeAudioMonitor: Noisy environment detected - baseline: %.6f, threshold clamped from %.6f to %.6f",
+			     m_cachedBaseline, unclamped_threshold, m_cachedThreshold);
+		}
+
+		blog(LOG_INFO,
+		     "[AudioSync] RealTimeAudioMonitor: Baseline collected (%.2fs), average: %.6f, threshold: %.6f, samples: %lld",
+		     elapsed, m_cachedBaseline, m_cachedThreshold, static_cast<long long>(m_recentSamples.size()));
+
+		// Remove old samples outside baseline window
+		m_recentSamples.erase(std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
+						     [currentTime, this](const AudioSample &s) {
+							     return (currentTime - s.timestamp) > m_baselineWindowSeconds;
+						     }),
+				      m_recentSamples.end());
+
+		return true;
+	}
+
+	// Still collecting baseline - log progress every 0.5 seconds
+	static double lastLogTime = 0.0;
+	if (currentTime - lastLogTime >= 0.5) {
+		double currentAvg = calculateBaselineAverage();
+		blog(LOG_INFO,
+		     "[AudioSync] RealTimeAudioMonitor: Collecting baseline: %.2fs / %.2fs, samples: %lld, current avg: %.6f",
+		     elapsed, m_baselineWindowSeconds, static_cast<long long>(m_recentSamples.size()),
+		     currentAvg);
+		lastLogTime = currentTime;
+	}
+
+	// Remove old samples outside baseline window
+	m_recentSamples.erase(std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
+					     [currentTime, this](const AudioSample &s) {
+						     return (currentTime - s.timestamp) > m_baselineWindowSeconds;
+					     }),
+			      m_recentSamples.end());
+
+	return false;
+}
+
 bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 {
 	if (newSamples.isEmpty()) {
@@ -370,52 +434,8 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 
 	// Check if baseline has been collected (2 seconds of data)
 	if (!m_baselineCollected) {
-		// TODO: split baseline logic into a separate function
-		// Still collecting baseline - add samples and check if we have 2 seconds
-		m_recentSamples.append(newSamples);
-		if (!m_recentSamples.isEmpty()) {
-			double currentTime = m_recentSamples.last().timestamp;
-			double firstTime = m_recentSamples.first().timestamp;
-			double elapsed = currentTime - firstTime;
-			if (elapsed >= m_baselineWindowSeconds) {
-				m_baselineCollected = true;
-				// Calculate and cache baseline and thresholds
-				m_cachedBaseline = calculateBaselineAverage();
-				m_cachedThreshold = std::min(m_cachedBaseline * m_spikeThreshold, 0.9);
-				m_cachedSpikeEndThreshold = m_cachedBaseline * m_spikeEndThreshold;
-
-				double unclamped_threshold = m_cachedBaseline * m_spikeThreshold;
-				if (unclamped_threshold > 0.9) {
-					blog(LOG_WARNING,
-					     "[AudioSync] RealTimeAudioMonitor: Noisy environment detected - baseline: %.6f, threshold clamped from %.6f to %.6f",
-					     m_cachedBaseline, unclamped_threshold, m_cachedThreshold);
-				}
-
-				blog(LOG_INFO,
-				     "[AudioSync] RealTimeAudioMonitor: Baseline collected (%.2fs), average: %.6f, threshold: %.6f, samples: %lld",
-				     elapsed, m_cachedBaseline, m_cachedThreshold,
-				     static_cast<long long>(m_recentSamples.size()));
-			} else {
-				// Log baseline collection progress every 0.5 seconds
-				static double lastLogTime = 0.0;
-				if (currentTime - lastLogTime >= 0.5) {
-					double currentAvg = calculateBaselineAverage();
-					blog(LOG_INFO,
-					     "[AudioSync] RealTimeAudioMonitor: Collecting baseline: %.2fs / %.2fs, samples: %lld, current avg: %.6f",
-					     elapsed, m_baselineWindowSeconds,
-					     static_cast<long long>(m_recentSamples.size()), currentAvg);
-					lastLogTime = currentTime;
-				}
-			}
-		}
-		// Remove old samples outside baseline window
-		double currentTime = newSamples.isEmpty() ? 0.0 : newSamples.last().timestamp;
-		m_recentSamples.erase(std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
-						     [currentTime, this](const AudioSample &s) {
-							     return (currentTime - s.timestamp) >
-								    m_baselineWindowSeconds;
-						     }),
-				      m_recentSamples.end());
+		// Collect baseline samples
+		collectBaseline(newSamples);
 		return false;
 	}
 
