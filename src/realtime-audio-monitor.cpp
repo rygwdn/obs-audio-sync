@@ -548,8 +548,10 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 	}
 
 	// Check new samples for spike
+	// Note: Each sample is already a peak value from the volmeter (~20ms windows),
+	// so no additional averaging is needed. Using peak values directly allows us
+	// to detect brief transients like claps.
 	for (const AudioSample &sample : newSamples) {
-		// TODO: can we average amplitudes over small windows, or is the volmeter already doing that?
 		if (m_spikeInProgress) {
 			// Check if spike has exceeded maximum duration
 			double spikeDuration = sample.timestamp - m_spikeStartTime;
