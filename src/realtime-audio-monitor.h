@@ -82,6 +82,7 @@ private:
 	bool m_spikeInProgress{false};   // True when currently tracking a spike
 	double m_spikeTimestamp{0.0};    // Timestamp when spike was detected
 	double m_spikeStartTime{0.0};    // Timestamp when current spike started
+	int m_postSpikeCount{0};         // Count of additional spikes during post-spike period
 	QElapsedTimer m_recordingStartTime;
 	// Statistics tracking
 	double m_minVolume{1.0}; // Minimum volume seen (initialized to max)

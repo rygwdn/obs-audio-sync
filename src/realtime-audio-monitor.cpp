@@ -102,6 +102,7 @@ bool RealTimeAudioMonitor::startMonitoring(const QString &sourceName)
 	m_spikeInProgress = false;
 	m_spikeTimestamp = 0.0;
 	m_spikeStartTime = 0.0;
+	m_postSpikeCount = 0;
 	m_recordingStartTime.start();
 	// Reset statistics
 	m_minVolume = 1.0;
@@ -177,6 +178,7 @@ void RealTimeAudioMonitor::stopMonitoring()
 	m_spikeInProgress = false;
 	m_spikeTimestamp = 0.0;
 	m_spikeStartTime = 0.0;
+	m_postSpikeCount = 0;
 	m_currentTime = 0.0;
 
 	blog(LOG_INFO, "[AudioSync] RealTimeAudioMonitor: Stopped monitoring");
@@ -312,7 +314,6 @@ void RealTimeAudioMonitor::processVolumeData()
 
 	if (m_spikeDetected) {
 		// Spike already detected, check if 2 seconds have passed
-		// TODO: if spikes keep happening during the 2s, then reclcualte the baseline and try again
 		double elapsedSinceSpike = currentTime - m_spikeTimestamp;
 		if (elapsedSinceSpike >= m_postSpikeDuration) {
 			// 2 seconds have passed, stop monitoring
@@ -323,12 +324,41 @@ void RealTimeAudioMonitor::processVolumeData()
 			stopMonitoring();
 			return;
 		}
-		// Continue monitoring, but don't check for new spikes
+
+		// Check if additional spikes are happening during post-spike period
+		// If current level exceeds threshold, increment spike counter
+		if (current > threshold) {
+			m_postSpikeCount++;
+			// If we've detected 3+ additional spikes, the environment is too noisy
+			// Reset and recalculate baseline
+			if (m_postSpikeCount >= 3) {
+				blog(LOG_WARNING,
+				     "[AudioSync] RealTimeAudioMonitor: Too many spikes during post-spike period (%d detected), resetting baseline",
+				     m_postSpikeCount);
+
+				// Reset spike detection state
+				m_spikeDetected = false;
+				m_spikeInProgress = false;
+				m_spikeTimestamp = 0.0;
+				m_spikeStartTime = 0.0;
+				m_postSpikeCount = 0;
+				m_baselineCollected = false;
+
+				// Clear recent samples to start fresh baseline collection
+				m_recentSamples.clear();
+
+				blog(LOG_INFO,
+				     "[AudioSync] RealTimeAudioMonitor: Restarting baseline collection due to noisy environment");
+				return;
+			}
+		}
+		// Continue monitoring, but don't check for new spikes via detectSpike
 	} else {
 		// Check for spike
 		if (detectSpike(newSamples)) {
 			// Valid spike (clap) detected
 			if (m_spikeTimestamp > 0.0) {
+				m_postSpikeCount = 0; // Reset counter when valid spike is detected
 				emit spikeDetected(m_spikeTimestamp);
 				// Continue monitoring for 2 more seconds
 			}
