@@ -168,8 +168,11 @@ void obs_module_unload(void)
 			obs_frontend_remove_dock("obs-audio-sync");
 			dockRegistered = false;
 		}
-		delete panel;
+		// Set panel to nullptr BEFORE deletion to prevent use-after-free
+		// if any callbacks fire during destruction
+		AudioSyncPanel *panelToDelete = panel;
 		panel = nullptr;
+		delete panelToDelete;
 	}
 	// Restore default Qt message handler
 	qInstallMessageHandler(nullptr);

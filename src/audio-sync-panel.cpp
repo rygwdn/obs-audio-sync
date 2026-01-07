@@ -72,7 +72,14 @@ AudioSyncPanel::AudioSyncPanel(QWidget *parent) : QWidget(parent)
 
 AudioSyncPanel::~AudioSyncPanel()
 {
-	// Disconnect all signal/slot connections first to prevent any objects from
+	// Stop audio monitoring FIRST to prevent callbacks from firing during destruction.
+	// This is critical because the audio monitor's volmeter callback runs on OBS's
+	// audio thread and could race with object destruction.
+	if (m_audioMonitor) {
+		m_audioMonitor->stopMonitoring();
+	}
+
+	// Disconnect all signal/slot connections to prevent any objects from
 	// emitting signals to destroyed slots. This is critical to prevent crashes
 	// during shutdown. We disconnect in this order:
 	// 1. Worker signals (most critical - cross-thread)
