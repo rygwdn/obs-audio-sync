@@ -106,7 +106,8 @@ private:
 	// Convert linear amplitude (0.0-1.0) to decibels
 	double amplitudeToDb(double amplitude) const;
 
-	// Calculate adaptive threshold multiplier based on baseline noise level
+	// Calculate stepped threshold value (in linear amplitude) based on baseline noise level
+	// Returns a fixed threshold value rather than a multiplier for less dynamic behavior
 	double calculateAdaptiveThreshold(double baselineAmplitude) const;
 
 	// Collect baseline samples and check if baseline collection is complete
