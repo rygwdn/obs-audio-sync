@@ -681,14 +681,15 @@ void AudioSyncPanel::onVolumeLevelsUpdated(double baseline, double current, doub
 	QString text;
 	if (baseline >= epsilon || threshold >= epsilon) {
 		// Baseline collected - show compact inline stats with reduced precision
-		text = QString("Current: %1 | Min: %2 | Baseline: %3 | Max: %4")
+		text = QString("Current: %1 | Min: %2 | Baseline: %3 | Threshold: %4 | Max: %5")
 			       .arg(current, 0, 'f', 3)
 			       .arg(minVol, 0, 'f', 3)
 			       .arg(baseline, 0, 'f', 3)
+			       .arg(threshold, 0, 'f', 3)
 			       .arg(maxVol, 0, 'f', 3);
 	} else {
 		// Still collecting baseline - show placeholder
-		text = QString("Current: %1 | Min: %2 | Baseline: -- | Max: %3")
+		text = QString("Current: %1 | Min: %2 | Baseline: -- | Threshold: -- | Max: %3")
 			       .arg(current, 0, 'f', 3)
 			       .arg(minVol, 0, 'f', 3)
 			       .arg(maxVol, 0, 'f', 3);
