@@ -90,8 +90,8 @@ private:
 	double m_volumeSum{0.0}; // Sum of all volume samples
 	int m_volumeCount{0};    // Count of volume samples
 	// Cached threshold values (recalculated when baseline changes)
-	double m_cachedBaseline{0.0};        // Cached baseline average
-	double m_cachedThreshold{0.0};       // Cached spike detection threshold
+	double m_cachedBaseline{0.0};          // Cached baseline average
+	double m_cachedThreshold{0.0};         // Cached spike detection threshold
 	double m_cachedSpikeEndThreshold{0.0}; // Cached spike end threshold
 
 	// OBS volmeter callback (static, forwards to instance)

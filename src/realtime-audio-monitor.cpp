@@ -486,7 +486,8 @@ bool RealTimeAudioMonitor::collectBaseline(const QVector<AudioSample> &newSample
 		// Remove old samples outside baseline window
 		m_recentSamples.erase(std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
 						     [currentTime, this](const AudioSample &s) {
-							     return (currentTime - s.timestamp) > m_baselineWindowSeconds;
+							     return (currentTime - s.timestamp) >
+								    m_baselineWindowSeconds;
 						     }),
 				      m_recentSamples.end());
 
@@ -499,8 +500,7 @@ bool RealTimeAudioMonitor::collectBaseline(const QVector<AudioSample> &newSample
 		double currentAvg = calculateBaselineAverage();
 		blog(LOG_INFO,
 		     "[AudioSync] RealTimeAudioMonitor: Collecting baseline: %.2fs / %.2fs, samples: %lld, current avg: %.6f",
-		     elapsed, m_baselineWindowSeconds, static_cast<long long>(m_recentSamples.size()),
-		     currentAvg);
+		     elapsed, m_baselineWindowSeconds, static_cast<long long>(m_recentSamples.size()), currentAvg);
 		lastLogTime = currentTime;
 	}
 
@@ -592,7 +592,8 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 
 					blog(LOG_INFO,
 					     "[AudioSync] RealTimeAudioMonitor: Valid clap detected! Time: %.3fs, Duration: %.3fs, Peak: %.6f (%.1fx baseline)",
-					     m_spikeTimestamp, spikeDuration, peakAmplitude, peakAmplitude / m_cachedBaseline);
+					     m_spikeTimestamp, spikeDuration, peakAmplitude,
+					     peakAmplitude / m_cachedBaseline);
 
 					// Add samples to recent for baseline maintenance
 					m_recentSamples.append(newSamples);
