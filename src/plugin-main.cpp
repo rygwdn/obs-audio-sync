@@ -156,24 +156,29 @@ void obs_module_unload(void)
 	// during OBS shutdown, causing crashes. Signal handlers will be cleaned up
 	// automatically when sources are destroyed.
 
+	// CRITICAL: Set panel to nullptr FIRST, before any other cleanup.
+	// This prevents race conditions where signal handlers (which run on OBS's
+	// event thread) fire after unregister but before panel deletion.
+	// All callbacks check "if (panel == nullptr)" and return safely.
+	AudioSyncPanel *panelToDelete = panel;
+	panel = nullptr;
+
 	// Unregister event callback only if it was registered
 	if (eventCallbackRegistered) {
 		obs_frontend_remove_event_callback(onFrontendEvent, nullptr);
 		eventCallbackRegistered = false;
 	}
 
-	if (panel != nullptr) {
+	// Delete panel after callbacks are unregistered
+	if (panelToDelete != nullptr) {
 		// Remove dock only if it was registered
 		if (dockRegistered) {
 			obs_frontend_remove_dock("obs-audio-sync");
 			dockRegistered = false;
 		}
-		// Set panel to nullptr BEFORE deletion to prevent use-after-free
-		// if any callbacks fire during destruction
-		AudioSyncPanel *panelToDelete = panel;
-		panel = nullptr;
 		delete panelToDelete;
 	}
+
 	// Restore default Qt message handler
 	qInstallMessageHandler(nullptr);
 	obsLog(LOG_INFO, "plugin unloaded");
