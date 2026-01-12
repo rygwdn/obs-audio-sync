@@ -564,25 +564,34 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 			if (!m_spikeInProgress) {
 				m_spikeStartTime = sample.timestamp;
 				m_spikeInProgress = true;
+				blog(LOG_INFO,
+				     "[AudioSync] RealTimeAudioMonitor: Spike started at %.3fs, amplitude: %.6f (threshold: %.6f)",
+				     m_spikeStartTime, sample.amplitude, threshold);
 			}
 		} else if (m_spikeInProgress) {
 			// Amplitude dropped below threshold - spike ended
 			double spikeDuration = sample.timestamp - m_spikeStartTime;
+
+			// Find peak amplitude for logging
+			double peakAmplitude = 0.0;
+			for (const AudioSample &s : newSamples) {
+				if (s.timestamp >= m_spikeStartTime && s.timestamp <= sample.timestamp) {
+					if (s.amplitude > peakAmplitude) {
+						peakAmplitude = s.amplitude;
+					}
+				}
+			}
+
+			blog(LOG_INFO,
+			     "[AudioSync] RealTimeAudioMonitor: Spike ended at %.3fs, duration: %.3fs (min: %.3fs, max: %.3fs), peak: %.6f, end amplitude: %.6f",
+			     sample.timestamp, spikeDuration, m_minSpikeDuration, m_maxSpikeDuration,
+			     peakAmplitude, sample.amplitude);
+
 			if (spikeDuration >= m_minSpikeDuration && spikeDuration <= m_maxSpikeDuration) {
 				// Valid short spike (clap) detected
 				m_spikeDetected = true;
 				m_spikeTimestamp = m_spikeStartTime;
 				m_spikeInProgress = false;
-
-				// Find peak amplitude for logging
-				double peakAmplitude = 0.0;
-				for (const AudioSample &s : newSamples) {
-					if (s.timestamp >= m_spikeStartTime && s.timestamp <= sample.timestamp) {
-						if (s.amplitude > peakAmplitude) {
-							peakAmplitude = s.amplitude;
-						}
-					}
-				}
 
 				blog(LOG_INFO,
 				     "[AudioSync] RealTimeAudioMonitor: Valid clap detected! Time: %.3fs, Duration: %.3fs, Peak: %.6f (%.1fx baseline)",
@@ -601,6 +610,15 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 				return true;
 			} else {
 				// Spike too short or too long, not a valid clap
+				if (spikeDuration < m_minSpikeDuration) {
+					blog(LOG_WARNING,
+					     "[AudioSync] RealTimeAudioMonitor: Spike rejected - too short (%.3fs < %.3fs)",
+					     spikeDuration, m_minSpikeDuration);
+				} else {
+					blog(LOG_WARNING,
+					     "[AudioSync] RealTimeAudioMonitor: Spike rejected - too long (%.3fs > %.3fs)",
+					     spikeDuration, m_maxSpikeDuration);
+				}
 				m_spikeInProgress = false;
 			}
 		}
