@@ -28,9 +28,7 @@ OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
 
 namespace {
-AudioSyncPanel *panel = nullptr;      // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-bool eventCallbackRegistered = false; // Track if event callback was registered
-bool dockRegistered = false;          // Track if dock was registered
+AudioSyncPanel *panel = nullptr; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 // Qt message handler to redirect to OBS logging
 void qtMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
@@ -79,6 +77,27 @@ void onFrontendEvent(enum obs_frontend_event event, void *private_data)
 		// Scene changed - refresh audio source list
 		QMetaObject::invokeMethod(panel, "populateAudioSources", Qt::QueuedConnection);
 		break;
+	case OBS_FRONTEND_EVENT_EXIT: {
+		obsLog(LOG_INFO, "OBS exit event detected, performing early cleanup");
+		// OBS is about to exit - this is our last chance to safely cleanup while
+		// the OBS API is still fully functional. Do as much cleanup as possible here.
+		// After this callback returns, no further frontend API calls are permitted.
+
+		// Set panel to nullptr FIRST to prevent any callbacks from accessing it
+		AudioSyncPanel *panelToDelete = panel;
+		panel = nullptr;
+
+		// Delete the panel now, which will:
+		// - Stop audio monitoring (prevents audio thread callbacks)
+		// - Disconnect all Qt signals/slots
+		// - Stop and wait for worker threads
+		// - Clean up all UI resources
+		if (panelToDelete != nullptr) {
+			delete panelToDelete;
+			obsLog(LOG_INFO, "Panel cleanup completed during exit event");
+		}
+		break;
+	}
 	default:
 		// Ignore other events
 		break;
@@ -137,11 +156,9 @@ bool obs_module_load(void)
 	// Create and register the panel
 	panel = new AudioSyncPanel();
 	obs_frontend_add_dock_by_id("obs-audio-sync", "Audio Sync", panel);
-	dockRegistered = true;
 
 	// Register event callback for recording and scene events
 	obs_frontend_add_event_callback(onFrontendEvent, nullptr);
-	eventCallbackRegistered = true;
 
 	// Connect signal handlers for all existing sources
 	obs_enum_sources(connectSourceSignals, nullptr);
@@ -152,32 +169,20 @@ bool obs_module_load(void)
 
 void obs_module_unload(void)
 {
-	// Do NOT enumerate sources during unload - they may already be destroyed
-	// during OBS shutdown, causing crashes. Signal handlers will be cleaned up
-	// automatically when sources are destroyed.
-
-	// CRITICAL: Set panel to nullptr FIRST, before any other cleanup.
-	// This prevents race conditions where signal handlers (which run on OBS's
-	// event thread) fire after unregister but before panel deletion.
-	// All callbacks check "if (panel == nullptr)" and return safely.
-	AudioSyncPanel *panelToDelete = panel;
-	panel = nullptr;
-
-	// Unregister event callback only if it was registered
-	if (eventCallbackRegistered) {
-		obs_frontend_remove_event_callback(onFrontendEvent, nullptr);
-		eventCallbackRegistered = false;
-	}
-
-	// Delete panel after callbacks are unregistered
-	if (panelToDelete != nullptr) {
-		// Remove dock only if it was registered
-		if (dockRegistered) {
-			obs_frontend_remove_dock("obs-audio-sync");
-			dockRegistered = false;
-		}
-		delete panelToDelete;
-	}
+	// Most cleanup is now handled in OBS_FRONTEND_EVENT_EXIT, which fires
+	// before this function is called. At this point:
+	// - Panel has already been deleted during EXIT event
+	// - panel global is already nullptr
+	// - Audio monitoring stopped
+	// - Worker threads cleaned up
+	//
+	// We let OBS automatically handle:
+	// - obs_frontend_remove_event_callback (cleaned up during OBS shutdown)
+	// - obs_frontend_remove_dock (dock cleanup handled by OBS)
+	// - Source signal handlers (cleaned up when sources are destroyed)
+	//
+	// This follows the pattern used by official OBS plugins like obs-browser,
+	// which don't manually unregister callbacks in obs_module_unload.
 
 	// Restore default Qt message handler
 	qInstallMessageHandler(nullptr);
