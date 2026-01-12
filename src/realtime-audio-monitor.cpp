@@ -586,20 +586,18 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 
 				blog(LOG_INFO,
 				     "[AudioSync] RealTimeAudioMonitor: Valid clap detected! Time: %.3fs, Duration: %.3fs, Peak: %.6f (%.1fx baseline)",
-				     m_spikeTimestamp, spikeDuration, peakAmplitude,
-				     peakAmplitude / m_cachedBaseline);
+				     m_spikeTimestamp, spikeDuration, peakAmplitude, peakAmplitude / m_cachedBaseline);
 
 				// Add samples to recent for baseline maintenance
 				m_recentSamples.append(newSamples);
 				// Remove old samples outside baseline window
 				double currentTime = newSamples.isEmpty() ? 0.0 : newSamples.last().timestamp;
-				m_recentSamples.erase(
-					std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
-						       [currentTime, this](const AudioSample &s) {
-							       return (currentTime - s.timestamp) >
-								      m_baselineWindowSeconds;
-						       }),
-					m_recentSamples.end());
+				m_recentSamples.erase(std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
+								     [currentTime, this](const AudioSample &s) {
+									     return (currentTime - s.timestamp) >
+										    m_baselineWindowSeconds;
+								     }),
+						      m_recentSamples.end());
 				return true;
 			} else {
 				// Spike too short or too long, not a valid clap
