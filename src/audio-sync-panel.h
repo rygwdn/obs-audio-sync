@@ -113,6 +113,7 @@ public slots:
 private slots:
 	void onRecordingSelected(QListWidgetItem *item);
 	void onAutoSyncClicked();
+	void onDeleteFilteredClicked();
 	// Worker slots
 	void onRecordingsScanned(const QList<RecordingInfo> &recordings);
 	void onScanError(const QString &error);
@@ -138,6 +139,7 @@ private:
 	QPushButton *m_autoSyncButton{nullptr};
 	QPushButton *m_cancelAutoSyncButton{nullptr}; // Cancel button (visible during auto-sync)
 	QPushButton *m_endAutoSyncButton{nullptr};    // End button (visible during auto-sync)
+	QPushButton *m_deleteFilteredButton{nullptr}; // Delete filtered recordings button
 	QComboBox *m_audioSourceCombo{nullptr};       // Dropdown for selecting audio source
 	QVBoxLayout *m_layout{nullptr};
 	QProgressBar *m_spinner{nullptr};
