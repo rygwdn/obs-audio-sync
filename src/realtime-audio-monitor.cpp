@@ -584,8 +584,8 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 
 			blog(LOG_INFO,
 			     "[AudioSync] RealTimeAudioMonitor: Spike ended at %.3fs, duration: %.3fs (min: %.3fs, max: %.3fs), peak: %.6f, end amplitude: %.6f",
-			     sample.timestamp, spikeDuration, m_minSpikeDuration, m_maxSpikeDuration,
-			     peakAmplitude, sample.amplitude);
+			     sample.timestamp, spikeDuration, m_minSpikeDuration, m_maxSpikeDuration, peakAmplitude,
+			     sample.amplitude);
 
 			if (spikeDuration >= m_minSpikeDuration && spikeDuration <= m_maxSpikeDuration) {
 				// Valid short spike (clap) detected
