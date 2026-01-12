@@ -587,7 +587,7 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 			     sample.timestamp, spikeDuration, m_minSpikeDuration, m_maxSpikeDuration, peakAmplitude,
 			     sample.amplitude);
 
-			if (spikeDuration >= m_minSpikeDuration && spikeDuration <= m_maxSpikeDuration) {
+			if (spikeDuration <= m_maxSpikeDuration) {
 				// Valid short spike (clap) detected
 				m_spikeDetected = true;
 				m_spikeTimestamp = m_spikeStartTime;
@@ -609,16 +609,10 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 						      m_recentSamples.end());
 				return true;
 			} else {
-				// Spike too short or too long, not a valid clap
-				if (spikeDuration < m_minSpikeDuration) {
-					blog(LOG_WARNING,
-					     "[AudioSync] RealTimeAudioMonitor: Spike rejected - too short (%.3fs < %.3fs)",
-					     spikeDuration, m_minSpikeDuration);
-				} else {
-					blog(LOG_WARNING,
-					     "[AudioSync] RealTimeAudioMonitor: Spike rejected - too long (%.3fs > %.3fs)",
-					     spikeDuration, m_maxSpikeDuration);
-				}
+				// Spike too long, not a valid clap
+				blog(LOG_WARNING,
+				     "[AudioSync] RealTimeAudioMonitor: Spike rejected - too long (%.3fs > %.3fs)",
+				     spikeDuration, m_maxSpikeDuration);
 				m_spikeInProgress = false;
 			}
 		}
