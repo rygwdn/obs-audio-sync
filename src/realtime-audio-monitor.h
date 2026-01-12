@@ -70,11 +70,10 @@ private:
 	QVector<AudioSample> m_audioBuffer;   // Buffer for volume samples from volmeter
 	double m_currentTime{0.0};            // Current time in seconds since monitoring started
 	QVector<AudioSample> m_recentSamples; // Keep recent samples for threshold
-	double m_spikeThreshold{2.0};         // Threshold multiplier (2x average)
+	double m_spikeThreshold{2.0};         // Threshold multiplier (2x average) - deprecated, using stepped thresholds
 	double m_baselineWindowSeconds{2.0};  // Window for baseline calculation (2 seconds)
 	double m_minSpikeDuration{0.05};      // Minimum spike duration (50ms)
 	double m_maxSpikeDuration{0.2};       // Maximum duration for valid clap (200ms)
-	double m_spikeEndThreshold{1.5};      // Threshold multiplier for spike end detection
 	double m_postSpikeDuration{2.0};      // Seconds to record after spike
 	bool m_monitoring{false};
 	bool m_baselineCollected{false}; // True after 2 seconds of baseline collected
@@ -90,9 +89,8 @@ private:
 	double m_volumeSum{0.0}; // Sum of all volume samples
 	int m_volumeCount{0};    // Count of volume samples
 	// Cached threshold values (recalculated when baseline changes)
-	double m_cachedBaseline{0.0};          // Cached baseline average
-	double m_cachedThreshold{0.0};         // Cached spike detection threshold
-	double m_cachedSpikeEndThreshold{0.0}; // Cached spike end threshold
+	double m_cachedBaseline{0.0};  // Cached baseline average
+	double m_cachedThreshold{0.0}; // Cached spike detection threshold
 
 	// OBS volmeter callback (static, forwards to instance)
 	static void volmeterCallback(void *param, const float magnitude[], const float peak[], const float inputPeak[]);

@@ -464,11 +464,10 @@ bool RealTimeAudioMonitor::collectBaseline(const QVector<AudioSample> &newSample
 		// Baseline collection complete
 		m_baselineCollected = true;
 
-		// Calculate and cache baseline and thresholds using stepped threshold values
+		// Calculate and cache baseline and threshold using stepped threshold values
 		m_cachedBaseline = calculateBaselineAverage();
 		double steppedThreshold = calculateAdaptiveThreshold(m_cachedBaseline);
 		m_cachedThreshold = std::min(steppedThreshold, 0.9);
-		m_cachedSpikeEndThreshold = m_cachedBaseline * m_spikeEndThreshold;
 
 		double baselineDb = amplitudeToDb(m_cachedBaseline);
 		double thresholdDb = amplitudeToDb(steppedThreshold);
@@ -534,16 +533,15 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 		return false;
 	}
 
-	// Use cached threshold values instead of recalculating
+	// Use cached threshold value instead of recalculating
 	double threshold = m_cachedThreshold;
-	double spikeEndThreshold = m_cachedSpikeEndThreshold;
 
 	// Log spike detection parameters once per detection cycle
 	static bool loggedParams = false;
 	if (!loggedParams) {
 		blog(LOG_INFO,
-		     "[AudioSync] RealTimeAudioMonitor: Spike detection active - baseline: %.6f, threshold: %.6f, end threshold: %.6f",
-		     m_cachedBaseline, threshold, spikeEndThreshold);
+		     "[AudioSync] RealTimeAudioMonitor: Spike detection active - baseline: %.6f, threshold: %.6f",
+		     m_cachedBaseline, threshold);
 		loggedParams = true;
 	}
 
@@ -568,51 +566,45 @@ bool RealTimeAudioMonitor::detectSpike(const QVector<AudioSample> &newSamples)
 				m_spikeInProgress = true;
 			}
 		} else if (m_spikeInProgress) {
-			// Amplitude dropped below threshold - spike may have ended
-			// Check if amplitude is below end threshold (spike definitely ended)
-			if (sample.amplitude < spikeEndThreshold) {
-				// Spike ended - check if it's a valid short spike (clap)
-				double spikeDuration = sample.timestamp - m_spikeStartTime;
-				if (spikeDuration >= m_minSpikeDuration && spikeDuration <= m_maxSpikeDuration) {
-					// Valid short spike (clap) detected
-					m_spikeDetected = true;
-					m_spikeTimestamp = m_spikeStartTime;
-					m_spikeInProgress = false;
+			// Amplitude dropped below threshold - spike ended
+			double spikeDuration = sample.timestamp - m_spikeStartTime;
+			if (spikeDuration >= m_minSpikeDuration && spikeDuration <= m_maxSpikeDuration) {
+				// Valid short spike (clap) detected
+				m_spikeDetected = true;
+				m_spikeTimestamp = m_spikeStartTime;
+				m_spikeInProgress = false;
 
-					// Find peak amplitude for logging
-					double peakAmplitude = 0.0;
-					for (const AudioSample &s : newSamples) {
-						if (s.timestamp >= m_spikeStartTime &&
-						    s.timestamp <= sample.timestamp) {
-							if (s.amplitude > peakAmplitude) {
-								peakAmplitude = s.amplitude;
-							}
+				// Find peak amplitude for logging
+				double peakAmplitude = 0.0;
+				for (const AudioSample &s : newSamples) {
+					if (s.timestamp >= m_spikeStartTime && s.timestamp <= sample.timestamp) {
+						if (s.amplitude > peakAmplitude) {
+							peakAmplitude = s.amplitude;
 						}
 					}
-
-					blog(LOG_INFO,
-					     "[AudioSync] RealTimeAudioMonitor: Valid clap detected! Time: %.3fs, Duration: %.3fs, Peak: %.6f (%.1fx baseline)",
-					     m_spikeTimestamp, spikeDuration, peakAmplitude,
-					     peakAmplitude / m_cachedBaseline);
-
-					// Add samples to recent for baseline maintenance
-					m_recentSamples.append(newSamples);
-					// Remove old samples outside baseline window
-					double currentTime = newSamples.isEmpty() ? 0.0 : newSamples.last().timestamp;
-					m_recentSamples.erase(
-						std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
-							       [currentTime, this](const AudioSample &s) {
-								       return (currentTime - s.timestamp) >
-									      m_baselineWindowSeconds;
-							       }),
-						m_recentSamples.end());
-					return true;
-				} else {
-					// Spike too short or too long, not a valid clap
-					m_spikeInProgress = false;
 				}
+
+				blog(LOG_INFO,
+				     "[AudioSync] RealTimeAudioMonitor: Valid clap detected! Time: %.3fs, Duration: %.3fs, Peak: %.6f (%.1fx baseline)",
+				     m_spikeTimestamp, spikeDuration, peakAmplitude,
+				     peakAmplitude / m_cachedBaseline);
+
+				// Add samples to recent for baseline maintenance
+				m_recentSamples.append(newSamples);
+				// Remove old samples outside baseline window
+				double currentTime = newSamples.isEmpty() ? 0.0 : newSamples.last().timestamp;
+				m_recentSamples.erase(
+					std::remove_if(m_recentSamples.begin(), m_recentSamples.end(),
+						       [currentTime, this](const AudioSample &s) {
+							       return (currentTime - s.timestamp) >
+								      m_baselineWindowSeconds;
+						       }),
+					m_recentSamples.end());
+				return true;
+			} else {
+				// Spike too short or too long, not a valid clap
+				m_spikeInProgress = false;
 			}
-			// If amplitude is between threshold and endThreshold, spike might still be ongoing
 		}
 	}
 
