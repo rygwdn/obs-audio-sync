@@ -28,6 +28,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QFileInfo>
 #include <QDir>
 #include <QDateTime>
+#include <QFile>
 #include <qwidget.h>
 #include <qboxlayout.h>
 #include <qfont.h>
@@ -104,6 +105,9 @@ AudioSyncPanel::~AudioSyncPanel()
 	if (m_endAutoSyncButton) {
 		disconnect(m_endAutoSyncButton, nullptr, this, nullptr);
 	}
+	if (m_deleteFilteredButton) {
+		disconnect(m_deleteFilteredButton, nullptr, this, nullptr);
+	}
 	if (m_audioMonitor) {
 		disconnect(m_audioMonitor, nullptr, this, nullptr);
 	}
@@ -173,6 +177,11 @@ void AudioSyncPanel::setupUI()
 	m_endAutoSyncButton->setVisible(false);
 	autoSyncLayout->addWidget(m_endAutoSyncButton);
 
+	// Delete button
+	m_deleteFilteredButton = new QPushButton("Delete", this);
+	m_deleteFilteredButton->setToolTip("Delete all recordings shown in the list");
+	autoSyncLayout->addWidget(m_deleteFilteredButton);
+
 	m_layout->addLayout(autoSyncLayout);
 
 	// Status label
@@ -218,6 +227,7 @@ void AudioSyncPanel::setupUI()
 		[this]() { stopAutoSyncRecording(false); }); // Cancel without modal
 	connect(m_endAutoSyncButton, &QPushButton::clicked, this,
 		[this]() { stopAutoSyncRecording(true); }); // End with modal
+	connect(m_deleteFilteredButton, &QPushButton::clicked, this, &AudioSyncPanel::onDeleteFilteredClicked);
 
 	// Setup refresh timer for delayed refresh after recording events
 	// This ensures the file is ready after muxing completes
@@ -757,4 +767,80 @@ void AudioSyncPanel::handleAutoSyncRecordingStopped()
 		palette.setColor(QPalette::WindowText, palette.color(QPalette::Disabled, QPalette::WindowText));
 		m_statusLabel->setPalette(palette);
 	});
+}
+
+void AudioSyncPanel::onDeleteFilteredClicked()
+{
+	// Get count of recordings in list
+	int recordingCount = m_recordingList->count();
+
+	if (recordingCount == 0) {
+		QMessageBox::information(this, "Delete Recordings", "No recordings to delete.");
+		return;
+	}
+
+	// Show confirmation dialog
+	QMessageBox confirmBox(this);
+	confirmBox.setIcon(QMessageBox::Warning);
+	confirmBox.setWindowTitle("Confirm Delete");
+	confirmBox.setText(QString("Are you sure you want to delete %1 recording(s)?").arg(recordingCount));
+	confirmBox.setInformativeText("This action cannot be undone. The recording files will be permanently deleted.");
+	confirmBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+	confirmBox.setDefaultButton(QMessageBox::No);
+
+	if (confirmBox.exec() != QMessageBox::Yes) {
+		return;
+	}
+
+	// Collect all file paths
+	QStringList filesToDelete;
+	for (int i = 0; i < recordingCount; ++i) {
+		QListWidgetItem *item = m_recordingList->item(i);
+		if (item) {
+			QString filePath = item->data(Qt::UserRole).toString();
+			if (!filePath.isEmpty()) {
+				filesToDelete.append(filePath);
+			}
+		}
+	}
+
+	// Delete files and track results
+	int successCount = 0;
+	int failCount = 0;
+	QStringList failedFiles;
+
+	for (const QString &filePath : filesToDelete) {
+		QFile file(filePath);
+		if (file.exists()) {
+			if (file.remove()) {
+				successCount++;
+				blog(LOG_INFO, "[AudioSync] Deleted recording: %s", filePath.toUtf8().constData());
+			} else {
+				failCount++;
+				failedFiles.append(QFileInfo(filePath).fileName());
+				blog(LOG_WARNING, "[AudioSync] Failed to delete recording: %s",
+				     filePath.toUtf8().constData());
+			}
+		} else {
+			// File doesn't exist, count as success (already gone)
+			successCount++;
+		}
+	}
+
+	// Show result message
+	if (failCount == 0) {
+		m_statusLabel->setText(QString("Deleted %1 recording(s)").arg(successCount));
+		QMessageBox::information(this, "Delete Complete",
+					 QString("Successfully deleted %1 recording(s).").arg(successCount));
+	} else {
+		m_statusLabel->setText(QString("Deleted %1, failed %2").arg(successCount).arg(failCount));
+		QString message = QString("Deleted %1 recording(s).\nFailed to delete %2 recording(s):")
+					  .arg(successCount)
+					  .arg(failCount);
+		message += "\n\n" + failedFiles.join("\n");
+		QMessageBox::warning(this, "Delete Partially Complete", message);
+	}
+
+	// Refresh the recording list
+	refreshRecordings();
 }
