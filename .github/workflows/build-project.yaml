@@ -90,8 +90,15 @@ jobs:
           : Set Up Environment 🔧
           if (( ${+RUNNER_DEBUG} )) setopt XTRACE
 
+          print '::group::Dump Deployment Target Env'
+          env | grep -E "DEPLOYMENT" | sort || print '(none)'
+          print '::endgroup::'
+
           print '::group::Enable Xcode 26.5'
           sudo xcode-select --switch /Applications/Xcode_26.5.app/Contents/Developer
+          print '::endgroup::'
+          print '::group::Dump Deployment Target Env After Xcode Select'
+          env | grep -E "DEPLOYMENT" | sort || print '(none)'
           print '::endgroup::'
 
           print '::group::Clean Homebrew Environment'
