@@ -17,7 +17,7 @@ A plugin for OBS Studio that helps users identify and correct audio/video synchr
 
 ## Requirements
 
-- OBS Studio 31.1.1 or later
+- OBS Studio 32.2.2 or later
 - Qt6
 - FFmpeg/libav libraries (libavformat, libavcodec, libavutil, libswscale)
 
@@ -145,7 +145,7 @@ Run specific tasks:
 - `--debug`: Debug output
 
 The Docker container includes:
-- Ubuntu 24.04 (matching CI)
+- Ubuntu 26.04 LTS (ships current OBS Studio via `obs-studio`/`libobs-dev`, no PPA needed; falls back to CI's Ubuntu 24.04 + obsproject PPA combo only for the GitHub Actions runner)
 - All build dependencies (CMake, Ninja, OBS Studio, Qt6, etc.)
 - Qt6 Test component (for running tests)
 - Linting tools (clang-format, gersemi)

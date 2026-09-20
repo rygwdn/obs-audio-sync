@@ -136,6 +136,17 @@ build() {
     -configuration ${config}
     -parallelizeTargets
     -hideShellScriptEnvironment
+    # Xcode 26 exports SDK-default deployment targets for every platform
+    # (IPHONEOS/TVOS/WATCHOS/XROS_DEPLOYMENT_TARGET=26.5, DRIVERKIT=25.5)
+    # into the tool environment. clang errors with "conflicting deployment
+    # targets" when two or more of these env vars are set and no -target
+    # flag is present (e.g. CMake's compiler ABI probes). Clear them so
+    # only the macOS deployment target remains.
+    IPHONEOS_DEPLOYMENT_TARGET=
+    TVOS_DEPLOYMENT_TARGET=
+    WATCHOS_DEPLOYMENT_TARGET=
+    XROS_DEPLOYMENT_TARGET=
+    DRIVERKIT_DEPLOYMENT_TARGET=
     build
   )
 

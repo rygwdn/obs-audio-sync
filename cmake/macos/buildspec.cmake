@@ -81,6 +81,12 @@ function(_check_dependencies_macos)
       set(_libobs_build_config "${_obs_dir}/build_universal/libobs/libobsConfig.cmake")
       if(EXISTS "${_libobs_build_config}")
         set(libobs_DIR "${_obs_dir}/build_universal/libobs" CACHE PATH "libobs config directory" FORCE)
+        # OBS 32.2.2's libobsConfig.cmake resolves find_dependency(SIMDe)
+        # through a finders/ directory that is only populated by the
+        # Development-component install, not in the build tree registered
+        # above. Copy the finder modules from the OBS source so the
+        # build-tree config works.
+        file(COPY "${_obs_dir}/cmake/finders/" DESTINATION "${_obs_dir}/build_universal/libobs/finders")
         break()
       endif()
     endif()

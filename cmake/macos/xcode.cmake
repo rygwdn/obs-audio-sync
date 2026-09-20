@@ -26,6 +26,15 @@ set(CMAKE_XCODE_ATTRIBUTE_MARKETING_VERSION ${PLUGIN_VERSION})
 # Set deployment target
 set(CMAKE_XCODE_ATTRIBUTE_MACOSX_DEPLOYMENT_TARGET ${CMAKE_OSX_DEPLOYMENT_TARGET})
 
+# Xcode 26's explicit modules conflict with the ccache compiler launcher
+# (module compilations derive the deployment target independently of the
+# build setting, e.g. '26.5' SDK vs '25.5' Darwin triple, and clang errors
+# with "conflicting deployment targets"). Disable explicit modules when a
+# compiler launcher is in use.
+if(ENABLE_CCACHE)
+  set(CMAKE_XCODE_ATTRIBUTE_CLANG_ENABLE_EXPLICIT_MODULES NO)
+endif()
+
 if(NOT CODESIGN_TEAM)
   # Switch to manual codesigning if no codesigning team is provided
   set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_STYLE Manual)

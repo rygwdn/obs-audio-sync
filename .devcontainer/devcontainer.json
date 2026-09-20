@@ -2,8 +2,7 @@
   "name": "OBS Audio Sync Plugin",
   "build": {
     "dockerfile": "../Dockerfile",
-    "context": "..",
-    "platform": "linux/x86_64"
+    "context": ".."
   },
   "workspaceFolder": "/workspaces/obs-audio-sync",
   
@@ -114,8 +113,8 @@
   // Forward ports if needed (for debugging, etc.)
   "forwardPorts": [],
   
-  // Run arguments - using native platform (arm64 on Apple Silicon, x86_64 on Intel)
-  // Remove platform specification to use native architecture for better performance
+  // Native platform is used (arm64 on Apple Silicon/OrbStack, x86_64 on Intel);
+  // the Dockerfile's Ubuntu 26.04 base ships obs-studio/libobs-dev for both.
   "runArgs": []
 }
 

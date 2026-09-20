@@ -1,7 +1,14 @@
 # Dockerfile for OBS Audio Sync Plugin build environment
 # Supports both x86_64 and arm64 architectures
+#
+# Uses Ubuntu 26.04 (LTS) so obs-studio/libobs-dev come straight from the
+# main archive at a current version (32.x) on both x86_64 and arm64.
+# The obsproject PPA is intentionally NOT used here: it only publishes
+# amd64 packages, so on arm64 hosts (e.g. Apple Silicon via OrbStack) apt
+# would silently fall back to whatever ships in Ubuntu 24.04 (30.0.2, over
+# two years stale) or fail outright once libobs-dev isn't installed.
 
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -45,19 +52,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsimde-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Add OBS PPA and install OBS Studio packages
+# Install OBS Studio development packages (headers, cmake config, pkgconfig)
+# straight from the Ubuntu 26.04 main archive - already tracks current
+# upstream OBS releases on both x86_64 and arm64, no PPA needed.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    software-properties-common \
-    && add-apt-repository --yes ppa:obsproject/obs-studio \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
     obs-studio \
+    libobs-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Qt6 dependencies (including Qt6 Test and private headers)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     qt6-base-dev \
-    libqt6svg6-dev \
+    qt6-svg-dev \
     qt6-base-private-dev \
     qt6-tools-dev \
     qt6-base-dev-tools \
@@ -93,8 +99,9 @@ RUN sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew tap obsproject/tools &
     (echo "Warning: Homebrew installation failed, falling back to apt packages" && \
      apt-get update && apt-get install -y --no-install-recommends \
          wget gnupg ca-certificates && \
+     . /etc/os-release && \
      wget -qO - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - && \
-     echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" >> /etc/apt/sources.list.d/llvm.list && \
+     echo "deb http://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-19 main" >> /etc/apt/sources.list.d/llvm.list && \
      apt-get update && apt-get install -y --no-install-recommends \
          clang-format-19 python3 python3-pip && \
      pip3 install --no-cache-dir --break-system-packages gersemi && \
