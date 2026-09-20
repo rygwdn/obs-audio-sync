@@ -115,7 +115,15 @@ build() {
 
   log_group "Building ${product_name}..."
   run_xcodebuild() {
-    xcodebuild ${@} 2>&1
+    if (( debug )) {
+      xcodebuild ${@}
+    } else {
+      if [[ ${GITHUB_EVENT_NAME} == push ]] {
+        xcodebuild ${@} 2>&1 | xcbeautify --renderer terminal
+      } else {
+        xcodebuild ${@} 2>&1 | xcbeautify --renderer github-actions
+      }
+    }
   }
 
   local -a build_args=(
@@ -143,9 +151,6 @@ build() {
   )
 
   pushd build_macos
-  log_group "Build settings ${product_name}..."
-  xcodebuild -project ${product_name}.xcodeproj -target ${product_name} -showBuildSettings 2>&1 | grep -iE "DEPLOYMENT|SDKROOT|PLATFORM" || true
-  log_group
   run_xcodebuild ${build_args}
   popd
 
