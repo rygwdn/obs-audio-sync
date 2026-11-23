@@ -52,13 +52,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsimde-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install OBS Studio development packages (headers, cmake config, pkgconfig)
-# straight from the Ubuntu 26.04 main archive - already tracks current
-# upstream OBS releases on both x86_64 and arm64, no PPA needed.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    obs-studio \
-    libobs-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Install OBS Studio 33.0.3 development packages (headers, cmake config, pkgconfig).
+# amd64: official OBS Ubuntu 26.04 package, hash-pinned to the 33.0.3 release.
+# arm64: the official package is x86_64-only, so fall back to the Ubuntu archive
+#        package (an older upstream release) for Apple Silicon / OrbStack hosts.
+RUN set -eux; \
+    dpkg_arch="$(dpkg --print-architecture)"; \
+    if [ "$dpkg_arch" = "amd64" ]; then \
+        curl -fsSL --retry 3 -o /tmp/obs-studio.deb \
+          "https://github.com/obsproject/obs-studio/releases/download/33.0.3/OBS-Studio-33.0.3-Ubuntu-26.04-x86_64.deb"; \
+        echo "5056f517efafcf720047fb3848e5c04398ddbd9caea548f5e2024ed32c97689a  /tmp/obs-studio.deb" | sha256sum -c -; \
+        apt-get update && apt-get install -y --no-install-recommends /tmp/obs-studio.deb; \
+        rm -f /tmp/obs-studio.deb /var/lib/apt/lists/*; \
+    else \
+        apt-get update && apt-get install -y --no-install-recommends obs-studio libobs-dev; \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Install Qt6 dependencies (including Qt6 Test and private headers)
 RUN apt-get update && apt-get install -y --no-install-recommends \
